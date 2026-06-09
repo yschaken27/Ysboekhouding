@@ -139,8 +139,8 @@
   .main::-webkit-scrollbar-thumb{background:var(--border-light);border-radius:3px;}
 
   /* PAGES */
-  .page{display:none;padding:20px 24px;}
-  .page.active{display:block;animation:fadeIn .18s ease;}
+  .page{display:none;padding:20px 24px;height:0;overflow:hidden;}
+  .page.active{display:block;height:auto;overflow:visible;animation:fadeIn .18s ease;}
   @keyframes fadeIn{from{opacity:0;transform:translateY(5px);}to{opacity:1;transform:translateY(0);}}
 
   /* PAGE HEADER */
@@ -581,7 +581,32 @@
 
 /* ===== MOBIEL KASSIER VIEW ===== */
 @media (max-width: 600px) {
-  .topbar, .nav-row { display: none !important; }
+  /* Verberg alleen de bovenste topbar rij, houd de nav tabs zichtbaar */
+  .topbar-row1 { display: none !important; }
+  /* Nav tabs onderaan vastzetten als mobiele bottom bar */
+  .topbar {
+    position: fixed !important;
+    bottom: 0 !important;
+    top: auto !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 200 !important;
+    border-top: 1px solid var(--border) !important;
+    border-bottom: none !important;
+    box-shadow: 0 -2px 8px rgba(30,42,59,0.10) !important;
+  }
+  .topbar-row2 {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    flex-wrap: nowrap !important;
+    padding: 0 8px !important;
+    height: 52px !important;
+  }
+  .topbar-row2::-webkit-scrollbar { display: none; }
+  .nav-tab { font-size: 12px !important; padding: 0 12px !important; white-space: nowrap !important; }
+  /* Zorg dat main content niet achter de bottom bar valt */
+  .main { padding-bottom: calc(52px + env(safe-area-inset-bottom)) !important; }
   .content { padding: 20px 12px; }
   .page { padding: 0; }
   
@@ -6025,12 +6050,12 @@ function renderBonnenLijst(){
       }
     });
 
-    el.innerHTML = `<table class="table">
+    el.innerHTML = `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;"><table class="table" style="min-width:600px;">
       <thead><tr>
         <th>Bestand</th><th>Door</th><th>Datum</th><th>Omschrijving</th><th>Status</th><th></th>
       </tr></thead>
       <tbody>${rijen.join('')}</tbody>
-    </table>`;
+    </table></div>`;
     console.log('[Bonnen] Tabel gerenderd: '+lijst.length+' rijen');
   } catch(renderErr) {
     console.error('[Bonnen] Render crash:', renderErr);
