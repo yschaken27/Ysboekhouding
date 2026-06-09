@@ -1699,26 +1699,33 @@ body.kassier-mobiel .mob-kassa-totaal {
   <!-- DASHBOARD pagina -->
   <div id="mob-page-dashboard" class="mob-page active">
     <!-- Periode filter -->
-    <div class="mob-period-bar" id="mob-period-bar">
-      <button class="mob-period-pill active" onclick="mobSetPeriode('vandaag')">Vandaag</button>
-      <button class="mob-period-pill" onclick="mobSetPeriode('week')">Week</button>
-      <button class="mob-period-pill" onclick="mobSetPeriode('m01')">Jan</button>
-      <button class="mob-period-pill" onclick="mobSetPeriode('m02')">Feb</button>
-      <button class="mob-period-pill" onclick="mobSetPeriode('m03')">Mrt</button>
-      <button class="mob-period-pill" onclick="mobSetPeriode('m04')">Apr</button>
-      <button class="mob-period-pill" onclick="mobSetPeriode('m05')">Mei</button>
-      <button class="mob-period-pill" onclick="mobSetPeriode('m06')">Jun</button>
-      <button class="mob-period-pill" onclick="mobSetPeriode('m07')">Jul</button>
-      <button class="mob-period-pill" onclick="mobSetPeriode('m08')">Aug</button>
-      <button class="mob-period-pill" onclick="mobSetPeriode('m09')">Sep</button>
-      <button class="mob-period-pill" onclick="mobSetPeriode('m10')">Okt</button>
-      <button class="mob-period-pill" onclick="mobSetPeriode('m11')">Nov</button>
-      <button class="mob-period-pill" onclick="mobSetPeriode('m12')">Dec</button>
+    <div class="mob-period-bar" id="mob-period-bar" style="display:flex;align-items:center;gap:6px;padding:8px 12px;overflow:visible;">
+      <button class="mob-period-pill active" id="mob-pill-vandaag" onclick="mobSetPeriode('vandaag')">Vandaag</button>
+      <button class="mob-period-pill" id="mob-pill-week" onclick="mobSetPeriode('week')">Week</button>
+      <!-- Maand dropdown mobiel -->
+      <select id="mob-maand-select" onchange="mobSetPeriodeDropdown(this.value)"
+        style="flex:1;font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:20px;
+        background:var(--surface);color:var(--text);cursor:pointer;min-width:0;
+        -webkit-appearance:none;appearance:none;text-align:center;">
+        <option value="">📅 Maand...</option>
+        <option value="m01">Januari</option>
+        <option value="m02">Februari</option>
+        <option value="m03">Maart</option>
+        <option value="m04">April</option>
+        <option value="m05">Mei</option>
+        <option value="m06">Juni</option>
+        <option value="m07">Juli</option>
+        <option value="m08">Augustus</option>
+        <option value="m09">September</option>
+        <option value="m10">Oktober</option>
+        <option value="m11">November</option>
+        <option value="m12">December</option>
+      </select>
     </div>
 
     <!-- Omzet hoofdkaart -->
     <div class="mob-main-card">
-      <div class="mob-main-card-label">Omzet</div>
+      <div class="mob-main-card-label">Omzet <span style="font-size:10px;opacity:0.5;font-weight:400;">excl. BTW</span></div>
       <div class="mob-main-card-val" id="mob-omzet">€ 0,00</div>
       <div class="mob-main-card-sub" id="mob-periode-label">Vandaag</div>
     </div>
@@ -1815,6 +1822,7 @@ body.kassier-mobiel .mob-kassa-totaal {
         </div>
       </label>
       <input type="file" id="mob-file-input" accept="image/*,application/pdf"
+        capture="environment"
         style="display:none;" onchange="mobFileGekozen(this)">
     </div>
 
@@ -2046,26 +2054,31 @@ body.kassier-mobiel .mob-kassa-totaal {
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <!-- Periode filter -->
-          <div style="display:flex;gap:4px;flex-wrap:wrap;">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
             <button class="btn btn-sm" id="dash-filter-ytd" onclick="setDashPeriode('ytd')" style="background:var(--accent);color:#fff;font-weight:600;font-size:11px;padding:4px 10px;">Dit jaar</button>
             <button class="btn btn-secondary btn-sm" id="dash-filter-q1" onclick="setDashPeriode('q1')" style="font-size:11px;padding:4px 10px;">Q1</button>
             <button class="btn btn-secondary btn-sm" id="dash-filter-q2" onclick="setDashPeriode('q2')" style="font-size:11px;padding:4px 10px;">Q2</button>
             <button class="btn btn-secondary btn-sm" id="dash-filter-q3" onclick="setDashPeriode('q3')" style="font-size:11px;padding:4px 10px;">Q3</button>
             <button class="btn btn-secondary btn-sm" id="dash-filter-q4" onclick="setDashPeriode('q4')" style="font-size:11px;padding:4px 10px;">Q4</button>
             <button class="btn btn-secondary btn-sm" id="dash-filter-all" onclick="setDashPeriode('all')" style="font-size:11px;padding:4px 10px;">Alles</button>
-            <span style="color:var(--text-muted);font-size:11px;padding:4px 2px;">|</span>
-            <button class="btn btn-secondary btn-sm" id="dash-filter-m01" onclick="setDashPeriode('m01')" style="font-size:11px;padding:4px 8px;">Jan</button>
-            <button class="btn btn-secondary btn-sm" id="dash-filter-m02" onclick="setDashPeriode('m02')" style="font-size:11px;padding:4px 8px;">Feb</button>
-            <button class="btn btn-secondary btn-sm" id="dash-filter-m03" onclick="setDashPeriode('m03')" style="font-size:11px;padding:4px 8px;">Mrt</button>
-            <button class="btn btn-secondary btn-sm" id="dash-filter-m04" onclick="setDashPeriode('m04')" style="font-size:11px;padding:4px 8px;">Apr</button>
-            <button class="btn btn-secondary btn-sm" id="dash-filter-m05" onclick="setDashPeriode('m05')" style="font-size:11px;padding:4px 8px;">Mei</button>
-            <button class="btn btn-secondary btn-sm" id="dash-filter-m06" onclick="setDashPeriode('m06')" style="font-size:11px;padding:4px 8px;">Jun</button>
-            <button class="btn btn-secondary btn-sm" id="dash-filter-m07" onclick="setDashPeriode('m07')" style="font-size:11px;padding:4px 8px;">Jul</button>
-            <button class="btn btn-secondary btn-sm" id="dash-filter-m08" onclick="setDashPeriode('m08')" style="font-size:11px;padding:4px 8px;">Aug</button>
-            <button class="btn btn-secondary btn-sm" id="dash-filter-m09" onclick="setDashPeriode('m09')" style="font-size:11px;padding:4px 8px;">Sep</button>
-            <button class="btn btn-secondary btn-sm" id="dash-filter-m10" onclick="setDashPeriode('m10')" style="font-size:11px;padding:4px 8px;">Okt</button>
-            <button class="btn btn-secondary btn-sm" id="dash-filter-m11" onclick="setDashPeriode('m11')" style="font-size:11px;padding:4px 8px;">Nov</button>
-            <button class="btn btn-secondary btn-sm" id="dash-filter-m12" onclick="setDashPeriode('m12')" style="font-size:11px;padding:4px 8px;">Dec</button>
+            <!-- Maand dropdown -->
+            <select id="dash-maand-select" onchange="setDashPeriodeDropdown(this.value)"
+              style="font-size:11px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;
+              background:var(--surface);color:var(--text);cursor:pointer;height:28px;">
+              <option value="">📅 Maand...</option>
+              <option value="m01">Januari</option>
+              <option value="m02">Februari</option>
+              <option value="m03">Maart</option>
+              <option value="m04">April</option>
+              <option value="m05">Mei</option>
+              <option value="m06">Juni</option>
+              <option value="m07">Juli</option>
+              <option value="m08">Augustus</option>
+              <option value="m09">September</option>
+              <option value="m10">Oktober</option>
+              <option value="m11">November</option>
+              <option value="m12">December</option>
+            </select>
           </div>
           <button class="btn btn-secondary btn-sm" onclick="downloadDashboard()" style="font-size:11px;">↓ Rapport</button>
         </div>
@@ -2753,7 +2766,7 @@ body.kassier-mobiel .mob-kassa-totaal {
             <div style="font-size:12px;font-weight:600;color:var(--text-mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);">Rubriek 1 — Prestaties binnenland</div>
             <div class="btw-rubriek-row" id="btw-1a"><span class="btw-r-label">1a Leveringen/diensten hoog (21%)</span><span class="btw-r-grondslag" id="btw-1a-gs">€ 0,00</span><span class="btw-r-btw" id="btw-1a-btw">€ 0,00</span></div>
             <div class="btw-rubriek-row" id="btw-1b"><span class="btw-r-label">1b Leveringen/diensten laag (9%)</span><span class="btw-r-grondslag" id="btw-1b-gs">€ 0,00</span><span class="btw-r-btw" id="btw-1b-btw">€ 0,00</span></div>
-            <div class="btw-rubriek-row" id="btw-1d"><span class="btw-r-label">1d Privégebruik</span><span class="btw-r-grondslag" id="btw-1d-gs">€ 0,00</span><span class="btw-r-btw" id="btw-1d-btw">€ 0,00</span></div>
+            <div class="btw-rubriek-row" id="btw-1d"><span class="btw-r-label">1d Leveringen/diensten 0% / vrijgesteld</span><span class="btw-r-grondslag" id="btw-1d-gs">€ 0,00</span><span class="btw-r-btw" id="btw-1d-btw">€ 0,00</span></div>
           </div>
 
           <div style="margin-bottom:20px;">
@@ -3037,14 +3050,14 @@ body.kassier-mobiel .mob-kassa-totaal {
     <!-- TAB: PIN -->
     <div id="inst-wrap-pin">
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:16px;font-size:12px;color:var(--text-mid);line-height:1.7;">
-        <strong style="color:var(--text);">Hoe werkt de PIN?</strong><br>
-        De PIN wordt opgeslagen in Google Apps Script — dezelfde PIN geldt op elk apparaat.
-        De eigenaar PIN geeft volledige toegang. De gebruiker PIN geeft alleen toegang tot het dashboard en kassa invullen van <strong id="inst-bedrijf-naam" style="color:var(--accent);"></strong>.
+        <strong style="color:var(--text);">Eigenaar PIN</strong><br>
+        De PIN wordt opgeslagen in Firebase en geldt op elk apparaat.
+        Met de eigenaar PIN heb je volledige toegang tot de app.
       </div>
 
       <!-- Eigenaar PIN wijzigen -->
-      <div class="card" style="margin-bottom:12px;">
-        <div class="card-title">Eigenaar PIN</div>
+      <div class="card">
+        <div class="card-title">PIN wijzigen</div>
         <div class="form-grid">
           <div class="form-group">
             <label>Huidige PIN</label>
@@ -3060,31 +3073,6 @@ body.kassier-mobiel .mob-kassa-totaal {
           </div>
           <div class="form-group" style="display:flex;align-items:flex-end;">
             <button class="btn btn-primary" style="width:100%;" onclick="verwerkPINwijziging('eigenaar')">PIN wijzigen</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Gebruiker PIN wijzigen -->
-      <div class="card">
-        <div class="card-title">Gebruiker PIN</div>
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px;">
-          De kassier kan hiermee inloggen en heeft alleen toegang tot het dashboard en kassa invullen.
-        </div>
-        <div class="form-grid">
-          <div class="form-group">
-            <label>Huidige eigenaar PIN <span style="color:var(--text-dim);font-size:10px;">(ter verificatie)</span></label>
-            <input type="password" id="inst-kas-eigen-check" inputmode="numeric" maxlength="6" placeholder="Eigenaar PIN">
-          </div>
-          <div class="form-group">
-            <label>Nieuwe gebruiker PIN</label>
-            <input type="password" id="inst-kas-nieuw" inputmode="numeric" maxlength="6" placeholder="Minimaal 4 cijfers">
-          </div>
-          <div class="form-group">
-            <label>Bevestig nieuwe PIN</label>
-            <input type="password" id="inst-kas-bevestig" inputmode="numeric" maxlength="6" placeholder="Herhaal gebruiker PIN">
-          </div>
-          <div class="form-group" style="display:flex;align-items:flex-end;">
-            <button class="btn btn-primary" style="width:100%;" onclick="verwerkPINwijziging('gebruiker')">PIN wijzigen</button>
           </div>
         </div>
       </div>
@@ -3140,6 +3128,62 @@ body.kassier-mobiel .mob-kassa-totaal {
 
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-instellingen')">Sluiten</button>
+    </div>
+  </div>
+</div>
+
+<!-- GEBRUIKER DETAIL MODAL -->
+<div class="modal-overlay" id="modal-gebruiker-detail">
+  <div class="modal" style="width:460px;max-width:95vw;">
+    <div class="modal-header">
+      <h3 id="gd-titel">Gebruiker</h3>
+      <button class="modal-close" onclick="closeModal('modal-gebruiker-detail')">✕</button>
+    </div>
+    <div style="padding:0 0 8px 0;">
+
+      <!-- Avatar + naam -->
+      <div style="display:flex;align-items:center;gap:14px;padding:16px 0 20px 0;border-bottom:1px solid var(--border);margin-bottom:18px;">
+        <div style="width:52px;height:52px;border-radius:50%;background:var(--accent-dim);display:flex;align-items:center;justify-content:center;font-size:24px;">👤</div>
+        <div>
+          <div id="gd-naam-disp" style="font-size:16px;font-weight:700;color:var(--text);"></div>
+          <div style="font-size:12px;color:var(--text-dim);margin-top:2px;">Kassier</div>
+        </div>
+      </div>
+
+      <!-- PIN wijzigen -->
+      <div style="margin-bottom:18px;">
+        <div style="font-size:12px;font-weight:600;color:var(--text-mid);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">PIN wijzigen</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input id="gd-pin" type="password" inputmode="numeric" maxlength="6" placeholder="Nieuwe PIN (leeg = ongewijzigd)"
+            style="flex:1;font-size:13px;">
+        </div>
+      </div>
+
+      <!-- Naam bewerken -->
+      <div style="margin-bottom:18px;">
+        <div style="font-size:12px;font-weight:600;color:var(--text-mid);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Naam</div>
+        <input id="gd-naam-input" type="text" placeholder="Naam gebruiker" style="width:100%;font-size:13px;">
+      </div>
+
+      <!-- Bedrijven toegang -->
+      <div style="margin-bottom:18px;">
+        <div style="font-size:12px;font-weight:600;color:var(--text-mid);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Toegang tot bedrijven</div>
+        <div id="gd-bedrijven" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+      </div>
+
+      <!-- Modules -->
+      <div style="margin-bottom:8px;">
+        <div style="font-size:12px;font-weight:600;color:var(--text-mid);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Modules</div>
+        <div id="gd-modules" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+      </div>
+
+    </div>
+    <div class="modal-footer" style="justify-content:space-between;">
+      <button class="btn btn-danger btn-sm" onclick="verwijderKassierViaDetail()">🗑 Verwijderen</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary" onclick="closeModal('modal-gebruiker-detail')">Annuleren</button>
+        <button class="btn btn-primary" onclick="slaGebruikerDetailOp()">Opslaan</button>
+      </div>
     </div>
   </div>
 </div>
@@ -3322,6 +3366,16 @@ body.kassier-mobiel .mob-kassa-totaal {
             <option value="9">9%</option>
             <option value="0">0%</option>
           </select>
+        </div>
+        <div class="form-group full">
+          <label>BTW stelsel</label>
+          <select id="bp-btw-stelsel">
+            <option value="factuurstelsel">Factuurstelsel — BTW op factuurdatum</option>
+            <option value="kasstelsel">Kasstelsel — BTW op betaaldatum</option>
+          </select>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">
+            Kasstelsel is verplicht voor ondernemers die vooral aan particulieren leveren (kappers, horeca, etc.). Raadpleeg uw boekhouder bij twijfel.
+          </div>
         </div>
         <div class="form-group full"><label>Notities</label><textarea id="bp-notities" rows="3" placeholder="Bijv. accountantgegevens, login portalen, etc."></textarea></div>
       </div>
@@ -3598,7 +3652,7 @@ function save(){
   localStorage.setItem(storageKey(), JSON.stringify(DB));
   _recentlySaved = true;
   clearTimeout(window._recentSavedTimer);
-  window._recentSavedTimer = setTimeout(()=>{ _recentlySaved=false; }, 5000);
+  window._recentSavedTimer = setTimeout(()=>{ _recentlySaved=false; }, 30000);
   if(USE_CLOUD) saveCloud();
   else toonSyncStatus('lokaal');
 }
@@ -3819,11 +3873,29 @@ async function _slaaBijlagenIDB(factuurId){
 
 async function verwijderBedrijf(naam){
   if(naam===huidigBedrijf){toast('Wissel eerst naar een ander bedrijf voor je dit verwijdert.','warning');return;}
-  const ok=await bevestig(`Bedrijf "${naam}" en alle data permanent verwijderen?`,'Bedrijf verwijderen','Verwijderen');
+  const ok=await bevestig(`Bedrijf "${naam}" en alle data permanent verwijderen?\n\nDit verwijdert ook alle data in Firebase.`,'Bedrijf verwijderen','Verwijderen');
   if(!ok) return;
+  // Verwijder lokaal
   localStorage.removeItem('ledger_'+naam.replace(/\s+/g,'_').toLowerCase());
   const lijst=getBedrijven().filter(b=>b!==naam);
   saveBedrijven(lijst);
+  // Verwijder uit Firebase — alle subcollectie documenten
+  try{
+    const db = window.FB?.db;
+    if(db){
+      const docs = ['main','verkoop','inkoop','transacties','kassalijsten'];
+      await Promise.all(docs.map(doc=>
+        db.collection('bedrijven').doc(naam).collection('data').doc(doc).delete().catch(()=>{})
+      ));
+      // Verwijder uploads subcollectie
+      const upSnap = await db.collection('bedrijven').doc(naam).collection('uploads').get().catch(()=>null);
+      if(upSnap) await Promise.all(upSnap.docs.map(d=>d.ref.delete().catch(()=>{})));
+      toast(`Bedrijf "${naam}" volledig verwijderd.`,'info');
+    }
+  }catch(e){
+    toast(`Bedrijf lokaal verwijderd — cloud verwijdering mislukt.`,'warning');
+    console.error('Firebase verwijder fout:', e);
+  }
   renderBedrijfList();
 }
 
@@ -3848,6 +3920,7 @@ function laadBedrijfProfiel(){
   document.getElementById('bp-rechtsvorm').value=p.rechtsvorm||'';
   document.getElementById('bp-boekjaar').value=p.boekjaar||'1';
   document.getElementById('bp-btw-standaard').value=p.btwStandaard||'21';
+  document.getElementById('bp-btw-stelsel').value=p.btwStelsel||'factuurstelsel';
   document.getElementById('bp-notities').value=p.notities||'';
 }
 
@@ -3864,6 +3937,7 @@ function slaBedrijfProfielOp(){
     rechtsvorm:document.getElementById('bp-rechtsvorm').value,
     boekjaar:document.getElementById('bp-boekjaar').value,
     btwStandaard:document.getElementById('bp-btw-standaard').value,
+    btwStelsel:document.getElementById('bp-btw-stelsel').value,
     notities:document.getElementById('bp-notities').value.trim(),
   };
   // Update weergegeven naam in sidebar als bedrijfsnaam is ingevuld
@@ -3899,6 +3973,71 @@ function openBedrijfModal(){
 }
 
 function uid(){ return 'id_'+Date.now()+'_'+Math.random().toString(36).slice(2,6); }
+
+// ===== KASSTELSEL HELPERS =====
+function isKasstelsel(){
+  return (DB.profiel?.btwStelsel||'factuurstelsel') === 'kasstelsel';
+}
+
+// Zoek alle gekoppelde banktransacties voor een factuur
+function _getBetalingen(factuur){
+  return DB.transacties.filter(t=>
+    t.status==='gekoppeld' &&
+    (t.factuurId===factuur.id ||
+     (factuur.nummer && t.gekoppeldAan && t.gekoppeldAan.includes(factuur.nummer)))
+  );
+}
+
+// Berekent hoeveel van het factuurtotaal betaald is (ratio 0-1)
+// Altijd 1 bij factuurstelsel
+function _getBetaaldRatio(factuur){
+  if(!isKasstelsel()) return 1;
+  const totaalIncl = parseFloat(factuur.totaalIncl||0);
+  if(totaalIncl <= 0) return 0;
+  const betaald = _getBetalingen(factuur).reduce((a,t)=>a+Math.abs(parseFloat(t.bedrag)||0),0);
+  return Math.min(betaald / totaalIncl, 1);
+}
+
+// Geeft de relevante datum terug voor BTW aangifte:
+// - Factuurstelsel: altijd factuurdatum
+// - Kasstelsel: datum van eerste betaling, null als nog niet betaald
+// - Kasstelsel fallback: als factuur status=betaald maar geen transactie gevonden,
+//   gebruik factuurdatum zodat handmatig betaalde facturen niet wegvallen
+function getBtwDatum(factuur){
+  if(!isKasstelsel()) return factuur.datum;
+  const betalingen = _getBetalingen(factuur);
+  if(betalingen.length > 0){
+    // Gebruik de vroegste betaaldatum
+    return betalingen
+      .map(t=>t.datum)
+      .filter(Boolean)
+      .sort()[0] || null;
+  }
+  // Fallback: factuur handmatig op betaald gezet zonder bankkoppeling
+  if(factuur.status === 'betaald') return factuur.datum;
+  return null; // onbetaald, telt niet mee
+}
+
+// Geeft de belastbare omzet excl BTW terug voor deze factuur in deze periode
+// Bij kasstelsel: proportioneel op basis van betaald bedrag
+function getOmzetKas(factuur){
+  const ratio = _getBetaaldRatio(factuur);
+  return parseFloat(factuur.totaalExcl||0) * ratio;
+}
+
+// Geeft het aftrekbare BTW-bedrag terug voor inkoop
+// Bij kasstelsel: proportioneel op basis van betaald bedrag
+function getBtwBedragKas(factuur){
+  const ratio = _getBetaaldRatio(factuur);
+  return parseFloat(factuur.btwBedrag||0) * ratio;
+}
+
+// Geeft de aftrekbare inkoop excl BTW terug
+// Bij kasstelsel: proportioneel op basis van betaald bedrag
+function getInkoopKas(factuur){
+  const ratio = _getBetaaldRatio(factuur);
+  return parseFloat(factuur.totaalExcl||0) * ratio;
+}
 function today(){ return new Date().toISOString().split('T')[0]; }
 function fmt(n){ return '€ '+parseFloat(n||0).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.'); }
 function fmtRaw(n){ return parseFloat(n||0).toFixed(2).replace('.',','); }
@@ -3982,11 +4121,24 @@ function renderDashboard(){
     return true;
   }
 
-  const vkPeriode = DB.verkoop.filter(f=>inPeriode(f.datum));
-  const ikPeriode = DB.inkoop.filter(f=>inPeriode(f.datum));
+  // Bij kasstelsel: filter op betaaldatum, bij factuurstelsel op factuurdatum
+  const _ks = isKasstelsel();
+  const vkPeriode = _ks
+    ? DB.verkoop.filter(f=>{ const d=getBtwDatum(f); return d&&inPeriode(d); })
+    : DB.verkoop.filter(f=>inPeriode(f.datum));
+  const ikPeriode = _ks
+    ? DB.inkoop.filter(f=>{ const d=getBtwDatum(f); return d&&inPeriode(d); })
+    : DB.inkoop.filter(f=>inPeriode(f.datum));
 
-  const omzet = vkPeriode.reduce((a,f)=>a+parseFloat(f.totaalExcl||0),0);
-  const inkoopTot = ikPeriode.reduce((a,f)=>a+parseFloat(f.totaalExcl||0),0);
+  // Kassaomzet altijd op kassadatum (inherent kasstelsel), altijd excl BTW
+  const _kassaOmzetDash = (DB.kassalijsten||[])
+    .filter(k=>k.status==='goedgekeurd'&&inPeriode(k.datum))
+    .reduce((a,k)=>a+parseFloat(k.totaalOmzet||0), 0);
+  const omzet = (_ks
+    ? vkPeriode.reduce((a,f)=>a+getOmzetKas(f),0)
+    : vkPeriode.reduce((a,f)=>a+parseFloat(f.totaalExcl||0),0))
+    + _kassaOmzetDash;
+  const inkoopTot = ikPeriode.reduce((a,f)=>a+getInkoopKas(f),0);
   const marge = omzet - inkoopTot;
   const margePct = omzet>0?((marge/omzet)*100).toFixed(1):0;
   const openstaand = DB.verkoop.filter(f=>f.status!=='betaald').reduce((a,f)=>a+parseFloat(f.totaalIncl||0),0);
@@ -4000,7 +4152,7 @@ function renderDashboard(){
   const sub = document.getElementById('dash-bedrijf-sub');
   const _mndNamen = {m01:'Januari',m02:'Februari',m03:'Maart',m04:'April',m05:'Mei',m06:'Juni',m07:'Juli',m08:'Augustus',m09:'September',m10:'Oktober',m11:'November',m12:'December'};
   const _periodeLabel = {ytd:'Huidig jaar',q1:'Q1',q2:'Q2',q3:'Q3',q4:'Q4',all:'Alle periodes',..._mndNamen};
-  if(sub) sub.textContent = (DB.profiel?.bedrijfsnaam||huidigBedrijf) + ' — ' + (_periodeLabel[periode]||periode);
+  if(sub) sub.textContent = (DB.profiel?.bedrijfsnaam||huidigBedrijf) + ' — ' + (_periodeLabel[periode]||periode) + (_ks?' · Kasstelsel':'');
 
   // Stats vullen
   document.getElementById('s-omzet').textContent = fmt(omzet);
@@ -4025,17 +4177,23 @@ function renderDashboard(){
   if(snps) snps.textContent = fmt(prive.stortingen);
   if(snpn){ snpn.textContent = fmt(Math.abs(prive.netto)); snpn.style.color=prive.netto>=0?'#059669':'#7c3aed'; }
 
-  // Maandelijks chart
+  // Maandelijks chart — bij kasstelsel op betaaldatum, bij factuurstelsel op factuurdatum
   const maanden = ['Jan','Feb','Mrt','Apr','Mei','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
   const omzetPerMaand = Array(12).fill(0);
   const kostenPerMaand = Array(12).fill(0);
-  DB.verkoop.filter(f=>new Date(f.datum||'').getFullYear()===jaar).forEach(f=>{
-    const m = new Date(f.datum).getMonth();
-    omzetPerMaand[m] += parseFloat(f.totaalExcl||0);
+  DB.verkoop.forEach(f=>{
+    const d = _ks ? getBtwDatum(f) : f.datum;
+    if(!d || new Date(d).getFullYear()!==jaar) return;
+    omzetPerMaand[new Date(d).getMonth()] += _ks ? getOmzetKas(f) : parseFloat(f.totaalExcl||0);
   });
-  DB.inkoop.filter(f=>new Date(f.datum||'').getFullYear()===jaar).forEach(f=>{
-    const m = new Date(f.datum).getMonth();
-    kostenPerMaand[m] += parseFloat(f.totaalExcl||0);
+  // Kassaomzet in maandgrafiek
+  (DB.kassalijsten||[]).filter(k=>k.status==='goedgekeurd'&&new Date(k.datum||'').getFullYear()===jaar).forEach(k=>{
+    omzetPerMaand[new Date(k.datum).getMonth()] += parseFloat(k.totaalOmzet||0);
+  });
+  DB.inkoop.forEach(f=>{
+    const d = _ks ? getBtwDatum(f) : f.datum;
+    if(!d || new Date(d).getFullYear()!==jaar) return;
+    kostenPerMaand[new Date(d).getMonth()] += _ks ? getInkoopKas(f) : parseFloat(f.totaalExcl||0);
   });
   const ctx = document.getElementById('dash-chart-maand');
   if(ctx){
@@ -4060,9 +4218,12 @@ function renderDashboard(){
     });
   }
 
-  // Top klanten
+  // Top klanten — gebruik vkPeriode (al gefilterd op stelsel en periode)
   const klantMap = {};
-  vkPeriode.forEach(f=>{ klantMap[f.klant||'Onbekend']=(klantMap[f.klant||'Onbekend']||0)+parseFloat(f.totaalExcl||0); });
+  vkPeriode.forEach(f=>{
+    const val = _ks ? getOmzetKas(f) : parseFloat(f.totaalExcl||0);
+    klantMap[f.klant||'Onbekend'] = (klantMap[f.klant||'Onbekend']||0) + val;
+  });
   const topKlanten = Object.entries(klantMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const maxVal = topKlanten[0]?.[1]||1;
   const tkEl = document.getElementById('dash-top-klanten');
@@ -4122,8 +4283,8 @@ let _dashPeriode = 'ytd';
 function setDashPeriode(p){
   window._dashPeriode = p;
   _dashPeriode = p;
-  const alleIds = ['ytd','q1','q2','q3','q4','all','m01','m02','m03','m04','m05','m06','m07','m08','m09','m10','m11','m12'];
-  alleIds.forEach(x=>{
+  const knoppen = ['ytd','q1','q2','q3','q4','all'];
+  knoppen.forEach(x=>{
     const el = document.getElementById('dash-filter-'+x);
     if(!el) return;
     el.className = x===p ? 'btn btn-sm' : 'btn btn-secondary btn-sm';
@@ -4131,14 +4292,37 @@ function setDashPeriode(p){
     el.style.color = x===p ? '#fff' : '';
     el.style.fontWeight = x===p ? '600' : '';
   });
+  // Reset dropdown als het geen maand is, anders toon geselecteerde maand
+  const sel = document.getElementById('dash-maand-select');
+  if(sel){
+    if(p.startsWith('m')) sel.value = p;
+    else sel.value = '';
+  }
   renderDashboard();
+}
+
+function setDashPeriodeDropdown(p){
+  if(!p) return;
+  // Reset alle knoppen
+  ['ytd','q1','q2','q3','q4','all'].forEach(x=>{
+    const el = document.getElementById('dash-filter-'+x);
+    if(!el) return;
+    el.className = 'btn btn-secondary btn-sm';
+    el.style.background = '';
+    el.style.color = '';
+    el.style.fontWeight = '';
+  });
+  setDashPeriode(p);
 }
 
 function downloadDashboard(){
   const bedrijf = DB.profiel?.bedrijfsnaam || huidigBedrijf;
   const datum = new Date().toLocaleDateString('nl-NL');
   const jaar = new Date().getFullYear();
-  const omzet = DB.verkoop.reduce((a,f)=>a+parseFloat(f.totaalExcl||0),0);
+  const _kassaOmzetMob = (DB.kassalijsten||[])
+    .filter(k=>k.status==='goedgekeurd'&&new Date(k.datum||'').getFullYear()===jaar)
+    .reduce((a,k)=>a+parseFloat(k.totaalOmzet||0), 0);
+  const omzet = DB.verkoop.reduce((a,f)=>a+parseFloat(f.totaalExcl||0),0) + _kassaOmzetMob;
   const kosten = DB.inkoop.reduce((a,f)=>a+parseFloat(f.totaalExcl||0),0);
   const marge = omzet-kosten;
   const margePct = omzet>0?((marge/omzet)*100).toFixed(1):0;
@@ -4150,12 +4334,27 @@ function downloadDashboard(){
   const maanden = ['Jan','Feb','Mrt','Apr','Mei','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
   const omzetM = Array(12).fill(0);
   const kostenM = Array(12).fill(0);
-  DB.verkoop.filter(f=>new Date(f.datum||'').getFullYear()===jaar).forEach(f=>{ omzetM[new Date(f.datum).getMonth()]+=parseFloat(f.totaalExcl||0); });
-  DB.inkoop.filter(f=>new Date(f.datum||'').getFullYear()===jaar).forEach(f=>{ kostenM[new Date(f.datum).getMonth()]+=parseFloat(f.totaalExcl||0); });
+  // Maandgrafiek — bij kasstelsel op betaaldatum, bij factuurstelsel op factuurdatum
+  const _mKs = isKasstelsel();
+  DB.verkoop.forEach(f=>{
+    const d = _mKs ? getBtwDatum(f) : f.datum;
+    if(!d || new Date(d).getFullYear()!==jaar) return;
+    omzetM[new Date(d).getMonth()] += _mKs ? getOmzetKas(f) : parseFloat(f.totaalExcl||0);
+  });
+  DB.inkoop.forEach(f=>{
+    const d = _mKs ? getBtwDatum(f) : f.datum;
+    if(!d || new Date(d).getFullYear()!==jaar) return;
+    kostenM[new Date(d).getMonth()] += _mKs ? getInkoopKas(f) : parseFloat(f.totaalExcl||0);
+  });
 
-  // Top klanten
+  // Top klanten — bij kasstelsel alleen betaalde omzet
   const klantMap = {};
-  DB.verkoop.forEach(f=>{ klantMap[f.klant||'Onbekend']=(klantMap[f.klant||'Onbekend']||0)+parseFloat(f.totaalExcl||0); });
+  DB.verkoop.forEach(f=>{
+    const d = _mKs ? getBtwDatum(f) : f.datum;
+    if(!d || new Date(d).getFullYear()!==jaar) return;
+    const val = _mKs ? getOmzetKas(f) : parseFloat(f.totaalExcl||0);
+    klantMap[f.klant||'Onbekend'] = (klantMap[f.klant||'Onbekend']||0) + val;
+  });
   const topK = Object.entries(klantMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const maxK = topK[0]?.[1]||1;
 
@@ -4430,6 +4629,8 @@ async function slaFactuurOp(){
   });
   const sub2=regels.reduce((a,r)=>a+(parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0),0);
   const btwTotaal=regels.reduce((a,r)=>a+(parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0)*(parseInt(r.btw)||0)/100,0);
+  // Validatie: factuur mag geen bedrag van 0 hebben
+  if(sub2 === 0){ toast('Factuur heeft een totaal van €0,00 — vul een bedrag in.','error'); return; }
   const isNieuw=!DB.editId;
   // Bij bewerken: sla oude factuur op voor terugdraaien
   const oudeFactuur = DB.editId
@@ -4447,7 +4648,7 @@ async function slaFactuurOp(){
     notities:document.getElementById('f-notities').value,
     status:document.getElementById('f-status').value,
     regels, totaalExcl:sub2, btwBedrag:btwTotaal, totaalIncl:sub2+btwTotaal,
-    bijlagenMeta:[] // wordt gevuld via slaaBijlagenOp
+    bijlagenMeta: oudeFactuur?.bijlagenMeta || [] // bewaar bestaande bijlagen bij bewerken
   };
   // Gebruik directe referentie naar de juiste array
   if(DB.editType==='verkoop'){
@@ -4892,9 +5093,17 @@ function bevestigImport(){
   const importId=uid();
   const importDatum=today();
   let count=0;
+  let dubbel=0;
   csvParsed.forEach(row=>{
     const m=getMappedRow(row);
     if(isNaN(m.bedrag)){return;}
+    // Duplicate check: zelfde datum + bedrag + omschrijving al aanwezig?
+    const isDuplicaat = DB.transacties.some(t=>
+      t.datum===m.datum &&
+      parseFloat(t.bedrag)===parseFloat(m.bedrag) &&
+      t.omschrijving===m.oms
+    );
+    if(isDuplicaat){ dubbel++; return; }
     DB.transacties.push({id:uid(),datum:m.datum,omschrijving:m.oms,bedrag:m.bedrag,status:'ongekoppeld',gekoppeldAan:null,gekoppeldType:null,bankGbId:null,importId});
     count++;
   });
@@ -4903,6 +5112,8 @@ function bevestigImport(){
   DB.imports.push({id:importId,datum:importDatum,aantalTransacties:count});
   save(); resetCSV(); renderTransacties(); updateBankStats();
   renderImports();
+  if(dubbel>0) toast(`${count} transacties geïmporteerd, ${dubbel} dubbele overgeslagen.`,'info');
+  else toast(`${count} transacties geïmporteerd.`,'success');
 }
 
 function resetCSV(){
@@ -5688,7 +5899,7 @@ async function verwijderT(id){
   const t=DB.transacties.find(t=>t.id===id);
   if(t&&t.status==='gekoppeld') draaiBoekingTerug(t);
   DB.transacties=DB.transacties.filter(t=>t.id!==id);
-  save(); updateBankStats(); toast('Gekoppeld.','success'); renderTransacties(false);
+  save(); updateBankStats(); renderTransacties(false);
   toast('Transactie verwijderd.','info');
 }
 
@@ -6771,6 +6982,10 @@ function vulJaarDropdowns(){
 function berekenPLVoorPeriode(maand, jaar){
   // Bereken omzet en kosten voor een specifieke maand/jaar combinatie
   // maand: 1-12 of '' voor heel jaar, jaar: '2025' of ''
+  // Bij kasstelsel: datum = betaaldatum via getBtwDatum()
+  // Bij factuurstelsel: datum = factuurdatum
+  const ks = isKasstelsel();
+
   function inPeriode(datumStr){
     if(!datumStr) return false;
     const d = new Date(datumStr);
@@ -6779,30 +6994,64 @@ function berekenPLVoorPeriode(maand, jaar){
     return jaarMatch && maandMatch;
   }
 
-  const verkoop = DB.verkoop.filter(f=>inPeriode(f.datum));
-  const inkoop  = DB.inkoop.filter(f=>inPeriode(f.datum));
+  // Kasstelsel: filter op betaaldatum, factuurstelsel: op factuurdatum
+  const verkoop = DB.verkoop.filter(f=>{
+    const d = ks ? getBtwDatum(f) : f.datum;
+    return d && inPeriode(d);
+  });
+  const inkoop = DB.inkoop.filter(f=>{
+    const d = ks ? getBtwDatum(f) : f.datum;
+    return d && inPeriode(d);
+  });
+
+  // Directe bankkosten: alleen gekoppeldType=grootboek op een kostenrekening
+  // Privé-opnames en transfers zijn geen bedrijfskosten en worden uitgesloten
   const transacties = DB.transacties.filter(t=>inPeriode(t.datum));
+  const bankKosten = transacties
+    .filter(t=>
+      parseFloat(t.bedrag) < 0 &&
+      t.gekoppeldType === 'grootboek' &&
+      t.gekoppeldType !== 'prive' &&
+      t.gekoppeldType !== 'transfer'
+    )
+    .filter(t=>{
+      // Controleer of de gekoppelde grootboekrekening een kostenrekening is
+      const g = DB.grootboek.find(g=>(g.nummer+' — '+g.naam)===t.gekoppeldAan);
+      return g && g.type === 'kosten';
+    })
+    .reduce((a,t)=>{
+      // Trek BTW eraf als die aanwezig is — P&L werkt excl BTW
+      const bedrag = Math.abs(parseFloat(t.bedrag)||0);
+      const btwTarief = (window.inlineBTW||{})[t.id]||0;
+      return a + (btwTarief > 0 ? bedrag / ((100 + btwTarief) / 100) : bedrag);
+    }, 0);
 
-  const factuurOmzet = verkoop.reduce((a,f)=>a+parseFloat(f.totaalExcl||0),0);
-  const inkoopKosten = inkoop.reduce((a,f)=>a+parseFloat(f.totaalExcl||0),0);
-  const bankKosten   = transacties.filter(t=>parseFloat(t.bedrag)<0&&t.gekoppeldType!=='factuur')
-                                  .reduce((a,t)=>a+Math.abs(parseFloat(t.bedrag)),0);
+  // Kasstelsel: omzet proportioneel op betaald bedrag
+  const factuurOmzet = ks
+    ? verkoop.reduce((a,f)=>a+getOmzetKas(f), 0)
+    : verkoop.reduce((a,f)=>a+parseFloat(f.totaalExcl||0), 0);
 
-  // Omzet per grootboekrekening (op basis van factuurregels)
+  const inkoopKosten = ks
+    ? inkoop.reduce((a,f)=>a+getInkoopKas(f), 0)
+    : inkoop.reduce((a,f)=>a+parseFloat(f.totaalExcl||0), 0);
+
+  // Omzet per grootboekrekening
   const omzetPerRek = {};
   verkoop.forEach(f=>{
+    const ratio = _getBetaaldRatio(f);
     (f.regels||[]).forEach(r=>{
-      const excl = (parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0);
+      const excl = (parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0) * ratio;
       const rekId = r.gbId || 'overig';
       omzetPerRek[rekId] = (omzetPerRek[rekId]||0) + excl;
     });
   });
 
-  // Kosten per grootboekrekening (op basis van factuurregels)
+  // Kosten per grootboekrekening
   const kostenPerRek = {};
   inkoop.forEach(f=>{
+    const ratio = _getBetaaldRatio(f);
     (f.regels||[]).forEach(r=>{
-      const excl = (parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0);
+      const excl = (parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0) * ratio;
       const rekId = r.gbId || 'overig';
       kostenPerRek[rekId] = (kostenPerRek[rekId]||0) + excl;
     });
@@ -7075,33 +7324,75 @@ function renderBTWAangifte(){
     return d.getFullYear()===jaar && maanden.includes(d.getMonth());
   }
 
-  // RUBRIEK 1a — omzet 21%, 1b — omzet 9% (per factuurregel)
+  // RUBRIEK 1a — omzet 21%, 1b — omzet 9%, 1d — omzet 0% (per factuurregel)
+  // Bij kasstelsel: datum = betaaldatum via getBtwDatum(), onbetaalde facturen tellen niet mee
+  // Bij factuurstelsel: datum = factuurdatum
   let gs1a=0; let btw1a=0;
   let gs1b=0; let btw1b=0;
-  DB.verkoop.filter(f=>inPeriode(f.datum)).forEach(f=>{
+  let gs1d=0; // 0% BTW omzet (vrijgesteld of nultarief)
+  const kasstelsel = isKasstelsel();
+  const stelselLabel = kasstelsel ? 'kasstelsel — betaaldatum' : 'factuurstelsel — factuurdatum';
+  DB.verkoop.forEach(f=>{
+    const btwDatum = getBtwDatum(f);
+    if(!btwDatum || !inPeriode(btwDatum)) return;
+    const ratio = _getBetaaldRatio(f);
     (f.regels||[]).forEach(r=>{
-      const excl=(parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0);
+      const exclVolledig=(parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0);
+      const excl = exclVolledig * ratio;
       const pct=parseInt(r.btw||f.btwTarief||21);
       if(pct===21){ gs1a+=excl; btw1a+=excl*0.21; }
       else if(pct===9){ gs1b+=excl; btw1b+=excl*0.09; }
+      else if(pct===0){ gs1d+=excl; }
     });
   });
 
   // RUBRIEK 5b — voorbelasting inkoop (per factuurregel)
+  // Bij kasstelsel: alleen betaalde inkopen, proportioneel op betaald bedrag
   let gs5b=0; let btw5b=0;
-  DB.inkoop.filter(f=>inPeriode(f.datum)).forEach(f=>{
+  DB.inkoop.forEach(f=>{
+    const btwDatum = getBtwDatum(f);
+    if(!btwDatum || !inPeriode(btwDatum)) return;
+    // Gebruik centrale helper — voorkomt dubbele ratio toepassing
+    const ratio = _getBetaaldRatio(f);
     (f.regels||[]).forEach(r=>{
-      const excl=(parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0);
+      const exclVolledig=(parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0);
+      const exclBetaald = exclVolledig * ratio;
       const pct=parseInt(r.btw||f.btwTarief||21);
-      if(pct>0){ gs5b+=excl; btw5b+=excl*pct/100; }
+      if(pct>0){
+        gs5b += exclBetaald;
+        btw5b += exclBetaald * pct / 100; // correct: ratio al verwerkt in exclBetaald
+      }
     });
+  });
+
+  // KASSALIJSTEN — goedgekeurde kassalijsten tellen mee in BTW aangifte
+  // Dit is de primaire omzetbron voor kappers, horeca etc die geen facturen maken
+  (DB.kassalijsten||[]).filter(k=>k.status==='goedgekeurd'&&inPeriode(k.datum)).forEach(k=>{
+    const tarief = parseInt(k.btwTarief ?? DB.profiel?.btwStandaard ?? '9');
+    const omzetExcl = parseFloat(k.totaalOmzet||0);
+    const btwBedrag = parseFloat(k.omzetBtw || omzetExcl * tarief / 100 || 0);
+    if(tarief===21){ gs1a+=omzetExcl; btw1a+=btwBedrag; }
+    else if(tarief===9){ gs1b+=omzetExcl; btw1b+=btwBedrag; }
+    else if(tarief===0){ gs1d+=omzetExcl; }
+  });
+
+  // Banktransacties met BTW die niet via factuur lopen — tellen mee in 5b
+  DB.transacties.filter(t=>inPeriode(t.datum)&&t.status==='gekoppeld'&&t.gekoppeldType==='grootboek').forEach(t=>{
+    const bedrag = parseFloat(t.bedrag)||0;
+    const btwTarief = (window.inlineBTW||{})[t.id]||0;
+    if(btwTarief>0 && bedrag<0){
+      const abs = Math.abs(bedrag);
+      const exclBTW = abs/((100+btwTarief)/100);
+      gs5b += exclBTW;
+      btw5b += abs - exclBTW;
+    }
   });
 
   // Update rubrieken
   const set=(id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=fmt(val); };
   set('btw-1a-gs',gs1a); set('btw-1a-btw',btw1a);
   set('btw-1b-gs',gs1b); set('btw-1b-btw',btw1b);
-  set('btw-1d-gs',0); set('btw-1d-btw',0);
+  set('btw-1d-gs',gs1d); set('btw-1d-btw',0); // 0% omzet geen BTW
   set('btw-5b-gs',gs5b); set('btw-5b-btw',btw5b);
 
   // Saldo
@@ -7119,8 +7410,10 @@ function renderBTWAangifte(){
   const samen=document.getElementById('btw-samenvatting');
   if(samen) samen.innerHTML=`
     <div style="display:flex;justify-content:space-between;padding:4px 0;"><span>Periode</span><strong>${periode} ${jaar}</strong></div>
+    <div style="display:flex;justify-content:space-between;padding:4px 0;"><span>Stelsel</span><strong style="color:var(--accent);font-size:11px;">${kasstelsel?'Kasstelsel':'Factuurstelsel'}</strong></div>
     <div style="display:flex;justify-content:space-between;padding:4px 0;"><span>Omzet 21%</span><strong>${fmt(gs1a)}</strong></div>
     <div style="display:flex;justify-content:space-between;padding:4px 0;"><span>Omzet 9%</span><strong>${fmt(gs1b)}</strong></div>
+    ${gs1d>0?`<div style="display:flex;justify-content:space-between;padding:4px 0;"><span>Omzet 0%</span><strong>${fmt(gs1d)}</strong></div>`:''}
     <div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid var(--border);margin-top:4px;padding-top:8px;"><span>BTW omzet totaal</span><strong style="color:var(--text);">${fmt(totaalVerkoop)}</strong></div>
     <div style="display:flex;justify-content:space-between;padding:4px 0;"><span>Voorbelasting inkoop</span><strong style="color:var(--accent);">${fmt(btw5b)}</strong></div>
     <div style="display:flex;justify-content:space-between;padding:8px 0 0;border-top:2px solid var(--border);margin-top:4px;"><span style="font-weight:600;">${saldo>=0?'Te betalen':'Te ontvangen'}</span><strong style="color:${saldo>=0?'var(--danger)':'var(--accent)'};">${fmt(Math.abs(saldo))}</strong></div>`;
@@ -7166,12 +7459,41 @@ function renderJaaropgave(){
 
   function inJaar(datum){ return new Date(datum||'').getFullYear()===jaar; }
 
-  // Winst berekening
-  const omzet = DB.verkoop.filter(f=>inJaar(f.datum)).reduce((a,f)=>a+parseFloat(f.totaalExcl||0),0);
-  const inkoopKosten = DB.inkoop.filter(f=>inJaar(f.datum)).reduce((a,f)=>a+parseFloat(f.totaalExcl||0),0);
-  const afschrijvingen = (DB.memoriaal||[]).filter(m=>inJaar(m.datum)&&(m.type==='afschrijving'||m.oms?.toLowerCase().includes('afschr'))).reduce((a,m)=>a+parseFloat(m.debet||0),0);
-  const overigKosten = DB.grootboek.filter(g=>g.type==='kosten').reduce((a,g)=>a+parseFloat(g.saldo||0),0);
-  const totaalKosten = inkoopKosten + afschrijvingen + overigKosten;
+  // Winst berekening — alleen op basis van facturen en memoriaal van het geselecteerde jaar
+  // Bij kasstelsel: omzet en kosten op betaaldatum, niet factuurdatum
+  const _kasstelsel = isKasstelsel();
+  // Factuuromzet
+  const factuurOmzetJaar = DB.verkoop.reduce((a,f)=>{
+    const d = _kasstelsel ? getBtwDatum(f) : f.datum;
+    if(!d || !inJaar(d)) return a;
+    return a + (_kasstelsel ? getOmzetKas(f) : parseFloat(f.totaalExcl||0));
+  }, 0);
+  // Kassaomzet — altijd op kassadatum (inherent kasstelsel)
+  const kassaOmzetJaar = (DB.kassalijsten||[])
+    .filter(k=>k.status==='goedgekeurd'&&inJaar(k.datum))
+    .reduce((a,k)=>a+parseFloat(k.totaalOmzet||0), 0);
+  const omzet = factuurOmzetJaar + kassaOmzetJaar;
+  const inkoopKosten = DB.inkoop.reduce((a,f)=>{
+    const d = _kasstelsel ? getBtwDatum(f) : f.datum;
+    if(!d || !inJaar(d)) return a;
+    return a + getInkoopKas(f); // gebruikt _getBetaaldRatio intern
+  }, 0);
+  // Afschrijvingen uit memoriaal van dit jaar — niet uit grootboeksaldo (dat is cumulatief)
+  const afschrijvingen = (DB.memoriaal||[]).filter(m=>inJaar(m.datum)&&m.type==='afschrijving').reduce((a,m)=>a+parseFloat(m.debet||0),0);
+  // Directe kostenboekingen via bank die niet via factuur lopen (grootboektype=kosten, dit jaar)
+  const directeKosten = DB.transacties
+    .filter(t=>inJaar(t.datum)&&t.status==='gekoppeld'&&t.gekoppeldType==='grootboek'&&parseFloat(t.bedrag)<0)
+    .filter(t=>{
+      const g = DB.grootboek.find(g=>(g.nummer+' — '+g.naam)===t.gekoppeldAan);
+      return g && g.type==='kosten';
+    })
+    .reduce((a,t)=>{
+      const bedrag = Math.abs(parseFloat(t.bedrag)||0);
+      const btwTarief = (window.inlineBTW||{})[t.id]||0;
+      // Trek BTW eraf om excl. bedrag te krijgen
+      return a + (btwTarief>0 ? bedrag/((100+btwTarief)/100) : bedrag);
+    }, 0);
+  const totaalKosten = inkoopKosten + afschrijvingen + directeKosten;
   const winstVoorAftrek = omzet - totaalKosten;
 
   // Aftrekposten ophalen uit velden
@@ -7204,8 +7526,11 @@ function renderJaaropgave(){
   // Render winst detail
   const winstEl = document.getElementById('jaar-winst-detail');
   if(winstEl) winstEl.innerHTML = `
-    <div class="report-row"><span class="indent">Omzet (excl. BTW)</span><span class="mono amount-pos">${fmt(omzet)}</span></div>
-    <div class="report-row"><span class="indent">Inkoopkosten</span><span class="mono amount-neg">- ${fmt(inkoopKosten)}</span></div>
+    ${factuurOmzetJaar>0?`<div class="report-row"><span class="indent">Omzet facturen (excl. BTW)</span><span class="mono amount-pos">${fmt(factuurOmzetJaar)}</span></div>`:''}
+    ${kassaOmzetJaar>0?`<div class="report-row"><span class="indent">Omzet kassalijsten (excl. BTW)</span><span class="mono amount-pos">${fmt(kassaOmzetJaar)}</span></div>`:''}
+    ${factuurOmzetJaar===0&&kassaOmzetJaar===0?`<div class="report-row"><span class="indent">Omzet (excl. BTW)</span><span class="mono amount-pos">${fmt(omzet)}</span></div>`:''}
+    <div class="report-row"><span class="indent">Inkoopkosten (facturen)</span><span class="mono amount-neg">- ${fmt(inkoopKosten)}</span></div>
+    ${directeKosten>0?`<div class="report-row"><span class="indent">Directe kostenboekingen (bank)</span><span class="mono amount-neg">- ${fmt(directeKosten)}</span></div>`:''}
     ${afschrijvingen>0?`<div class="report-row"><span class="indent">Afschrijvingen</span><span class="mono amount-neg">- ${fmt(afschrijvingen)}</span></div>`:''}
     <div class="report-row subtotal"><span>Winst uit onderneming</span><span class="mono" style="color:${winstVoorAftrek>=0?'#16a34a':'#dc2626'};font-weight:700;font-size:15px;">${fmt(winstVoorAftrek)}</span></div>`;
 
@@ -8148,8 +8473,8 @@ async function hashPin(pin){
 }
 
 function getPin(rol){
-  // Lokale fallback — echte PIN komt van server via laadPinnen()
-  return (window._pinnen||{})[rol] || localStorage.getItem(rol==='eigenaar'?EIGENAAR_PIN_KEY:KASSIER_PIN_KEY) || (rol==='eigenaar'?'0000':'1234');
+  // Alleen Firebase PIN gebruiken — geen onveilige fallback
+  return (window._pinnen||{})[rol] || localStorage.getItem(rol==='eigenaar'?EIGENAAR_PIN_KEY:KASSIER_PIN_KEY) || null;
 }
 
 async function laadPinnen(){
@@ -8167,20 +8492,32 @@ async function slaaPinOp(rol, pin){
 }
 
 async function laadKassiersVoorLogin(){
-  // Laad kassiers uit Google Sheets VOOR het login scherm
-  // zodat de telefoon weet welke gebruikers bestaan
-  return new Promise(resolve=>{
-    fbAanroep(fb=>fb.laadAlles(huidigBedrijf))
-      .then(json=>{
-        try{
-          const d = JSON.parse(json||'{}');
-          if(d.kassiers?.length) DB.kassiers = d.kassiers;
-          if(d.kassalijsten?.length) DB.kassalijsten = d.kassalijsten;
-        }catch(e){}
-        resolve();
-      })
-      .catch(()=>resolve());
-  });
+  // Laad kassiers van ALLE bekende bedrijven zodat een kassier altijd gevonden wordt
+  // ongeacht welk bedrijf als standaard ingesteld staat
+  const bedrijven = getBedrijven();
+  const promises = bedrijven.map(b=>
+    fbAanroep(fb=>fb.laadAlles(b)).then(json=>{
+      try{
+        const d = JSON.parse(json||'{}');
+        if(d.kassiers?.length){
+          // Voeg kassiers toe die nog niet in DB zitten
+          d.kassiers.forEach(k=>{
+            if(!(DB.kassiers||[]).find(x=>x.id===k.id)){
+              if(!DB.kassiers) DB.kassiers = [];
+              DB.kassiers.push(k);
+            }
+          });
+        }
+        if(d.kassalijsten?.length){
+          if(!DB.kassalijsten) DB.kassalijsten = [];
+          d.kassalijsten.forEach(kl=>{
+            if(!DB.kassalijsten.find(x=>x.id===kl.id)) DB.kassalijsten.push(kl);
+          });
+        }
+      }catch(e){}
+    }).catch(()=>{})
+  );
+  return Promise.all(promises);
 }
 
 async function initLogin(){
@@ -8284,6 +8621,11 @@ async function bevestigPin(){
     const ingevoerdHash = await hashPin(ingevoerd);
     const opgeslagenPin = getPin('eigenaar');
     // Ondersteun zowel gehashte PINs als plaintext legacy PINs
+    if(!opgeslagenPin){
+      document.getElementById('login-fout-eigenaar').style.display = 'block';
+      document.getElementById('login-fout-eigenaar').textContent = 'Geen verbinding — probeer het opnieuw.';
+      return;
+    }
     const klopt = ingevoerdHash === opgeslagenPin || ingevoerd === opgeslagenPin;
     if(klopt){
       resetPinPogingen();
@@ -8352,6 +8694,9 @@ function pasNavAanRol(){
   const isKassier = _loginRol === 'kassier';
   const opMobiel = isMobiel();
   const eigenaarApp = document.getElementById('eigenaar-app');
+  // Start kassalijst polling voor eigenaar zodat nieuwe indieningen automatisch verschijnen
+  if(!isKassier) startKassaPolling();
+
   if(isKassier){
     document.body.classList.add('kassier-modus');
     document.body.classList.add('kassier-mobiel');
@@ -8444,7 +8789,7 @@ function renderGebruikersBeheer(){
       </label>`).join('');
   }
 
-  // Render bestaande kassiers
+  // Render bestaande kassiers als klikbare naamkaarten
   const el = document.getElementById('kassiers-lijst');
   if(!el) return;
   const kassiers = DB.kassiers||[];
@@ -8453,43 +8798,105 @@ function renderGebruikersBeheer(){
     return;
   }
 
-  el.innerHTML = kassiers.map(k=>`
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
-      padding:12px 14px;margin-bottom:8px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <div style="display:flex;align-items:center;gap:10px;">
-          <span style="font-size:20px;">👤</span>
-          <div>
-            <div id="kassier-naam-disp-${k.id}" style="font-size:13px;font-weight:600;">${k.naam}</div>
-            <div style="font-size:11px;color:var(--text-dim);">PIN: ${'•'.repeat((k.pin||'1234').length)}</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:6px;">
-          <button class="btn btn-secondary btn-sm" onclick="openKassierBewerken('${k.id}')">✏ Bewerken</button>
-          <button class="btn btn-danger btn-sm" onclick="verwijderKassier('${k.id}')">✕</button>
-        </div>
-      </div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap;">
-        <div>
-          <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">Bedrijven</div>
-          <div style="display:flex;flex-wrap:wrap;gap:4px;">
-            ${(k.bedrijven||[]).map(b=>`
-              <span style="background:var(--accent-dim);color:var(--accent);border:1px solid rgba(0,230,118,.3);
-                border-radius:20px;padding:2px 10px;font-size:11px;font-family:var(--mono);">${b}</span>
-            `).join('')}
-          </div>
-        </div>
-        <div>
-          <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">Modules</div>
-          <div style="display:flex;flex-wrap:wrap;gap:4px;">
-            ${(k.modules||['dashboard','kassa','uploads']).map(m=>{
-              const lbl = {dashboard:'📊 Dashboard',kassa:'💰 Kassa',facturen:'🧾 Facturen',uploads:'📎 Bonnen'}[m]||m;
-              return `<span style="background:rgba(96,165,250,.1);color:#60a5fa;border:1px solid rgba(96,165,250,.3);border-radius:20px;padding:2px 10px;font-size:11px;">${lbl}</span>`;
-            }).join('')}
-          </div>
-        </div>
-      </div>
-    </div>`).join('');
+  el.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:4px;">
+      ${kassiers.map(k=>{
+        const modules = k.modules||['dashboard','kassa','uploads'];
+        const modLabels = modules.map(m=>({dashboard:'📊',kassa:'💰',facturen:'🧾',uploads:'📎'}[m]||m)).join(' ');
+        const initials = (k.naam||'?').charAt(0).toUpperCase();
+        return `
+          <div onclick="openGebruikerDetail('${k.id}')" style="
+            display:flex;align-items:center;gap:14px;
+            background:var(--surface);border:1px solid var(--border);
+            border-radius:var(--radius);padding:12px 16px;
+            cursor:pointer;transition:border-color .15s,background .15s;"
+            onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--surface2)'"
+            onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
+            <div style="width:40px;height:40px;border-radius:50%;background:var(--accent-dim);
+              display:flex;align-items:center;justify-content:center;
+              font-size:16px;font-weight:700;color:var(--accent);flex-shrink:0;">
+              ${initials}
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:14px;font-weight:600;color:var(--text);">${esc(k.naam)}</div>
+              <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">${modLabels} · ${(k.bedrijven||[]).join(', ')}</div>
+            </div>
+            <div style="color:var(--text-dim);font-size:18px;">›</div>
+          </div>`;
+      }).join('')}
+    </div>`;
+}
+
+// ===== GEBRUIKER DETAIL MODAL =====
+let _gdKassierId = null;
+
+function openGebruikerDetail(id){
+  const k = (DB.kassiers||[]).find(k=>k.id===id);
+  if(!k) return;
+  _gdKassierId = id;
+  const bedrijven = getBedrijven();
+
+  document.getElementById('gd-titel').textContent = k.naam;
+  document.getElementById('gd-naam-disp').textContent = k.naam;
+  document.getElementById('gd-naam-input').value = k.naam;
+  document.getElementById('gd-pin').value = '';
+
+  // Bedrijven checkboxes
+  document.getElementById('gd-bedrijven').innerHTML = bedrijven.map(b=>`
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;
+      background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;">
+      <input type="checkbox" value="${b}" style="width:auto;" ${(k.bedrijven||[]).includes(b)?'checked':''}>
+      ${esc(b)}
+    </label>`).join('');
+
+  // Modules checkboxes
+  const modDefs = [{v:'dashboard',l:'📊 Dashboard'},{v:'kassa',l:'💰 Kassa'},{v:'facturen',l:'🧾 Facturen'},{v:'uploads',l:'📎 Bonnen'}];
+  document.getElementById('gd-modules').innerHTML = modDefs.map(m=>`
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;
+      background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;">
+      <input type="checkbox" value="${m.v}" style="width:auto;" ${(k.modules||['dashboard','kassa','uploads']).includes(m.v)?'checked':''}>
+      ${m.l}
+    </label>`).join('');
+
+  openModal('modal-gebruiker-detail');
+}
+
+async function slaGebruikerDetailOp(){
+  const k = (DB.kassiers||[]).find(k=>k.id===_gdKassierId);
+  if(!k) return;
+  const naam = document.getElementById('gd-naam-input').value.trim();
+  const pin  = document.getElementById('gd-pin').value.trim();
+  if(!naam){ toast('Naam mag niet leeg zijn.','error'); return; }
+  if(pin && pin.length<4){ toast('PIN moet minimaal 4 cijfers zijn.','error'); return; }
+
+  const bedrijvenChecks = document.querySelectorAll('#gd-bedrijven input[type="checkbox"]:checked');
+  const gekozenBedrijven = [...bedrijvenChecks].map(c=>c.value);
+  if(!gekozenBedrijven.length){ toast('Selecteer minimaal één bedrijf.','error'); return; }
+
+  const modChecks = document.querySelectorAll('#gd-modules input[type="checkbox"]:checked');
+  const gekozenModules = [...modChecks].map(c=>c.value);
+  if(!gekozenModules.length){ toast('Selecteer minimaal één module.','error'); return; }
+
+  k.naam = naam;
+  if(pin) k.pin = await hashPin(pin);
+  k.bedrijven = gekozenBedrijven;
+  k.modules = gekozenModules;
+  save();
+  closeModal('modal-gebruiker-detail');
+  renderGebruikersBeheer();
+  toast(`Gebruiker "${naam}" opgeslagen.`,'success');
+}
+
+async function verwijderKassierViaDetail(){
+  const k = (DB.kassiers||[]).find(k=>k.id===_gdKassierId);
+  if(!k) return;
+  const ok = await bevestig(`Gebruiker "${k.naam}" verwijderen?`,'Gebruiker verwijderen','Verwijderen');
+  if(!ok) return;
+  DB.kassiers = DB.kassiers.filter(k=>k.id!==_gdKassierId);
+  save();
+  closeModal('modal-gebruiker-detail');
+  renderGebruikersBeheer();
+  toast('Gebruiker verwijderd.','info');
 }
 
 async function voegKassierToe(){
@@ -8611,10 +9018,8 @@ function openInstellingenModal(tab){
     toast('Alleen de eigenaar kan instellingen wijzigen.','error');
     return;
   }
-  document.getElementById('inst-bedrijf-naam').textContent = DB.profiel?.bedrijfsnaam||huidigBedrijf;
   // Reset velden
-  ['inst-eigen-huidig','inst-eigen-nieuw','inst-eigen-bevestig',
-   'inst-kas-eigen-check','inst-kas-nieuw','inst-kas-bevestig'].forEach(id=>{
+  ['inst-eigen-huidig','inst-eigen-nieuw','inst-eigen-bevestig'].forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.value = '';
   });
@@ -8634,33 +9039,17 @@ function switchInstTab(tab){
 }
 
 async function verwerkPINwijziging(rol){
-  if(rol==='eigenaar'){
-    const huidig    = document.getElementById('inst-eigen-huidig').value.trim();
-    const nieuw     = document.getElementById('inst-eigen-nieuw').value.trim();
-    const bevestig  = document.getElementById('inst-eigen-bevestig').value.trim();
-    const huidigHash = await hashPin(huidig);
-    const opgeslagenPin = getPin('eigenaar');
-    // Ondersteun zowel gehashte als plaintext legacy vergelijking
-    if(huidigHash !== opgeslagenPin && huidig !== opgeslagenPin){ toast('Huidige eigenaar PIN klopt niet.','error'); return; }
-    if(!nieuw || nieuw.length < 4){ toast('Nieuwe PIN moet minimaal 4 cijfers zijn.','error'); return; }
-    if(nieuw !== bevestig){ toast('PINs komen niet overeen.','error'); return; }
-    const ok = await slaaPinOp('eigenaar', nieuw);
-    if(ok){ toast('Eigenaar PIN gewijzigd.','success'); closeModal('modal-instellingen'); }
-    else toast('PIN opslaan mislukt.','error');
-
-  } else {
-    const eigenaarCheck = document.getElementById('inst-kas-eigen-check').value.trim();
-    const nieuw         = document.getElementById('inst-kas-nieuw').value.trim();
-    const bevestig      = document.getElementById('inst-kas-bevestig').value.trim();
-    const eigenaarHash  = await hashPin(eigenaarCheck);
-    const opgeslagenPin = getPin('eigenaar');
-    if(eigenaarHash !== opgeslagenPin && eigenaarCheck !== opgeslagenPin){ toast('Eigenaar PIN klopt niet.','error'); return; }
-    if(!nieuw || nieuw.length < 4){ toast('Nieuwe PIN moet minimaal 4 cijfers zijn.','error'); return; }
-    if(nieuw !== bevestig){ toast('PINs komen niet overeen.','error'); return; }
-    const ok = await slaaPinOp('gebruiker', nieuw);
-    if(ok){ toast('Gebruiker PIN gewijzigd.','success'); closeModal('modal-instellingen'); }
-    else toast('PIN opslaan mislukt.','error');
-  }
+  const huidig    = document.getElementById('inst-eigen-huidig').value.trim();
+  const nieuw     = document.getElementById('inst-eigen-nieuw').value.trim();
+  const bevestig  = document.getElementById('inst-eigen-bevestig').value.trim();
+  const huidigHash = await hashPin(huidig);
+  const opgeslagenPin = getPin('eigenaar');
+  if(huidigHash !== opgeslagenPin && huidig !== opgeslagenPin){ toast('Huidige PIN klopt niet.','error'); return; }
+  if(!nieuw || nieuw.length < 4){ toast('Nieuwe PIN moet minimaal 4 cijfers zijn.','error'); return; }
+  if(nieuw !== bevestig){ toast('PINs komen niet overeen.','error'); return; }
+  const ok = await slaaPinOp('eigenaar', nieuw);
+  if(ok){ toast('PIN gewijzigd.','success'); closeModal('modal-instellingen'); }
+  else toast('PIN opslaan mislukt.','error');
 }
 
 // ===== KASSALIJST =====
@@ -8759,6 +9148,13 @@ function slaKassaOp(){
   const notities = document.getElementById('kassa-notities')?.value||'';
   const naam = _actieveKassier?.naam || 'Gebruiker';
 
+  // BTW tarief van bedrijfsprofiel — kassier stelt dit niet zelf in
+  const kassaBtwTarief = parseInt(DB.profiel?.btwStandaard||'9');
+  const omzetIncl = eindsaldo - begin;
+  // Bereken excl BTW op basis van profieltarief
+  const omzetExcl = kassaBtwTarief > 0 ? omzetIncl / (1 + kassaBtwTarief / 100) : omzetIncl;
+  const omzetBtw  = omzetIncl - omzetExcl;
+
   const nieuw = {
     id: 'kassa_' + Date.now(),
     datum,
@@ -8772,7 +9168,10 @@ function slaKassaOp(){
     totContant: 0,
     totPin: 0,
     totUitgaven: 0,
-    totaalOmzet: eindsaldo - begin,
+    totaalOmzet: omzetExcl,   // excl BTW — consistent met facturen
+    totaalOmzetIncl: omzetIncl, // incl BTW — voor weergave
+    omzetBtw,                  // BTW bedrag
+    btwTarief: kassaBtwTarief, // tarief voor BTW aangifte
     categorieen: [],
     uitgaven: [],
     notities,
@@ -8820,6 +9219,28 @@ function slaKassalijstOpCloud(kassalijst){
     .catch(onFail);
 }
 
+// Herlaad kassaoverzicht periodiek als eigenaar actief is — zodat ingediende kassalijsten verschijnen
+function startKassaPolling(){
+  if(window._kassaPollInterval) clearInterval(window._kassaPollInterval);
+  window._kassaPollInterval = setInterval(()=>{
+    // Alleen als eigenaar ingelogd is en kassaoverzicht pagina actief is
+    if(_loginRol !== 'eigenaar') return;
+    const kassaPagina = document.getElementById('page-kassaoverzicht');
+    if(!kassaPagina || kassaPagina.style.display === 'none') return;
+    // Herlaad kassalijsten stil op de achtergrond
+    fbAanroep(fb=>fb.laadAlles(huidigBedrijf))
+      .then(json=>{
+        try{
+          const data = JSON.parse(json||'{}');
+          if(data.kassalijsten && JSON.stringify(data.kassalijsten) !== JSON.stringify(DB.kassalijsten)){
+            DB.kassalijsten = data.kassalijsten;
+            renderKassaoverzicht();
+          }
+        }catch(e){}
+      }).catch(()=>{});
+  }, 15000); // Elke 15 seconden
+}
+
 // ── Kassaoverzicht (eigenaar) ──
 function renderKassaoverzicht(){
   if(!DB.kassalijsten) DB.kassalijsten=[];
@@ -8830,7 +9251,8 @@ function renderKassaoverzicht(){
 
   // Stats
   const geboekt  = DB.kassalijsten.filter(k=>k.status==='goedgekeurd');
-  const totOmzet = geboekt.reduce((a,k)=>a+parseFloat(k.totaalOmzet||0),0);
+  // Gebruik totaalOmzetIncl voor weergave — dat is wat fysiek in de kassa zat
+  const totOmzet = geboekt.reduce((a,k)=>a+parseFloat(k.totaalOmzetIncl||k.totaalOmzet||0),0);
   const totCont  = geboekt.reduce((a,k)=>a+parseFloat(k.totContant||0),0);
   const wacht    = DB.kassalijsten.filter(k=>k.status==='ingediend').length;
   const totVersc = DB.kassalijsten.reduce((a,k)=>a+Math.abs(parseFloat(k.verschil||0)),0);
@@ -8919,45 +9341,64 @@ async function keurKassaGoed(id){
   );
   if(!ok) return;
 
-  // In het vereenvoudigde kassascherm is totContant=0 en totaalOmzet=eindsaldo-begin
-  // Voor correcte dubbele boeking: kas stijgt met totaalOmzet (want contant ontvangen)
-  const kasOmzet = parseFloat(k.totaalOmzet)||0;
-  const kasContant = parseFloat(k.totContant)||0;
-  // Gebruik totaalOmzet als contant bedrag als totContant 0 is (simpele modus)
-  const kasBoekbedrag = kasContant > 0 ? kasContant : kasOmzet;
+  // Kassalijst bedragen — totaalOmzet is excl BTW, totaalOmzetIncl is incl BTW
+  // Oudere kassalijsten zonder btwTarief veld: behandel totaalOmzet als incl voor backwards compat
+  const btwTarief  = parseInt(k.btwTarief ?? DB.profiel?.btwStandaard ?? '9');
+  const kasOmzetIncl = parseFloat(k.totaalOmzetIncl || k.totaalOmzet || 0);
+  const kasOmzetExcl = parseFloat(k.totaalOmzet || 0);
+  const kasOmzetBtw  = parseFloat(k.omzetBtw || (kasOmzetIncl - kasOmzetExcl) || 0);
+  const kasContant   = parseFloat(k.totContant || 0);
+  const kasUitgaven  = parseFloat(k.totUitgaven || 0);
+  // Kas ontvangt incl BTW bedrag (fysiek geld in de kassa)
+  const kasBoekbedrag = kasContant > 0 ? kasContant : kasOmzetIncl;
 
   // Boek naar grootboek
-  // 1. Kas saldo omhoog — debet kas
-  const kasRek = DB.grootboek.find(g=>g.nummer==='1000')||DB.grootboek.find(g=>g.naam.toLowerCase().includes('kas'));
-  if(kasRek) kasRek.saldo = (parseFloat(kasRek.saldo)||0) + kasBoekbedrag - (parseFloat(k.totUitgaven)||0);
+  // 1. Kas saldo omhoog met incl BTW bedrag — debet kas
+  const kasRek = DB.grootboek.find(g=>g.nummer==='1000') || DB.grootboek.find(g=>g.naam.toLowerCase().includes('kas'));
+  if(kasRek) kasRek.saldo = (parseFloat(kasRek.saldo)||0) + kasBoekbedrag - kasUitgaven;
 
-  // 2. Omzet rekening omhoog — credit omzet
+  // 2. Omzetrekening omhoog met excl BTW — credit omzet
   const omzetRek = DB.grootboek.find(g=>g.type==='omzet'&&g.naam.toLowerCase().includes('kap'))
     || DB.grootboek.find(g=>g.type==='omzet');
-  if(omzetRek) omzetRek.saldo = (parseFloat(omzetRek.saldo)||0) + kasOmzet;
+  if(omzetRek) omzetRek.saldo = (parseFloat(omzetRek.saldo)||0) + kasOmzetExcl;
 
-  // 3. Kassaverschil boeken indien aanwezig (verschil tussen kas en omzet)
-  const boekverschil = kasBoekbedrag - kasOmzet;
+  // 3. BTW afdracht rekening — credit BTW te betalen
+  // Maak rekening aan als die niet bestaat — voorkomt silent fail
+  let btwRek = DB.grootboek.find(g=>g.nummer==='1810') || DB.grootboek.find(g=>g.naam.toLowerCase().includes('btw te betalen'));
+  if(!btwRek && kasOmzetBtw > 0){
+    btwRek = { id:uid(), nummer:'1810', naam:'BTW te betalen', type:'schuld', saldo:0 };
+    if(!DB.grootboek) DB.grootboek = [];
+    DB.grootboek.push(btwRek);
+  }
+  if(btwRek && kasOmzetBtw > 0) btwRek.saldo = (parseFloat(btwRek.saldo)||0) + kasOmzetBtw;
+
+  // 4. Kassaverschil boeken indien aanwezig
+  const boekverschil = kasBoekbedrag - kasOmzetExcl - kasOmzetBtw;
   if(Math.abs(boekverschil) > 0.01){
     const verschilRek = DB.grootboek.find(g=>g.naam.toLowerCase().includes('kassaverschil'))
       || DB.grootboek.find(g=>g.nummer==='8900');
     if(verschilRek) verschilRek.saldo = (parseFloat(verschilRek.saldo)||0) + boekverschil;
   }
 
-  // 4. Memoriaalboeking — volledig in evenwicht (debet = credit)
+  // 5. Memoriaalboeking — volledig in evenwicht (debet = credit)
   if(!DB.memoriaal) DB.memoriaal = [];
   DB.memoriaal.push({
     id: uid(),
     datum: k.datum,
+    type: 'kassalijst',
+    kassaId: k.id,
     oms: `Kassalijst ${k.datum} — goedgekeurd`,
     relatie: '',
     debet: kasBoekbedrag,
     aangemaakt: new Date().toISOString(),
     regels: [
-      {dc:'debet',  gbId:kasRek?.id||'',   oms:'Kas ontvangst kassa', bedrag:kasBoekbedrag},
-      {dc:'credit', gbId:omzetRek?.id||'', oms:'Omzet kassa',         bedrag:kasOmzet},
-      ...(Math.abs(boekverschil)>0.01 ? [{
-        dc: boekverschil>0 ? 'credit' : 'debet',
+      {dc:'debet',  gbId:kasRek?.id||'',    oms:'Kas ontvangst kassa',  bedrag:kasBoekbedrag},
+      {dc:'credit', gbId:omzetRek?.id||'',  oms:'Omzet kassa excl BTW', bedrag:kasOmzetExcl},
+      ...(kasOmzetBtw > 0 ? [{
+        dc:'credit', gbId:btwRek?.id||'', oms:`BTW ${btwTarief}% kassa`, bedrag:kasOmzetBtw
+      }] : []),
+      ...(Math.abs(boekverschil) > 0.01 ? [{
+        dc: boekverschil > 0 ? 'credit' : 'debet',
         gbId: DB.grootboek.find(g=>g.nummer==='8900')?.id||'',
         oms: 'Kassaverschil',
         bedrag: Math.abs(boekverschil)
@@ -8987,12 +9428,27 @@ async function wijsKassaAf(id){
 async function verwijderKassalijst(id){
   const k = DB.kassalijsten.find(k=>k.id===id);
   if(!k) return;
-  const ok = await bevestig(`Kassalijst van ${k.datum} definitief verwijderen?`, 'Verwijderen', 'Verwijderen');
+  const wasGoedgekeurd = k.status === 'goedgekeurd';
+  const bevestigTekst = wasGoedgekeurd
+    ? `Kassalijst van ${k.datum} verwijderen?\n\nLet op: de grootboekboeking wordt ook teruggedraaid.`
+    : `Kassalijst van ${k.datum} definitief verwijderen?`;
+  const ok = await bevestig(bevestigTekst, 'Verwijderen', 'Verwijderen');
   if(!ok) return;
-  DB.kassalijsten = DB.kassalijsten.filter(k=>k.id!==id);
+  // Als goedgekeurd: draai grootboek eerst terug
+  if(wasGoedgekeurd){
+    const kasRek   = DB.grootboek.find(g=>g.nummer==='1000')||DB.grootboek.find(g=>g.naam.toLowerCase().includes('kas'));
+    const omzetRek = DB.grootboek.find(g=>g.type==='omzet'&&g.naam.toLowerCase().includes('kap'))
+      || DB.grootboek.find(g=>g.type==='omzet');
+    const _kasBoekbedrag = (parseFloat(k.totContant)||0) > 0 ? parseFloat(k.totContant) : parseFloat(k.totaalOmzet)||0;
+    if(kasRek)   kasRek.saldo   = (parseFloat(kasRek.saldo)||0)   - _kasBoekbedrag + (parseFloat(k.totUitgaven)||0);
+    if(omzetRek) omzetRek.saldo = (parseFloat(omzetRek.saldo)||0) - (parseFloat(k.totaalOmzet)||0);
+    // Verwijder ook de memoriaalboeking
+    if(DB.memoriaal) DB.memoriaal = DB.memoriaal.filter(m=>!(m.oms&&m.oms.includes(k.datum)&&m.oms.includes('Kassalijst')));
+  }
+  DB.kassalijsten = DB.kassalijsten.filter(x=>x.id!==id);
   save();
   renderKassaoverzicht();
-  toast(`Kassalijst ${k.datum} verwijderd.`, 'info');
+  toast(`Kassalijst ${k.datum} verwijderd${wasGoedgekeurd?' — boeking teruggedraaid':''}.`, 'info');
 }
 
 async function trekKassaGBTerug(id){
@@ -9487,11 +9943,28 @@ function renderVasteActiva(){
 }
 
 async function verwijderVA(id){
-  const ok=await bevestig('Activum en afschrijvingsschema verwijderen?','Activum verwijderen','Verwijderen');
+  const a = (DB.vasteActiva||[]).find(a=>a.id===id);
+  if(!a) return;
+  const aantalVerwerkt = (a.verwerkteMaanden||[]).length;
+  const bevestigTekst = aantalVerwerkt > 0
+    ? `Activum "${a.naam}" verwijderen?\n\n${aantalVerwerkt} verwerkte afschrijving(en) worden teruggedraaid.`
+    : `Activum "${a.naam}" en afschrijvingsschema verwijderen?`;
+  const ok = await bevestig(bevestigTekst, 'Activum verwijderen', 'Verwijderen');
   if(!ok) return;
-  DB.vasteActiva=(DB.vasteActiva||[]).filter(a=>a.id!==id);
+  // Draai verwerkte afschrijvingen terug
+  if(aantalVerwerkt > 0){
+    const kostenRek = DB.grootboek.find(g=>g.id===a.gbKostenId);
+    const accumRek  = DB.grootboek.find(g=>g.id===a.gbAccumId);
+    const verwerkt  = (DB.memoriaal||[]).filter(m=>m.type==='afschrijving'&&m.oms?.includes(a.naam));
+    verwerkt.forEach(m=>{
+      if(kostenRek) kostenRek.saldo = (parseFloat(kostenRek.saldo)||0) - parseFloat(m.debet||0);
+      if(accumRek)  accumRek.saldo  = (parseFloat(accumRek.saldo)||0)  - parseFloat(m.debet||0);
+    });
+    DB.memoriaal = (DB.memoriaal||[]).filter(m=>!(m.type==='afschrijving'&&m.oms?.includes(a.naam)));
+  }
+  DB.vasteActiva = (DB.vasteActiva||[]).filter(x=>x.id!==id);
   save(); renderVasteActiva();
-  toast('Activum verwijderd.','info');
+  toast(`Activum "${a.naam}" verwijderd${aantalVerwerkt>0?' — afschrijvingen teruggedraaid':''}.`,'info');
 }
 
 // ============================================================
@@ -9558,10 +10031,20 @@ function mobNav(tab){
 // ---- Periode filter ----
 function mobSetPeriode(p){
   _mobPeriode = p;
-  document.querySelectorAll('.mob-period-pill').forEach(el=>{
-    el.classList.toggle('active', el.getAttribute('onclick')==="mobSetPeriode('"+p+"')");
-  });
+  // Pills
+  const pillVandaag = document.getElementById('mob-pill-vandaag');
+  const pillWeek = document.getElementById('mob-pill-week');
+  if(pillVandaag) pillVandaag.classList.toggle('active', p==='vandaag');
+  if(pillWeek) pillWeek.classList.toggle('active', p==='week');
+  // Dropdown
+  const sel = document.getElementById('mob-maand-select');
+  if(sel) sel.value = p.startsWith('m') ? p : '';
   renderMobDashboard();
+}
+
+function mobSetPeriodeDropdown(p){
+  if(!p) return;
+  mobSetPeriode(p);
 }
 
 function mobGetPeriodeLijsten(){
@@ -9603,7 +10086,8 @@ function mobPeriodeLabel(){
 // ---- Dashboard render ----
 function renderMobDashboard(){
   const lijsten = mobGetPeriodeLijsten();
-  const omzet = lijsten.reduce((s,l)=>s+(parseFloat(l.totaalOmzet||0)),0);
+  // Toon incl BTW op dashboard — dat is wat kassier fysiek heeft ontvangen
+  const omzet = lijsten.reduce((s,l)=>s+(parseFloat(l.totaalOmzetIncl||l.totaalOmzet||0)),0);
   const kosten = lijsten.reduce((s,l)=>s+(parseFloat(l.totUitgaven||0)),0);
   const netto = omzet - kosten;
   const openstaand = (DB.kassalijsten||[]).filter(l=>l.status==='ingediend'||l.status==='open').length;
@@ -9750,6 +10234,14 @@ function mobSlaKassaOp(){
   const notities = document.getElementById('mob-notities')?.value||'';
   const naam = _actieveKassier?.naam||'Kassier';
 
+  // BTW berekening — identiek aan slaKassaOp desktop
+  const kassaBtwTarief = parseInt(DB.profiel?.btwStandaard||'9');
+  const omzetIncl = eindsaldo - begin;
+  const omzetExcl = kassaBtwTarief > 0 ? omzetIncl / (1 + kassaBtwTarief / 100) : omzetIncl;
+  const omzetBtw  = omzetIncl - omzetExcl;
+
+  if(omzetIncl <= 0){ toast('Eindsaldo moet hoger zijn dan beginsaldo.','error'); return; }
+
   const nieuw = {
     id: 'kassa_'+Date.now(),
     datum,
@@ -9763,7 +10255,10 @@ function mobSlaKassaOp(){
     totContant: 0,
     totPin: 0,
     totUitgaven: 0,
-    totaalOmzet: 0,
+    totaalOmzet: omzetExcl,      // excl BTW
+    totaalOmzetIncl: omzetIncl,  // incl BTW
+    omzetBtw,
+    btwTarief: kassaBtwTarief,
     categorieen: [],
     uitgaven: [],
     notities,
@@ -10010,6 +10505,15 @@ function mobStuurUpload(){
     if(btn){ btn.disabled=false; btn.textContent='⬆  Uploaden'; }
   }
 
+  // PDF waarschuwing — niet comprimeerbaar, kan te groot zijn
+  if((_mobHuidigBestand.type||'').includes('pdf')){
+    const kb = Math.round((_mobHuidigBestand.base64||'').length * 0.75 / 1024);
+    if(kb > 600){
+      toast(`PDF te groot (${kb}KB). Maak een foto van het document in plaats van PDF upload.`,'error');
+      return;
+    }
+  }
+
   if(btn){ btn.disabled = true; btn.textContent = 'Bezig...'; }
 
   const omschr = document.getElementById('mob-upload-omschrijving')?.value||'';
@@ -10029,6 +10533,16 @@ function mobStuurUpload(){
     herstelKnop();
   }, 30000);
 
+  // Check bestandsgrootte vóór upload — Firestore limiet ~650KB
+  const base64Bytes = Math.round((_mobHuidigBestand.base64||'').length * 0.75);
+  const maxBytes = 650000;
+  if(base64Bytes > maxBytes){
+    const kb = Math.round(base64Bytes / 1024);
+    toast(`Bestand te groot (${kb}KB). Maximum is 650KB. Maak een kleinere foto of gebruik JPEG.`, 'error');
+    herstelKnop();
+    return;
+  }
+
   fbAanroep(fb=>fb.uploadBon(huidigBedrijf, JSON.stringify(bonData)))
     .then(json=>{
       clearTimeout(timeout);
@@ -10039,14 +10553,19 @@ function mobStuurUpload(){
           mobResetUpload();
           laadMobUploads();
         } else {
-          toast('Upload mislukt.','error');
+          toast('Upload mislukt — probeer een kleiner bestand.','error');
         }
       }catch(e){ toast('Upload mislukt.','error'); }
       herstelKnop();
     })
     .catch(err=>{
       clearTimeout(timeout);
-      toast('Upload mislukt: '+(err?.message||err||'onbekend'),'error');
+      const msg = err?.message||'';
+      if(msg.includes('te groot') || msg.includes('size')){
+        toast('Bestand te groot voor upload. Gebruik een kleinere afbeelding (max 650KB).','error');
+      } else {
+        toast('Upload mislukt: '+(msg||'controleer je verbinding'),'error');
+      }
       herstelKnop();
     });
 }
