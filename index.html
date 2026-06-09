@@ -48,6 +48,11 @@
   /* LAYOUT */
   .app{display:flex;flex-direction:column;height:100vh;overflow:hidden;}
 
+@media (max-width: 600px) {
+  .app{height:auto;overflow:visible;}
+  html,body{height:100%;overflow-y:auto;}
+}
+
   /* TOPBAR */
   .topbar{
     background:var(--surface);
