@@ -1602,9 +1602,18 @@ body.kassier-mobiel .mob-kassa-totaal {
         async maakBedrijf(naam){
           await db.collection('bedrijven').doc(naam).collection('data').doc('main').set({
             eigenaarPin:'0000', kassierPin:'1234',
-            kassiers:[], profiel:{naam}, grootboek:[], regels:[],
+            kassiers:[],
+            profiel:{
+              naam,
+              btwStelsel:'factuurstelsel', // eigenaar kan dit aanpassen in profiel
+              btwStandaard:'21',
+              rechtsvorm:'eenmanszaak',
+            },
+            grootboek:[], regels:[],
             memoriaal:[], vasteActiva:[], imports:[]
           }, {merge:true});
+          // Maak ook lege kassalijsten doc aan
+          await db.collection('bedrijven').doc(naam).collection('data').doc('kassalijsten').set({items:[]}, {merge:true});
           return JSON.stringify({ok:true, naam});
         },
 
@@ -1612,9 +1621,24 @@ body.kassier-mobiel .mob-kassa-totaal {
           const nieuw = JSON.parse(kassalijstJson);
           const snap = await db.collection('bedrijven').doc(bedrijf).collection('data').doc('kassalijsten').get();
           const bestaand = snap.exists ? (snap.data().items||[]) : [];
+          // Voorkom duplicaten op basis van id
+          if(bestaand.some(k=>k.id===nieuw.id)){
+            return JSON.stringify({ok:true, dubbel:true});
+          }
           bestaand.push(nieuw);
           await db.collection('bedrijven').doc(bedrijf).collection('data').doc('kassalijsten').set({items:bestaand});
           return JSON.stringify({ok:true});
+        },
+
+        async checkKassalijstBestaat(bedrijf, kassaId){
+          const snap = await db.collection('bedrijven').doc(bedrijf).collection('data').doc('kassalijsten').get();
+          if(!snap.exists) return false;
+          return (snap.data().items||[]).some(k=>k.id===kassaId);
+        },
+
+        async checkBonBestaat(bedrijf, bonId){
+          const snap = await db.collection('bedrijven').doc(bedrijf).collection('uploads').doc(bonId).get();
+          return snap.exists;
         },
 
         async getPinnen(bedrijf){
@@ -3506,6 +3530,22 @@ function saveBedrijven(lijst){
   localStorage.setItem('ledger_bedrijven',JSON.stringify(lijst));
 }
 
+// Profielnamen — aparte map van identifier naar weergavenaam
+function getBedrijfProfielNamen(){
+  try{ return JSON.parse(localStorage.getItem('ledger_bedrijf_namen')||'{}'); }
+  catch(e){ return {}; }
+}
+function saveBedrijfProfielNaam(identifier, weergavenaam){
+  const namen = getBedrijfProfielNamen();
+  namen[identifier] = weergavenaam;
+  localStorage.setItem('ledger_bedrijf_namen', JSON.stringify(namen));
+}
+// Geeft weergavenaam terug — profielnaam als ingesteld, anders identifier
+function getBedrijfWeergavenaam(identifier){
+  const namen = getBedrijfProfielNamen();
+  return namen[identifier] || identifier;
+}
+
 function isLocalStorageBeschikbaar(){
   try{ localStorage.setItem('_test','1'); localStorage.removeItem('_test'); return true; }
   catch(e){ return false; }
@@ -3543,6 +3583,17 @@ function fbAanroep(fn){
     }
     probeer();
   });
+}
+
+// ============================================================
+// OFFLINE CHECK — kassier acties vereisen internetverbinding
+// ============================================================
+function checkOnline(){
+  if(!navigator.onLine){
+    toast('Geen internetverbinding. Verbind met wifi of mobiele data en probeer opnieuw.','error');
+    return false;
+  }
+  return true;
 }
 
 
@@ -3696,7 +3747,7 @@ function _doSaveCloud(){
 // ============================================================
 function load(){
   const el=document.getElementById('sidebar-bedrijf-naam');
-  if(el) el.textContent=huidigBedrijf;
+  if(el) el.textContent=getBedrijfWeergavenaam(huidigBedrijf);
   if(USE_CLOUD) loadCloud();
   else loadLokaal();
 }
@@ -3806,7 +3857,7 @@ async function wisselBedrijf(naam){
   load();
   renderGB(); renderRegels();
   const el=document.getElementById('sidebar-bedrijf-naam');
-  if(el) el.textContent=naam;
+  if(el) el.textContent=getBedrijfWeergavenaam(naam);
 }
 
 async function voegBedrijfToe(){
@@ -3814,14 +3865,27 @@ async function voegBedrijfToe(){
   if(!naam){toast('Vul een bedrijfsnaam in.','error');return;}
   const lijst=getBedrijven();
   if(lijst.includes(naam)){toast('Dit bedrijf bestaat al.','warning');return;}
+
+  // Identifier = naam (uniek, gebruikt als Firebase sleutel)
   lijst.push(naam);
   saveBedrijven(lijst);
-  // Cloud: maak spreadsheet aan
-  fbAanroep(fb=>fb.maakBedrijf(naam))
-    .then(()=>toast(`Bedrijf "${naam}" aangemaakt.`,'success'))
-    .catch(()=>toast('Bedrijf aanmaken mislukt.','warning'));
+  // Sla ook weergavenaam op in lokale map
+  saveBedrijfProfielNaam(naam, naam);
+
   document.getElementById('nieuw-bedrijf-naam').value='';
   renderBedrijfList();
+
+  // Cloud: maak bedrijf aan in Firebase — verwijder lokaal als dat mislukt
+  try{
+    await fbAanroep(fb=>fb.maakBedrijf(naam));
+    toast(`Bedrijf "${naam}" aangemaakt.`,'success');
+  }catch(e){
+    // Rollback: verwijder lokaal want Firebase aanmaken faalde
+    const terugLijst = getBedrijven().filter(b=>b!==naam);
+    saveBedrijven(terugLijst);
+    renderBedrijfList();
+    toast(`Bedrijf aanmaken mislukt — controleer je verbinding.`,'error');
+  }
 }
 
 // ============================================================
@@ -3940,12 +4004,14 @@ function slaBedrijfProfielOp(){
     btwStelsel:document.getElementById('bp-btw-stelsel').value,
     notities:document.getElementById('bp-notities').value.trim(),
   };
-  // Update weergegeven naam in sidebar als bedrijfsnaam is ingevuld
+  // Sla weergavenaam op in profielnamen map zodat bedrijflijst het toont
   if(DB.profiel.naam){
+    saveBedrijfProfielNaam(huidigBedrijf, DB.profiel.naam);
     const el=document.getElementById('sidebar-bedrijf-naam');
     if(el) el.textContent=DB.profiel.naam;
   }
   save();
+  renderBedrijfList();
   closeModal('modal-bedrijf');toast('Profiel opgeslagen.');
 }
 
@@ -3953,17 +4019,22 @@ function renderBedrijfList(){
   const lijst=getBedrijven();
   const el=document.getElementById('bedrijf-list');
   if(!el) return;
-  el.innerHTML=lijst.map(b=>`
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:6px;margin-bottom:6px;background:${b===huidigBedrijf?'rgba(0,255,135,.08)':'var(--surface2)'};border:1px solid ${b===huidigBedrijf?'rgba(0,255,135,.3)':'var(--border)'};">
+  el.innerHTML=lijst.map(b=>{
+    const weergave = getBedrijfWeergavenaam(b);
+    const isActief = b===huidigBedrijf;
+    return `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:6px;margin-bottom:6px;background:${isActief?'rgba(0,255,135,.08)':'var(--surface2)'};border:1px solid ${isActief?'rgba(0,255,135,.3)':'var(--border)'};">
       <div>
-        <div style="font-size:13px;font-weight:500;">${b}</div>
-        ${b===huidigBedrijf?'<div style="font-size:11px;color:var(--accent);margin-top:2px;">Actief</div>':''}
+        <div style="font-size:13px;font-weight:500;">${weergave}</div>
+        ${weergave!==b?`<div style="font-size:10px;color:var(--text-dim);margin-top:1px;">${b}</div>`:''}
+        ${isActief?'<div style="font-size:11px;color:var(--accent);margin-top:2px;">Actief</div>':''}
       </div>
       <div style="display:flex;gap:6px;">
-        ${b!==huidigBedrijf?`<button class="btn btn-primary btn-sm" onclick="wisselBedrijf('${b}')">Wissel</button>`:''}
-        ${lijst.length>1&&b!==huidigBedrijf?`<button class="btn btn-danger btn-sm" onclick="verwijderBedrijf('${b}')">✕</button>`:''}
+        ${!isActief?`<button class="btn btn-primary btn-sm" onclick="wisselBedrijf('${b}')">Wissel</button>`:''}
+        ${lijst.length>1&&!isActief?`<button class="btn btn-danger btn-sm" onclick="verwijderBedrijf('${b}')">✕</button>`:''}
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function openBedrijfModal(){
@@ -8492,15 +8563,16 @@ async function slaaPinOp(rol, pin){
 }
 
 async function laadKassiersVoorLogin(){
-  // Laad kassiers van ALLE bekende bedrijven zodat een kassier altijd gevonden wordt
-  // ongeacht welk bedrijf als standaard ingesteld staat
+  // Laad kassiers van ALLE bekende bedrijven
+  // Fallback naar lokale cache als Firebase offline is
   const bedrijven = getBedrijven();
+  let firebaseGelukt = false;
   const promises = bedrijven.map(b=>
     fbAanroep(fb=>fb.laadAlles(b)).then(json=>{
       try{
         const d = JSON.parse(json||'{}');
         if(d.kassiers?.length){
-          // Voeg kassiers toe die nog niet in DB zitten
+          firebaseGelukt = true;
           d.kassiers.forEach(k=>{
             if(!(DB.kassiers||[]).find(x=>x.id===k.id)){
               if(!DB.kassiers) DB.kassiers = [];
@@ -8517,7 +8589,21 @@ async function laadKassiersVoorLogin(){
       }catch(e){}
     }).catch(()=>{})
   );
-  return Promise.all(promises);
+  await Promise.all(promises);
+  // Cache bijwerken als Firebase gelukt is
+  if(firebaseGelukt && DB.kassiers?.length){
+    localStorage.setItem('ledger_kassiers_cache', JSON.stringify(DB.kassiers));
+  }
+  // Fallback: lokale cache als Firebase niks opleverde
+  if(!(DB.kassiers||[]).length){
+    try{
+      const cached = JSON.parse(localStorage.getItem('ledger_kassiers_cache')||'[]');
+      if(cached.length){
+        DB.kassiers = cached;
+        console.log('[Login] Firebase offline — kassiers uit lokale cache geladen:', cached.length);
+      }
+    }catch(e){}
+  }
 }
 
 async function initLogin(){
@@ -8569,16 +8655,21 @@ function kassierNaarPin(){
     document.getElementById('login-fout-bedrijf').textContent = 'Vul een bedrijfsnaam in.';
     return;
   }
-  // Controleer of het bedrijf bestaat (hoofdlettergevoelig negeren)
+  // Zoek op identifier én op weergavenaam — kassier typt wat hij ziet
   const bedrijven = getBedrijven();
-  const gevondenBedrijf = bedrijven.find(b => b.toLowerCase() === ingevoerd.toLowerCase());
+  const namen = getBedrijfProfielNamen();
+  const gevondenBedrijf = bedrijven.find(b =>
+    b.toLowerCase() === ingevoerd.toLowerCase() ||
+    (namen[b]||'').toLowerCase() === ingevoerd.toLowerCase()
+  );
   if(!gevondenBedrijf){
     document.getElementById('login-fout-bedrijf').style.display = 'block';
     document.getElementById('login-fout-bedrijf').textContent = 'Bedrijfsnaam niet gevonden.';
     return;
   }
   _loginKassierBedrijf = gevondenBedrijf;
-  document.getElementById('login-kassier-bedrijf-label').textContent = '📍 ' + gevondenBedrijf;
+  // Toon weergavenaam aan kassier
+  document.getElementById('login-kassier-bedrijf-label').textContent = '📍 ' + (namen[gevondenBedrijf]||gevondenBedrijf);
   document.getElementById('login-stap-kassier-bedrijf').style.display = 'none';
   document.getElementById('login-stap-kassier-pin').style.display = 'block';
   document.getElementById('login-pin-kassier').value = '';
@@ -8846,7 +8937,7 @@ function openGebruikerDetail(id){
     <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;
       background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;">
       <input type="checkbox" value="${b}" style="width:auto;" ${(k.bedrijven||[]).includes(b)?'checked':''}>
-      ${esc(b)}
+      ${esc(getBedrijfWeergavenaam(b))}
     </label>`).join('');
 
   // Modules checkboxes
@@ -8882,6 +8973,7 @@ async function slaGebruikerDetailOp(){
   k.bedrijven = gekozenBedrijven;
   k.modules = gekozenModules;
   save();
+  localStorage.setItem('ledger_kassiers_cache', JSON.stringify(DB.kassiers));
   closeModal('modal-gebruiker-detail');
   renderGebruikersBeheer();
   toast(`Gebruiker "${naam}" opgeslagen.`,'success');
@@ -8917,6 +9009,7 @@ async function voegKassierToe(){
   if(!DB.kassiers) DB.kassiers = [];
   DB.kassiers.push({ id:uid(), naam, pin: gehashtePin, bedrijven, modules });
   save();
+  localStorage.setItem('ledger_kassiers_cache', JSON.stringify(DB.kassiers));
   document.getElementById('nk-naam').value = '';
   document.getElementById('nk-pin').value  = '';
   renderGebruikersBeheer();
@@ -9196,27 +9289,21 @@ function slaKassaOp(){
 }
 
 function slaKassalijstOpCloud(kassalijst){
+  if(!checkOnline()) return;
   toonSyncStatus('opslaan');
-  const kassaJson = JSON.stringify(kassalijst);
 
-  function onSuccess(){
-    toonSyncStatus('opgeslagen');
-  }
-  function onFail(err){
-    // Fallback: stuur via volledige save als dedicated endpoint faalt
-    console.warn('Kassalijst direct upload faalde, fallback naar volledige save:', err);
-    save();
-  }
-
-  fbAanroep(fb=>fb.voegKassalijstToe(huidigBedrijf, kassaJson))
+  fbAanroep(fb=>fb.voegKassalijstToe(huidigBedrijf, JSON.stringify(kassalijst)))
     .then(result=>{
       try{
         const r = typeof result === 'string' ? JSON.parse(result) : result;
-        if(r?.ok) onSuccess();
-        else onFail(r?.fout||'Onbekende fout');
-      }catch(e){ onFail(e.message); }
+        if(r?.ok) toonSyncStatus('opgeslagen');
+        else { toonSyncStatus('fout'); toast('Opslaan mislukt — probeer opnieuw.','error'); }
+      }catch(e){ toonSyncStatus('fout'); }
     })
-    .catch(onFail);
+    .catch(()=>{
+      toonSyncStatus('fout');
+      toast('Geen verbinding. Verbind met internet en probeer opnieuw.','error');
+    });
 }
 
 // Herlaad kassaoverzicht periodiek als eigenaar actief is — zodat ingediende kassalijsten verschijnen
@@ -10226,6 +10313,7 @@ function mobNumpad(key){
 }
 
 function mobSlaKassaOp(){
+  if(!checkOnline()) return;
   const datum = document.getElementById('mob-kassa-datum')?.value;
   if(!datum){ toast('Selecteer een datum.','error'); return; }
 
@@ -10498,6 +10586,7 @@ function mobResetUpload(){
 }
 
 function mobStuurUpload(){
+  if(!checkOnline()) return;
   if(!_mobHuidigBestand){ toast('Kies eerst een bestand.','error'); return; }
   const btn = document.getElementById('mob-upload-btn');
 
@@ -10553,7 +10642,7 @@ function mobStuurUpload(){
           mobResetUpload();
           laadMobUploads();
         } else {
-          toast('Upload mislukt — probeer een kleiner bestand.','error');
+          toast('Upload mislukt — probeer opnieuw.','error');
         }
       }catch(e){ toast('Upload mislukt.','error'); }
       herstelKnop();
@@ -10562,9 +10651,9 @@ function mobStuurUpload(){
       clearTimeout(timeout);
       const msg = err?.message||'';
       if(msg.includes('te groot') || msg.includes('size')){
-        toast('Bestand te groot voor upload. Gebruik een kleinere afbeelding (max 650KB).','error');
+        toast('Bestand te groot. Gebruik een kleinere afbeelding (max 650KB).','error');
       } else {
-        toast('Upload mislukt: '+(msg||'controleer je verbinding'),'error');
+        toast('Geen verbinding. Verbind met internet en probeer opnieuw.','error');
       }
       herstelKnop();
     });
@@ -10612,6 +10701,21 @@ function renderMobUploadsList(uploads){
   }).join('');
 }
 
+function mobOpenBon(bonId){
+  const bon = (_bonnenData||[]).find(b=>b.id===bonId) || { bestandData: null };
+  const url = bon.bestandData || bon.viewUrl || '';
+  if(!url) return;
+  try{
+    const w = window.open('','_blank');
+    if((bon.type||'').startsWith('image/')){
+      w.document.write('<html><body style="margin:0;background:#000;display:flex;justify-content:center;align-items:center;min-height:100vh;"><img src="'+url+'" style="max-width:100%;max-height:100vh;"></body></html>');
+    } else {
+      w.document.write('<html><body style="margin:0;"><embed src="'+url+'" width="100%" height="100%" type="application/pdf"></body></html>');
+    }
+    w.document.close();
+  }catch(e){ toast('Kan bestand niet openen.','error'); }
+}
+
 // ---- Overzichten ----
 function mobSetFilter(filter){
   _mobFilter = filter;
@@ -10657,7 +10761,9 @@ function mobOpenDetail(id){
   }
   contentEl.innerHTML = '<div class="mob-detail-titel">Kassalijst</div>'
     +'<div class="mob-detail-row"><span>Datum</span><span>'+datum+'</span></div>'
-    +'<div class="mob-detail-row"><span>Totaal omzet</span><span>'+mobFmtEur(l.totaalOmzet||0)+'</span></div>'
+    +'<div class="mob-detail-row"><span>Omzet excl. BTW</span><span>'+mobFmtEur(l.totaalOmzet||0)+'</span></div>'
+    +(l.totaalOmzetIncl?'<div class="mob-detail-row"><span>Omzet incl. BTW</span><span>'+mobFmtEur(l.totaalOmzetIncl)+'</span></div>':'')
+    +(l.omzetBtw?'<div class="mob-detail-row"><span>BTW '+(l.btwTarief||9)+'%</span><span>'+mobFmtEur(l.omzetBtw)+'</span></div>':'')
     +'<div class="mob-detail-row"><span>Status</span><span>'+statusLabel+'</span></div>'
     +(l.ingevoerdDoor?'<div class="mob-detail-row"><span>Ingevoerd door</span><span>'+l.ingevoerdDoor+'</span></div>':'')
     +(l.notities?'<div class="mob-detail-row"><span>Notities</span><span style="max-width:180px;text-align:right;">'+l.notities+'</span></div>':'')
