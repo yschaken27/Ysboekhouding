@@ -8607,6 +8607,15 @@ async function laadKassiersVoorLogin(){
 }
 
 async function initLogin(){
+  // Bouw profielnamen cache op uit localStorage voor alle bekende bedrijven
+  // Zodat kassier kan inloggen op profielnaam ook als Firebase niet bereikt is
+  getBedrijven().forEach(b=>{
+    try{
+      const lsKey = 'ledger_'+b.replace(/\s+/g,'_').toLowerCase();
+      const lsData = JSON.parse(localStorage.getItem(lsKey)||'{}');
+      if(lsData.profiel?.naam) saveBedrijfProfielNaam(b, lsData.profiel.naam);
+    }catch(e){}
+  });
   // Laad eerst kassiers en PINs vanuit cloud dan pas login tonen
   await Promise.all([laadPinnen(), laadKassiersVoorLogin()]);
   // Debug — toon hoeveel gebruikers geladen zijn
@@ -10682,35 +10691,48 @@ function renderMobUploadsList(uploads){
     listEl.innerHTML = '<div style="color:rgba(255,255,255,0.25);font-size:14px;text-align:center;padding:24px 0;">Nog geen uploads.</div>';
     return;
   }
-  listEl.innerHTML = uploads.slice(0,20).map(u=>{
-    const datum = u.uploadedAt ? new Date(u.uploadedAt).toLocaleDateString('nl-NL',{day:'numeric',month:'short',year:'numeric'}) : '-';
+  window._mobBonnenData = uploads;
+  listEl.innerHTML = uploads.slice(0,20).map((u,i)=>{
+    const datum = u.uploadedAt ? new Date(u.uploadedAt).toLocaleDateString('nl-NL',{day:'numeric',month:'short'}) : '-';
     const isAfb = (u.type||'').startsWith('image/');
-    const icon = isAfb ? '🖼️' : '📄';
-    const door = u.uploadedBy ? ' · '+u.uploadedBy : '';
-    const openUrl = u.bestandData || u.viewUrl || '';
-    const openActie = openUrl ? `onclick="var w=window.open('','_blank');w.document.write('<img src=\"'+encodeURI('${u.bestandData||u.viewUrl||''}')+'\"><\/body>');w.document.close();"` : '';
-    return `<div class="mob-lijst-item" ${openActie} style="gap:12px;cursor:${openUrl?'pointer':'default'};">
-      <div style="font-size:22px;flex-shrink:0;">${icon}</div>
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.naam||'Onbekend'}</div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.35);margin-top:2px;">${datum}${door}</div>
-        ${u.omschrijving?`<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:2px;">${u.omschrijving}</div>`:''}
-      </div>
-      <span style="font-size:18px;color:rgba(255,255,255,0.2);">↗</span>
-    </div>`;
+    const icon = isAfb ? '&#128444;' : '&#128196;';
+    const heeftUrl = !!(u.bestandData || u.viewUrl);
+    return '<div onclick="mobOpenBon('+i+')" style="'
+      +'display:flex;align-items:flex-start;gap:10px;'
+      +'background:rgba(255,255,255,0.05);'
+      +'border:1px solid rgba(255,255,255,0.08);'
+      +'border-radius:12px;padding:14px 12px;margin-bottom:10px;'
+      +'cursor:'+(heeftUrl?'pointer':'default')+';">'
+      +'<div style="font-size:26px;flex-shrink:0;line-height:1.2;">'+icon+'</div>'
+      +'<div style="flex:1;min-width:0;overflow:hidden;">'
+        +'<div style="font-size:13px;font-weight:600;color:#fff;'
+          +'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
+          +'margin-bottom:4px;">'+(u.naam||'Onbekend')+'</div>'
+        +(u.omschrijving
+          ? '<div style="font-size:12px;color:rgba(255,255,255,0.55);'
+            +'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
+            +'margin-bottom:4px;">'+u.omschrijving+'</div>'
+          : '')
+        +'<div style="font-size:11px;color:rgba(255,255,255,0.3);">'
+          +datum+(u.uploadedBy?' &middot; '+u.uploadedBy:'')
+        +'</div>'
+      +'</div>'
+      +(heeftUrl ? '<div style="font-size:13px;color:rgba(255,255,255,0.3);flex-shrink:0;padding-top:3px;padding-left:6px;">&#8599;</div>' : '')
+    +'</div>';
   }).join('');
 }
 
-function mobOpenBon(bonId){
-  const bon = (_bonnenData||[]).find(b=>b.id===bonId) || { bestandData: null };
+function mobOpenBon(idx){
+  const bon = (window._mobBonnenData||[])[idx];
+  if(!bon) return;
   const url = bon.bestandData || bon.viewUrl || '';
-  if(!url) return;
+  if(!url){ toast('Bestand niet beschikbaar.','warning'); return; }
   try{
     const w = window.open('','_blank');
     if((bon.type||'').startsWith('image/')){
-      w.document.write('<html><body style="margin:0;background:#000;display:flex;justify-content:center;align-items:center;min-height:100vh;"><img src="'+url+'" style="max-width:100%;max-height:100vh;"></body></html>');
+      w.document.write('<html><body style="margin:0;background:#000;display:flex;justify-content:center;align-items:center;min-height:100vh;"><img src="'+url+'" style="max-width:100%;max-height:100vh;object-fit:contain;"></body></html>');
     } else {
-      w.document.write('<html><body style="margin:0;"><embed src="'+url+'" width="100%" height="100%" type="application/pdf"></body></html>');
+      w.document.write('<html><body style="margin:0;height:100vh;"><embed src="'+url+'" width="100%" height="100%" type="application/pdf"></body></html>');
     }
     w.document.close();
   }catch(e){ toast('Kan bestand niet openen.','error'); }
