@@ -3466,15 +3466,26 @@ function bevestig(msg, titel='Bevestigen', btnLabel='Verwijderen'){
 }
 // Automatisch herladen bij terugkeren naar de app (bijv. wisselen tussen apparaten)
 let _visibilityTimer = null;
+// Centrale sync functie — herlaadt alles vanuit Firebase
+async function volledigeSyncVanuitFirebase(){
+  if(!USE_CLOUD || !_loginRol) return;
+  toonSyncStatus('laden');
+  // Sync bedrijvenlijst en profielnamen parallel aan data reload
+  await Promise.all([
+    syncBedrijvenVanuitFirebase(),
+    laadBedrijfNamenUitFirebase(),
+    new Promise(resolve=>{ loadCloud(); setTimeout(resolve, 2000); }),
+  ]);
+  // Herrender bedrijflijst zodat nieuwe namen zichtbaar zijn
+  if(typeof renderBedrijfList === 'function') renderBedrijfList();
+}
+
 document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState === 'visible'){
-    // Scherm is weer actief — herlaad cloud data na 1 seconde
+    // Scherm is weer actief — herlaad alles inclusief bedrijvenlijst en namen
     clearTimeout(_visibilityTimer);
     _visibilityTimer = setTimeout(()=>{
-      if(USE_CLOUD && _loginRol){
-        toonSyncStatus('laden');
-        loadCloud();
-      }
+      volledigeSyncVanuitFirebase();
     }, 1000);
   }
 });
@@ -3485,8 +3496,7 @@ function resetInactiviteitTimer(){
   clearTimeout(_inactiviteitTimer);
   _inactiviteitTimer = setTimeout(()=>{
     if(USE_CLOUD && _loginRol && document.visibilityState === 'visible'){
-      toonSyncStatus('laden');
-      loadCloud();
+      volledigeSyncVanuitFirebase();
     }
   }, 5 * 60 * 1000); // 5 minuten
 }
@@ -8695,6 +8705,30 @@ async function initLogin(){
       if(fout) { fout.style.display='block'; fout.textContent='Geen gebruikers gevonden — controleer de verbinding.'; }
     }, 500);
   }
+  // Start login sync interval — hersynct elke 30s zolang loginscherm open is
+  startLoginSyncInterval();
+}
+
+function startLoginSyncInterval(){
+  stopLoginSyncInterval();
+  window._loginSyncInterval = setInterval(async ()=>{
+    // Alleen synchen als loginscherm nog zichtbaar is en niet ingelogd
+    const overlay = document.getElementById('login-overlay');
+    if(!overlay || overlay.style.display === 'none') { stopLoginSyncInterval(); return; }
+    if(_loginRol) { stopLoginSyncInterval(); return; }
+    await Promise.all([
+      syncBedrijvenVanuitFirebase(),
+      laadBedrijfNamenUitFirebase(),
+      laadKassiersVoorLogin(),
+    ]);
+  }, 30000); // elke 30 seconden
+}
+
+function stopLoginSyncInterval(){
+  if(window._loginSyncInterval){
+    clearInterval(window._loginSyncInterval);
+    window._loginSyncInterval = null;
+  }
 }
 
 function loginAls(rol){
@@ -8793,6 +8827,7 @@ async function bevestigPin(){
       resetPinPogingen();
       _loginRol = 'eigenaar';
       _actieveKassier = null;
+      stopLoginSyncInterval();
       document.getElementById('login-overlay').style.display = 'none';
       pasNavAanRol();
       toast('Ingelogd als eigenaar 🔑','success');
