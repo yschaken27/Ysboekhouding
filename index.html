@@ -1549,6 +1549,12 @@ body.kassier-mobiel .mob-kassa-totaal {
       window.FB = {
         db, storage,
 
+        async getBedrijvenLijst(){
+          // Haal alle bedrijven op uit Firebase
+          const snap = await db.collection('bedrijven').get();
+          return JSON.stringify(snap.docs.map(d=>d.id));
+        },
+
         async laadAlles(bedrijf){
           const [mainSnap, vkSnap, ikSnap, trSnap, klSnap, upSnap] = await Promise.all([
             db.collection('bedrijven').doc(bedrijf).collection('data').doc('main').get(),
@@ -3522,28 +3528,44 @@ function nextFactuurNummer(type){
 let huidigBedrijf='Persoonlijk';
 
 function getBedrijven(){
+  // In-memory lijst is leidend — gevuld door syncBedrijvenVanuitFirebase bij initLogin
+  if(window._bedrijvenLijst?.length) return window._bedrijvenLijst;
+  // Fallback: localStorage cache
   try{ return JSON.parse(localStorage.getItem('ledger_bedrijven')||'["Persoonlijk"]'); }
   catch(e){ return ['Persoonlijk']; }
 }
 
 function saveBedrijven(lijst){
+  window._bedrijvenLijst = lijst;
   localStorage.setItem('ledger_bedrijven',JSON.stringify(lijst));
 }
 
-// Profielnamen — aparte map van identifier naar weergavenaam
+// Profielnamen — in-memory map, gevuld vanuit Firebase bij initLogin
+// localStorage alleen als snelle cache tussen sessies
+window._bedrijfNamen = {};
+
 function getBedrijfProfielNamen(){
-  try{ return JSON.parse(localStorage.getItem('ledger_bedrijf_namen')||'{}'); }
-  catch(e){ return {}; }
+  return window._bedrijfNamen;
 }
 function saveBedrijfProfielNaam(identifier, weergavenaam){
-  const namen = getBedrijfProfielNamen();
-  namen[identifier] = weergavenaam;
-  localStorage.setItem('ledger_bedrijf_namen', JSON.stringify(namen));
+  window._bedrijfNamen[identifier] = weergavenaam;
+  // Sla ook lokaal op als cache voor volgende sessie
+  try{
+    const cached = JSON.parse(localStorage.getItem('ledger_bedrijf_namen')||'{}');
+    cached[identifier] = weergavenaam;
+    localStorage.setItem('ledger_bedrijf_namen', JSON.stringify(cached));
+  }catch(e){}
 }
-// Geeft weergavenaam terug — profielnaam als ingesteld, anders identifier
+// Laad cache uit localStorage in geheugen bij opstarten
+function laadProfielNamenCache(){
+  try{
+    const cached = JSON.parse(localStorage.getItem('ledger_bedrijf_namen')||'{}');
+    Object.assign(window._bedrijfNamen, cached);
+  }catch(e){}
+}
+// Geeft weergavenaam terug — altijd uit in-memory map (gevuld vanuit Firebase)
 function getBedrijfWeergavenaam(identifier){
-  const namen = getBedrijfProfielNamen();
-  return namen[identifier] || identifier;
+  return window._bedrijfNamen[identifier] || identifier;
 }
 
 function isLocalStorageBeschikbaar(){
@@ -3746,6 +3768,8 @@ function _doSaveCloud(){
 // LOAD — cloud eerst, localStorage als fallback
 // ============================================================
 function load(){
+  // Laad profielnamen cache uit localStorage in geheugen voor snelle weergave
+  laadProfielNamenCache();
   const el=document.getElementById('sidebar-bedrijf-naam');
   if(el) el.textContent=getBedrijfWeergavenaam(huidigBedrijf);
   if(USE_CLOUD) loadCloud();
@@ -3753,6 +3777,9 @@ function load(){
 }
 
 function loadLokaal(){
+  // WAARSCHUWING: loadLokaal wordt alleen aangeroepen als USE_CLOUD=false of als Firebase faalt
+  // Bij USE_CLOUD=true is Firebase altijd leidend — localStorage is alleen cache
+  if(USE_CLOUD) console.warn('[Data] loadLokaal aangeroepen terwijl USE_CLOUD=true — Firebase had prioriteit moeten hebben');
   const r=localStorage.getItem(storageKey());
   if(r){ try{ const p=JSON.parse(r); DB={...DB,...p}; }catch(e){ console.error('localStorage data corrupt:',e); toast('Lokale data kon niet worden geladen — data mogelijk corrupt.','error'); } }
   else {
@@ -8622,9 +8649,32 @@ async function laadBedrijfNamenUitFirebase(){
   ));
 }
 
+async function syncBedrijvenVanuitFirebase(){
+  // Firebase is de enige bron van waarheid voor de bedrijvenlijst
+  // localStorage is alleen cache voor als Firebase tijdelijk niet bereikbaar is
+  try{
+    const json = await fbAanroep(fb=>fb.getBedrijvenLijst());
+    const firebaseBedrijven = JSON.parse(json||'[]');
+    if(!firebaseBedrijven.length) return;
+    // Merge: Firebase bedrijven zijn leidend, maar bewaar ook lokale die Firebase niet kent
+    const lokaal = JSON.parse(localStorage.getItem('ledger_bedrijven')||'["Persoonlijk"]');
+    const merged = [...new Set([...firebaseBedrijven, ...lokaal])];
+    // Sla op in geheugen en cache
+    window._bedrijvenLijst = merged;
+    localStorage.setItem('ledger_bedrijven', JSON.stringify(merged));
+    console.log('[Bedrijven] Gesynchroniseerd vanuit Firebase:', firebaseBedrijven.join(', '));
+  }catch(e){
+    // Firebase niet bereikbaar — gebruik localStorage cache
+    console.warn('[Bedrijven] Firebase sync mislukt, gebruik lokale cache:', e);
+    const cached = JSON.parse(localStorage.getItem('ledger_bedrijven')||'["Persoonlijk"]');
+    window._bedrijvenLijst = cached;
+  }
+}
+
 async function initLogin(){
-  // Laad profielnamen uit Firebase zodat kassier op elk device op profielnaam kan inloggen
-  // Doe dit parallel aan kassiers en PINs laden
+  // Sync bedrijvenlijst vanuit Firebase zodat alle devices alle bedrijven kennen
+  await syncBedrijvenVanuitFirebase();
+  // Laad profielnamen, kassiers en PINs parallel
   await Promise.all([
     laadPinnen(),
     laadKassiersVoorLogin(),
