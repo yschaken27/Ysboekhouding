@@ -8606,18 +8606,30 @@ async function laadKassiersVoorLogin(){
   }
 }
 
+// Laad profielnamen van alle bedrijven uit Firebase en cache ze lokaal
+// Zodat kassier op elk device op profielnaam kan inloggen
+async function laadBedrijfNamenUitFirebase(){
+  const bedrijven = getBedrijven();
+  await Promise.all(bedrijven.map(b=>
+    fbAanroep(fb=>fb.laadAlles(b)).then(json=>{
+      try{
+        const d = JSON.parse(json||'{}');
+        if(d.profiel?.naam){
+          saveBedrijfProfielNaam(b, d.profiel.naam);
+        }
+      }catch(e){}
+    }).catch(()=>{})
+  ));
+}
+
 async function initLogin(){
-  // Bouw profielnamen cache op uit localStorage voor alle bekende bedrijven
-  // Zodat kassier kan inloggen op profielnaam ook als Firebase niet bereikt is
-  getBedrijven().forEach(b=>{
-    try{
-      const lsKey = 'ledger_'+b.replace(/\s+/g,'_').toLowerCase();
-      const lsData = JSON.parse(localStorage.getItem(lsKey)||'{}');
-      if(lsData.profiel?.naam) saveBedrijfProfielNaam(b, lsData.profiel.naam);
-    }catch(e){}
-  });
-  // Laad eerst kassiers en PINs vanuit cloud dan pas login tonen
-  await Promise.all([laadPinnen(), laadKassiersVoorLogin()]);
+  // Laad profielnamen uit Firebase zodat kassier op elk device op profielnaam kan inloggen
+  // Doe dit parallel aan kassiers en PINs laden
+  await Promise.all([
+    laadPinnen(),
+    laadKassiersVoorLogin(),
+    laadBedrijfNamenUitFirebase(),
+  ]);
   // Debug — toon hoeveel gebruikers geladen zijn
   const aantalGebruikers = (DB.kassiers||[]).length;
   if(aantalGebruikers === 0){
