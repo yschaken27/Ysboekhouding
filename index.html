@@ -1641,12 +1641,13 @@ body.kassier-mobiel .mob-kassa-totaal {
         },
 
         async laadAlles(bedrijf){
-          const [mainSnap, vkSnap, ikSnap, trSnap, klSnap, upSnap] = await Promise.all([
+          const [mainSnap, vkSnap, ikSnap, trSnap, klSnap, urSnap, upSnap] = await Promise.all([
             db.collection('bedrijven').doc(bedrijf).collection('data').doc('main').get(),
             db.collection('bedrijven').doc(bedrijf).collection('data').doc('verkoop').get(),
             db.collection('bedrijven').doc(bedrijf).collection('data').doc('inkoop').get(),
             db.collection('bedrijven').doc(bedrijf).collection('data').doc('transacties').get(),
             db.collection('bedrijven').doc(bedrijf).collection('data').doc('kassalijsten').get(),
+            db.collection('bedrijven').doc(bedrijf).collection('data').doc('uren').get(),
             db.collection('bedrijven').doc(bedrijf).collection('uploads').get(),
           ]);
           const main = mainSnap.exists ? mainSnap.data() : {};
@@ -1662,6 +1663,7 @@ body.kassier-mobiel .mob-kassa-totaal {
             inkoop:      ikSnap.exists ? (ikSnap.data().items||[]) : [],
             transacties: trSnap.exists ? (trSnap.data().items||[]) : [],
             kassalijsten:klSnap.exists ? (klSnap.data().items||[]) : [],
+            uren:        urSnap.exists ? (urSnap.data().items||[]) : [],
           });
         },
 
@@ -1682,6 +1684,7 @@ body.kassier-mobiel .mob-kassa-totaal {
             ref.doc('inkoop').set({items: d.inkoop||[]}),
             ref.doc('transacties').set({items: d.transacties||[]}),
             ref.doc('kassalijsten').set({items: d.kassalijsten||[]}),
+            ref.doc('uren').set({items: d.uren||[]}),
           ]);
           return true;
         },
@@ -1741,6 +1744,31 @@ body.kassier-mobiel .mob-kassa-totaal {
           }
           bestaand.push(nieuw);
           await db.collection('bedrijven').doc(bedrijf).collection('data').doc('kassalijsten').set({items:bestaand});
+          return JSON.stringify({ok:true});
+        },
+
+        async voegUrenToe(bedrijf, urenJson){
+          const nieuw = JSON.parse(urenJson);
+          const snap = await db.collection('bedrijven').doc(bedrijf).collection('data').doc('uren').get();
+          const bestaand = snap.exists ? (snap.data().items||[]) : [];
+          // Voorkom duplicaten op basis van id
+          if(bestaand.some(u=>u.id===nieuw.id)){
+            return JSON.stringify({ok:true, dubbel:true});
+          }
+          bestaand.push(nieuw);
+          await db.collection('bedrijven').doc(bedrijf).collection('data').doc('uren').set({items:bestaand});
+          return JSON.stringify({ok:true});
+        },
+
+        // Status van één uren-ingave bijwerken (goedkeuren/afwijzen) zonder de rest te raken
+        async updateUrenStatus(bedrijf, id, status){
+          const ref = db.collection('bedrijven').doc(bedrijf).collection('data').doc('uren');
+          const snap = await ref.get();
+          const bestaand = snap.exists ? (snap.data().items||[]) : [];
+          const idx = bestaand.findIndex(u=>u.id===id);
+          if(idx === -1) return JSON.stringify({ok:false, reden:'niet gevonden'});
+          bestaand[idx].status = status;
+          await ref.set({items:bestaand});
           return JSON.stringify({ok:true});
         },
 
@@ -1922,6 +1950,54 @@ body.kassier-mobiel .mob-kassa-totaal {
     <button class="mob-indienen-btn" id="mob-indienen-btn" onclick="mobSlaKassaOp()">
       ✓ &nbsp; Kassa indienen
     </button>
+  </div>
+
+  <!-- UREN pagina -->
+  <div id="mob-page-uren" class="mob-page">
+    <!-- Datum -->
+    <div class="mob-datum-row">
+      <label>Datum</label>
+      <input type="date" id="mob-uren-datum">
+    </div>
+
+    <!-- Opdrachtgever -->
+    <div class="mob-notities-field">
+      <label>Opdrachtgever</label>
+      <select id="mob-uren-opdrachtgever" onchange="mobUrenVulTarieven()"></select>
+    </div>
+
+    <!-- Tarief (alleen zichtbaar bij meerdere tarieven) -->
+    <div class="mob-notities-field" id="mob-uren-tarief-wrap" style="display:none;">
+      <label>Tarief</label>
+      <select id="mob-uren-tarief" onchange="mobUrenHerbereken()"></select>
+    </div>
+
+    <!-- Aantal uren -->
+    <div class="mob-notities-field">
+      <label>Aantal uren</label>
+      <input type="number" id="mob-uren-aantal" placeholder="0" step="0.25" min="0" inputmode="decimal" oninput="mobUrenHerbereken()">
+    </div>
+
+    <!-- Bedrag indicator -->
+    <div style="background:var(--surface2);border-radius:12px;padding:12px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:14px;color:var(--text-mid);">Bedrag</span>
+      <span id="mob-uren-bedrag-val" style="font-family:var(--mono);font-weight:700;font-size:18px;">—</span>
+    </div>
+
+    <!-- Notitie -->
+    <div class="mob-notities-field">
+      <label>Korte notitie</label>
+      <textarea id="mob-uren-notitie" placeholder="Bijv. extra dienst, locatie..."></textarea>
+    </div>
+
+    <!-- Indienen -->
+    <button class="mob-indienen-btn" id="mob-uren-indienen-btn" onclick="mobSlaUrenOp()">
+      ✓ &nbsp; Uren indienen
+    </button>
+
+    <!-- Vandaag ingediend -->
+    <div class="mob-section-title" style="margin-top:24px;">Deze maand ingediend</div>
+    <div id="mob-uren-lijst"></div>
   </div>
 
   <!-- FACTUREN pagina -->
@@ -2132,6 +2208,7 @@ body.kassier-mobiel .mob-kassa-totaal {
           <div class="nav-dropdown-item" id="nav-item-btwaangifte" onclick="navTo('btwaangifte')"><span class="icon">%</span>BTW aangifte</div>
           <div class="nav-dropdown-item" id="nav-item-jaaropgave" onclick="navTo('jaaropgave')"><span class="icon">◎</span>Jaaropgave</div>
           <div class="nav-dropdown-item" id="nav-item-kassaoverzicht" onclick="navTo('kassaoverzicht')"><span class="icon">💰</span>Kassaoverzicht</div>
+          <div class="nav-dropdown-item" id="nav-item-urenoverzicht" onclick="navTo('urenoverzicht')"><span class="icon">⏱</span>Urenoverzicht</div>
         </div>
       </div>
     </div>
@@ -2729,6 +2806,26 @@ body.kassier-mobiel .mob-kassa-totaal {
       <div id="kassa-overzicht-lijst"></div>
     </div>
 
+    <!-- URENOVERZICHT (eigenaar) -->
+    <div class="page" id="page-urenoverzicht">
+      <div class="page-header">
+        <div><h2>Urenoverzicht</h2><p>Ingevulde uren per opdrachtgever — nakijken, goedkeuren en factureren</p></div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="month" id="uren-filter-maand" onchange="renderUrenoverzicht()" style="font-size:13px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);">
+        </div>
+      </div>
+
+      <!-- STATS -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
+        <div class="stat-card"><div class="label">Totaal uren (maand)</div><div class="value" id="uov-uren">0</div></div>
+        <div class="stat-card"><div class="label">Totaal bedrag</div><div class="value" id="uov-bedrag" style="color:#16a34a;">€ 0,00</div></div>
+        <div class="stat-card"><div class="label">Wacht goedkeuring</div><div class="value" id="uov-wacht" style="color:var(--warning);">0</div></div>
+        <div class="stat-card"><div class="label">Opdrachtgevers</div><div class="value" id="uov-opdr">0</div></div>
+      </div>
+
+      <div id="uren-overzicht-lijst"></div>
+    </div>
+
     <!-- JAAROPGAVE -->
     <div class="page" id="page-jaaropgave">
       <div class="page-header">
@@ -3178,9 +3275,6 @@ body.kassier-mobiel .mob-kassa-totaal {
               <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;">
                 <input type="checkbox" value="uploads" id="nk-mod-uploads" style="width:auto;"> 📎 Bonnen uploaden
               </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;">
-                <input type="checkbox" value="uren" id="nk-mod-uren" style="width:auto;"> ⏱ Uren invullen
-              </label>
             </div>
           </div>
         </div>
@@ -3444,6 +3538,15 @@ body.kassier-mobiel .mob-kassa-totaal {
             Kasstelsel is verplicht voor ondernemers die vooral aan particulieren leveren (kappers, horeca, etc.). Raadpleeg uw boekhouder bij twijfel.
           </div>
         </div>
+        <div class="form-group full">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="bp-uren-aan" style="width:auto;">
+            <span>⏱ Uren-registratie inschakelen</span>
+          </label>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">
+            Staat dit aan, dan krijgt iedere gebruiker van dit bedrijf een uren-tab om uren per opdrachtgever in te vullen. Jij stelt per gebruiker de opdrachtgevers en tarieven in en kunt per maand een factuur per opdrachtgever maken.
+          </div>
+        </div>
         <div class="form-group full"><label>Notities</label><textarea id="bp-notities" rows="3" placeholder="Bijv. accountantgegevens, login portalen, etc."></textarea></div>
       </div>
       <div class="modal-footer">
@@ -3456,7 +3559,7 @@ body.kassier-mobiel .mob-kassa-totaal {
 
 <script>
 // ===== STATE =====
-let DB = { verkoop:[], inkoop:[], transacties:[], grootboek:[], regels:[], imports:[], profiel:{}, kassalijsten:[], kassiers:[], editId:null, editType:null, koppelId:null, csvRaw:[], csvHeaders:[], fVK:'', fsVK:'', fIK:'', fsIK:'', fT:'', fsT:'', huidigeBankId:null };
+let DB = { verkoop:[], inkoop:[], transacties:[], grootboek:[], regels:[], imports:[], profiel:{}, kassalijsten:[], kassiers:[], uren:[], editId:null, editType:null, koppelId:null, csvRaw:[], csvHeaders:[], fVK:'', fsVK:'', fIK:'', fsIK:'', fT:'', fsT:'', huidigeBankId:null };
 
 const DEFAULT_GB = [
   {id:'gb1',nummer:'1000',naam:'Kas',type:'activa',saldo:0},
@@ -3838,6 +3941,7 @@ function _doSaveCloud(){
     grootboek:DB.grootboek, regels:DB.regels, memoriaal:DB.memoriaal||[],
     vasteActiva:DB.vasteActiva||[], profiel:DB.profiel||{},
     kassalijsten:DB.kassalijsten||[], kassiers:DB.kassiers||[],
+    uren:DB.uren||[],
   });
 
   function onSuccess(){
@@ -3926,6 +4030,7 @@ function loadCloud(){
       DB.memoriaal   = mergeArrayOpId(DB.memoriaal,   d.memoriaal);
       DB.vasteActiva = mergeArrayOpId(DB.vasteActiva, d.vasteActiva);
       DB.kassalijsten= mergeArrayOpId(DB.kassalijsten,d.kassalijsten);
+      DB.uren        = mergeArrayOpId(DB.uren,        d.uren);
       DB.kassiers    = mergeArrayOpId(DB.kassiers,    d.kassiers);
 
       // Grootboek: merge op id maar houd cloud saldo als bron van waarheid
@@ -3940,9 +4045,13 @@ function loadCloud(){
       localStorage.setItem(storageKey(), JSON.stringify(DB));
       toonSyncStatus('opgeslagen');
       renderDashboard(); renderGB(); renderImports();
-      // Kassier mobiel dashboard opnieuw renderen na data-update
-      if(_loginRol === 'kassier' && typeof renderMobDashboard === 'function'){
-        renderMobDashboard();
+      // Uren-zichtbaarheid bijwerken nu de bedrijfsinstelling (profiel) geladen is
+      if(_loginRol === 'kassier'){
+        if(typeof mobBouwNav === 'function') mobBouwNav();
+        if(typeof renderMobDashboard === 'function') renderMobDashboard();
+      } else {
+        const urenNav = document.getElementById('nav-item-urenoverzicht');
+        if(urenNav) urenNav.style.display = isUrenAan() ? '' : 'none';
       }
       const actievePagina = document.querySelector('.page.active')?.id?.replace('page-','');
       if(actievePagina && actievePagina!=='dashboard') showPage(actievePagina);
@@ -3969,9 +4078,9 @@ async function wisselBedrijf(naam){
   huidigBedrijf=naam;
   localStorage.setItem('ledger_actief_bedrijf', naam);
   DB={ verkoop:[], inkoop:[], transacties:[], grootboek:[], regels:[], imports:[],
-       profiel:{}, memoriaal:[], vasteActiva:[],
+       profiel:{}, memoriaal:[], vasteActiva:[], kassalijsten:[], kassiers:[], uren:[],
        editId:null, editType:null, koppelId:null,
-       csvRaw:[], csvHeaders:[], fVK:'', fsVK:'', fIK:'', fsIK:'', fT:'', fsT:'' };
+       csvRaw:[], csvHeaders:[], fVK:'', fsVK:'', fIK:'', fsIK:'', fT:'', fsT:'', huidigeBankId:null };
   closeModal('modal-bedrijf');
   showPage('dashboard');
   load();
@@ -4114,6 +4223,7 @@ function laadBedrijfProfiel(){
   document.getElementById('bp-boekjaar').value=p.boekjaar||'1';
   document.getElementById('bp-btw-standaard').value=p.btwStandaard||'21';
   document.getElementById('bp-btw-stelsel').value=p.btwStelsel||'factuurstelsel';
+  document.getElementById('bp-uren-aan').checked = !!p.urenAan;
   document.getElementById('bp-notities').value=p.notities||'';
 }
 
@@ -4131,6 +4241,7 @@ function slaBedrijfProfielOp(){
     boekjaar:document.getElementById('bp-boekjaar').value,
     btwStandaard:document.getElementById('bp-btw-standaard').value,
     btwStelsel:document.getElementById('bp-btw-stelsel').value,
+    urenAan:document.getElementById('bp-uren-aan').checked,
     notities:document.getElementById('bp-notities').value.trim(),
   };
   // Sla weergavenaam op in profielnamen map zodat bedrijflijst het toont
@@ -4177,6 +4288,12 @@ function uid(){ return 'id_'+Date.now()+'_'+Math.random().toString(36).slice(2,6
 // ===== KASSTELSEL HELPERS =====
 function isKasstelsel(){
   return (DB.profiel?.btwStelsel||'factuurstelsel') === 'kasstelsel';
+}
+
+// ===== UREN-MODULE (bedrijfsinstelling) =====
+// Staat uren-registratie aan voor het huidige bedrijf?
+function isUrenAan(){
+  return !!(DB.profiel?.urenAan);
 }
 
 // Zoek alle gekoppelde banktransacties voor een factuur
@@ -4294,6 +4411,7 @@ function showPage(name){
   if(name==='jaaropgave') renderJaaropgave();
   if(name==='kassalijst') initKassalijst();
   if(name==='kassaoverzicht') renderKassaoverzicht();
+  if(name==='urenoverzicht'){ initUrenoverzichtMaand(); renderUrenoverzicht(); }
   if(name==='bonnen') laadBonnenPagina();
 }
 
@@ -8919,6 +9037,9 @@ function pasNavAanRol(){
   // Instellingen knop alleen voor eigenaar
   const instBtn = document.getElementById('inst-btn');
   if(instBtn) instBtn.style.display = isKassier ? 'none' : '';
+  // Urenoverzicht-navitem alleen tonen als uren-registratie aan staat voor dit bedrijf
+  const urenNav = document.getElementById('nav-item-urenoverzicht');
+  if(urenNav) urenNav.style.display = (!isKassier && isUrenAan()) ? '' : 'none';
 
   // Gebruiker gaat naar kassa invullen, eigenaar naar dashboard
   if(isKassier){
@@ -9035,12 +9156,12 @@ function openGebruikerDetail(id){
       ${esc(getBedrijfWeergavenaam(b))}
     </label>`).join('');
 
-  // Modules checkboxes
-  const modDefs = [{v:'dashboard',l:'📊 Dashboard'},{v:'kassa',l:'💰 Kassa'},{v:'facturen',l:'🧾 Facturen'},{v:'uploads',l:'📎 Bonnen'},{v:'uren',l:'⏱ Uren'}];
+  // Modules checkboxes (uren is geen module meer — dat is een bedrijfsinstelling)
+  const modDefs = [{v:'dashboard',l:'📊 Dashboard'},{v:'kassa',l:'💰 Kassa'},{v:'facturen',l:'🧾 Facturen'},{v:'uploads',l:'📎 Bonnen'}];
   document.getElementById('gd-modules').innerHTML = modDefs.map(m=>`
     <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;
       background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;">
-      <input type="checkbox" value="${m.v}" style="width:auto;" ${(k.modules||['dashboard','kassa','uploads']).includes(m.v)?'checked':''} onchange="updateOpdrachtgeverZichtbaarheid()">
+      <input type="checkbox" value="${m.v}" style="width:auto;" ${(k.modules||['dashboard','kassa','uploads']).includes(m.v)?'checked':''}>
       ${m.l}
     </label>`).join('');
 
@@ -9055,11 +9176,10 @@ function openGebruikerDetail(id){
 // Werkkopie van de opdrachtgevers tijdens het bewerken
 let _gdOpdrachtgevers = [];
 
-// Toon de opdrachtgevers-sectie alleen als de uren-module is aangevinkt
+// Toon de opdrachtgevers-sectie alleen als uren-registratie aan staat voor dit bedrijf
 function updateOpdrachtgeverZichtbaarheid(){
-  const urenAan = !!document.querySelector('#gd-modules input[value="uren"]:checked');
   const wrap = document.getElementById('gd-opdrachtgevers-wrap');
-  if(wrap) wrap.style.display = urenAan ? 'block' : 'none';
+  if(wrap) wrap.style.display = isUrenAan() ? 'block' : 'none';
 }
 
 function renderOpdrachtgevers(){
@@ -9138,8 +9258,8 @@ async function slaGebruikerDetailOp(){
   k.bedrijven = gekozenBedrijven;
   k.modules = gekozenModules;
 
-  // Opdrachtgevers opslaan als de uren-module aan staat; anders leeg laten.
-  if(gekozenModules.includes('uren')){
+  // Opdrachtgevers opslaan als uren-registratie aan staat voor dit bedrijf; anders leeg laten.
+  if(isUrenAan()){
     k.opdrachtgevers = _gdOpdrachtgevers
       .map(o=>({
         naam: (o.naam||'').trim(),
@@ -9409,6 +9529,345 @@ function slaKassalijstOpCloud(kassalijst){
       toonSyncStatus('fout');
       toast('Geen verbinding. Verbind met internet en probeer opnieuw.','error');
     });
+}
+
+// Sla één uren-ingave los op in de cloud (raakt de rest van de data niet)
+function slaUrenOpCloud(ingave){
+  if(!checkOnline()) return;
+  toonSyncStatus('opslaan');
+
+  fbAanroep(fb=>fb.voegUrenToe(huidigBedrijf, JSON.stringify(ingave)))
+    .then(result=>{
+      try{
+        const r = typeof result === 'string' ? JSON.parse(result) : result;
+        if(r?.ok) toonSyncStatus('opgeslagen');
+        else { toonSyncStatus('fout'); toast('Opslaan mislukt — probeer opnieuw.','error'); }
+      }catch(e){ toonSyncStatus('fout'); }
+    })
+    .catch(()=>{
+      toonSyncStatus('fout');
+      toast('Geen verbinding. Verbind met internet en probeer opnieuw.','error');
+    });
+}
+// ============================================================
+function _mobUrenOpdrachtgevers(){
+  return (_actieveKassier?.opdrachtgevers || []);
+}
+
+function initMobUren(){
+  // Datum op vandaag
+  const d = document.getElementById('mob-uren-datum');
+  if(d && !d.value) d.value = new Date().toISOString().slice(0,10);
+
+  // Opdrachtgever-dropdown vullen
+  const sel = document.getElementById('mob-uren-opdrachtgever');
+  const lijst = _mobUrenOpdrachtgevers();
+  if(sel){
+    sel.innerHTML = lijst.map((o,i)=>`<option value="${i}">${esc(o.naam)}</option>`).join('');
+  }
+  mobUrenVulTarieven();
+  renderMobUrenLijst();
+}
+
+function mobUrenVulTarieven(){
+  const oi = parseInt(document.getElementById('mob-uren-opdrachtgever')?.value);
+  const opdr = _mobUrenOpdrachtgevers()[oi];
+  const wrap = document.getElementById('mob-uren-tarief-wrap');
+  const sel = document.getElementById('mob-uren-tarief');
+  const tarieven = opdr?.tarieven || [];
+  if(sel){
+    sel.innerHTML = tarieven.map((t,i)=>
+      `<option value="${i}">${esc(t.label||'Tarief')} — €${(t.bedrag||0).toFixed(2)}/u</option>`
+    ).join('');
+  }
+  // Tariefkeuze alleen tonen als er meer dan één is
+  if(wrap) wrap.style.display = tarieven.length > 1 ? 'block' : 'none';
+  mobUrenHerbereken();
+}
+
+function _mobUrenGekozenTarief(){
+  const oi = parseInt(document.getElementById('mob-uren-opdrachtgever')?.value);
+  const opdr = _mobUrenOpdrachtgevers()[oi];
+  const tarieven = opdr?.tarieven || [];
+  if(!tarieven.length) return null;
+  // Bij één tarief: dat tarief; bij meerdere: de gekozene
+  const ti = tarieven.length > 1 ? parseInt(document.getElementById('mob-uren-tarief')?.value) : 0;
+  return { opdrachtgever: opdr.naam, tarief: tarieven[ti] };
+}
+
+function mobUrenHerbereken(){
+  const aantal = parseFloat(document.getElementById('mob-uren-aantal')?.value) || 0;
+  const g = _mobUrenGekozenTarief();
+  const el = document.getElementById('mob-uren-bedrag-val');
+  if(!el) return;
+  if(!g || !aantal){ el.textContent = '—'; return; }
+  const bedrag = aantal * (g.tarief.bedrag || 0);
+  el.textContent = '€ ' + bedrag.toFixed(2);
+}
+
+function mobSlaUrenOp(){
+  const datum = document.getElementById('mob-uren-datum')?.value;
+  const aantal = parseFloat(document.getElementById('mob-uren-aantal')?.value) || 0;
+  const notitie = document.getElementById('mob-uren-notitie')?.value.trim() || '';
+  const g = _mobUrenGekozenTarief();
+
+  if(!datum){ toast('Kies een datum.','error'); return; }
+  if(!g){ toast('Kies een opdrachtgever.','error'); return; }
+  if(aantal <= 0){ toast('Vul het aantal uren in.','error'); return; }
+
+  const bedrag = aantal * (g.tarief.bedrag || 0);
+  const ingave = {
+    id: uid(),
+    datum,
+    wie: _actieveKassier?.naam || '',
+    opdrachtgever: g.opdrachtgever,
+    tariefLabel: g.tarief.label || '',
+    tariefBedrag: g.tarief.bedrag || 0,
+    uren: aantal,
+    bedrag: Math.round(bedrag*100)/100,
+    notitie,
+    status: 'ingediend',
+    aangemaakt: new Date().toISOString()
+  };
+
+  if(!DB.uren) DB.uren = [];
+  DB.uren.push(ingave);
+  // Lokaal cachen voor directe weergave; cloud krijgt alleen deze ene ingave
+  localStorage.setItem(storageKey(), JSON.stringify(DB));
+  slaUrenOpCloud(ingave);
+
+  toast('Uren ingediend.','success');
+  // Formulier deels resetten — datum en opdrachtgever laten staan voor snel volgende ingave
+  document.getElementById('mob-uren-aantal').value = '';
+  document.getElementById('mob-uren-notitie').value = '';
+  mobUrenHerbereken();
+  renderMobUrenLijst();
+}
+
+function renderMobUrenLijst(){
+  const el = document.getElementById('mob-uren-lijst');
+  if(!el) return;
+  const naam = _actieveKassier?.naam || '';
+  const nu = new Date();
+  const maand = nu.getMonth(), jaar = nu.getFullYear();
+  const mijn = (DB.uren||[])
+    .filter(u=> u.wie===naam && (()=>{ const d=new Date(u.datum); return d.getMonth()===maand && d.getFullYear()===jaar; })())
+    .sort((a,b)=> (b.datum||'').localeCompare(a.datum||''));
+
+  if(!mijn.length){
+    el.innerHTML = '<div style="font-size:13px;color:var(--text-dim);padding:8px 0;">Nog geen uren deze maand.</div>';
+    return;
+  }
+  el.innerHTML = mijn.map(u=>{
+    const dd = new Date(u.datum).toLocaleDateString('nl-NL',{day:'numeric',month:'short'});
+    const status = u.status==='goedgekeurd' ? '<span style="color:var(--accent);">✓ goedgekeurd</span>' : 'ingediend';
+    return `<div style="background:var(--surface2);border-radius:10px;padding:12px 14px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <strong style="font-size:14px;">${esc(u.opdrachtgever)}</strong>
+        <span style="font-family:var(--mono);font-weight:700;">€ ${(u.bedrag||0).toFixed(2)}</span>
+      </div>
+      <div style="font-size:12px;color:var(--text-mid);margin-top:3px;">
+        ${dd} · ${u.uren} u${u.tariefLabel?(' · '+esc(u.tariefLabel)):''} · ${status}
+      </div>
+      ${u.notitie?`<div style="font-size:12px;color:var(--text-dim);margin-top:4px;">${esc(u.notitie)}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+// ============================================================
+// URENOVERZICHT (eigenaar) — nakijken, goedkeuren, factureren
+// ============================================================
+function initUrenoverzichtMaand(){
+  const el = document.getElementById('uren-filter-maand');
+  if(el && !el.value){
+    const nu = new Date();
+    el.value = nu.getFullYear() + '-' + String(nu.getMonth()+1).padStart(2,'0');
+  }
+}
+
+function _urenMaandFilter(){
+  return document.getElementById('uren-filter-maand')?.value || '';
+}
+
+function _urenVanMaand(){
+  const m = _urenMaandFilter(); // 'YYYY-MM'
+  return (DB.uren||[]).filter(u=> (u.datum||'').slice(0,7) === m);
+}
+
+function renderUrenoverzicht(){
+  const lijst = _urenVanMaand();
+
+  const totUren = lijst.reduce((a,u)=>a+(parseFloat(u.uren)||0),0);
+  const totBedrag = lijst.reduce((a,u)=>a+(parseFloat(u.bedrag)||0),0);
+  const wacht = lijst.filter(u=>u.status==='ingediend').length;
+  const opdrSet = new Set(lijst.map(u=>u.opdrachtgever));
+  const z=(id,v)=>{ const e=document.getElementById(id); if(e) e.textContent=v; };
+  z('uov-uren', (Math.round(totUren*100)/100).toString());
+  z('uov-bedrag', '€ ' + totBedrag.toFixed(2).replace('.',','));
+  z('uov-wacht', wacht.toString());
+  z('uov-opdr', opdrSet.size.toString());
+
+  const el = document.getElementById('uren-overzicht-lijst');
+  if(!el) return;
+  if(!lijst.length){
+    el.innerHTML = '<div style="color:var(--text-dim);padding:24px 0;text-align:center;">Geen uren in deze maand.</div>';
+    return;
+  }
+
+  const perOpdr = {};
+  lijst.forEach(u=>{ (perOpdr[u.opdrachtgever] ||= []).push(u); });
+
+  el.innerHTML = Object.keys(perOpdr).sort().map(opdr=>{
+    const items = perOpdr[opdr].sort((a,b)=>(a.datum||'').localeCompare(b.datum||''));
+    const uSom = items.reduce((a,u)=>a+(parseFloat(u.uren)||0),0);
+    const bSom = items.reduce((a,u)=>a+(parseFloat(u.bedrag)||0),0);
+    const allGoed = items.every(u=>u.status==='goedgekeurd');
+
+    const rijen = items.map(u=>{
+      const dd = new Date(u.datum).toLocaleDateString('nl-NL',{day:'2-digit',month:'short'});
+      const st = u.status==='goedgekeurd'
+        ? '<span style="color:#16a34a;">✓</span>'
+        : `<span style="display:inline-flex;gap:6px;">
+             <button onclick="urenKeur('${u.id}','goedgekeurd')" style="font-size:11px;padding:2px 8px;border-radius:5px;border:none;background:#16a34a;color:#fff;cursor:pointer;">Goedkeuren</button>
+             <button onclick="urenKeur('${u.id}','afgewezen')" style="font-size:11px;padding:2px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text-mid);cursor:pointer;">×</button>
+           </span>`;
+      const afgewezen = u.status==='afgewezen' ? 'opacity:0.45;text-decoration:line-through;' : '';
+      return `<tr style="${afgewezen}">
+        <td style="padding:6px 8px;font-size:12px;">${dd}</td>
+        <td style="padding:6px 8px;font-size:12px;">${esc(u.wie||'')}</td>
+        <td style="padding:6px 8px;font-size:12px;">${esc(u.tariefLabel||'')}</td>
+        <td style="padding:6px 8px;font-size:12px;text-align:right;font-family:var(--mono);">${u.uren}</td>
+        <td style="padding:6px 8px;font-size:12px;text-align:right;font-family:var(--mono);">€ ${(u.bedrag||0).toFixed(2)}</td>
+        <td style="padding:6px 8px;font-size:12px;color:var(--text-dim);">${esc(u.notitie||'')}</td>
+        <td style="padding:6px 8px;text-align:right;">${st}</td>
+      </tr>`;
+    }).join('');
+
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div>
+          <strong style="font-size:15px;">${esc(opdr)}</strong>
+          <span style="font-size:12px;color:var(--text-mid);margin-left:10px;">${(Math.round(uSom*100)/100)} u · € ${bSom.toFixed(2)}</span>
+        </div>
+        <button onclick="maakUrenFactuur('${encodeURIComponent(opdr)}')"
+          style="font-size:12px;padding:6px 14px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:pointer;"
+          title="${allGoed?'':'Let op: nog niet alle uren zijn goedgekeurd'}">
+          🧾 Factuur maken${allGoed?'':' *'}
+        </button>
+      </div>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr style="border-bottom:1px solid var(--border);">
+          <th style="padding:4px 8px;text-align:left;font-size:11px;color:var(--text-dim);font-weight:600;">Datum</th>
+          <th style="padding:4px 8px;text-align:left;font-size:11px;color:var(--text-dim);font-weight:600;">Wie</th>
+          <th style="padding:4px 8px;text-align:left;font-size:11px;color:var(--text-dim);font-weight:600;">Tarief</th>
+          <th style="padding:4px 8px;text-align:right;font-size:11px;color:var(--text-dim);font-weight:600;">Uren</th>
+          <th style="padding:4px 8px;text-align:right;font-size:11px;color:var(--text-dim);font-weight:600;">Bedrag</th>
+          <th style="padding:4px 8px;text-align:left;font-size:11px;color:var(--text-dim);font-weight:600;">Notitie</th>
+          <th style="padding:4px 8px;text-align:right;font-size:11px;color:var(--text-dim);font-weight:600;">Status</th>
+        </tr></thead>
+        <tbody>${rijen}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+}
+
+function urenKeur(id, status){
+  const u = (DB.uren||[]).find(x=>x.id===id);
+  if(!u) return;
+  u.status = status;
+  // Lokaal cachen en alleen deze ene status in de cloud bijwerken
+  localStorage.setItem(storageKey(), JSON.stringify(DB));
+  if(checkOnline()){
+    toonSyncStatus('opslaan');
+    fbAanroep(fb=>fb.updateUrenStatus(huidigBedrijf, id, status))
+      .then(()=>toonSyncStatus('opgeslagen'))
+      .catch(()=>{ toonSyncStatus('fout'); toast('Bijwerken mislukt — probeer opnieuw.','error'); });
+  }
+  renderUrenoverzicht();
+}
+
+function maakUrenFactuur(opdrEnc){
+  const opdr = decodeURIComponent(opdrEnc);
+  const maand = _urenMaandFilter();
+  const items = _urenVanMaand()
+    .filter(u=>u.opdrachtgever===opdr && u.status!=='afgewezen')
+    .sort((a,b)=>(a.datum||'').localeCompare(b.datum||''));
+  if(!items.length){ toast('Geen factureerbare uren voor deze opdrachtgever.','warning'); return; }
+
+  const p = DB.profiel || {};
+  const bedrijf = p.naam || huidigBedrijf;
+  const totBedrag = items.reduce((a,u)=>a+(parseFloat(u.bedrag)||0),0);
+  const maandLabel = (()=>{ const [j,m]=maand.split('-'); return new Date(j,parseInt(m)-1,1).toLocaleDateString('nl-NL',{month:'long',year:'numeric'}); })();
+  const factuurNr = 'U-' + maand + '-' + opdr.replace(/[^a-zA-Z0-9]/g,'').slice(0,6).toUpperCase();
+  const vandaag = new Date().toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
+
+  const rijen = items.map(u=>{
+    const dd = new Date(u.datum).toLocaleDateString('nl-NL',{day:'2-digit',month:'2-digit'});
+    return `<tr>
+      <td style="padding:6px 4px;border-bottom:1px solid #eee;">${dd}</td>
+      <td style="padding:6px 4px;border-bottom:1px solid #eee;">${esc(u.tariefLabel||'Uren')}${u.notitie?(' — '+esc(u.notitie)):''}</td>
+      <td style="padding:6px 4px;border-bottom:1px solid #eee;text-align:right;">${u.uren}</td>
+      <td style="padding:6px 4px;border-bottom:1px solid #eee;text-align:right;">€ ${(u.tariefBedrag||0).toFixed(2)}</td>
+      <td style="padding:6px 4px;border-bottom:1px solid #eee;text-align:right;">€ ${(u.bedrag||0).toFixed(2)}</td>
+    </tr>`;
+  }).join('');
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Factuur ${factuurNr}</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;color:#222;max-width:720px;margin:30px auto;padding:0 24px;font-size:13px;line-height:1.5;}
+    h1{font-size:22px;margin:0 0 4px;}
+    .head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:30px;}
+    .right{text-align:right;}
+    table{width:100%;border-collapse:collapse;margin:18px 0;}
+    th{text-align:left;border-bottom:2px solid #333;padding:6px 4px;font-size:12px;}
+    .tot{text-align:right;font-size:16px;font-weight:bold;margin-top:8px;}
+    .muted{color:#666;font-size:12px;}
+    @media print{button{display:none;}}
+  </style></head><body>
+  <div class="head">
+    <div>
+      <h1>${esc(bedrijf)}</h1>
+      <div class="muted">
+        ${p.adres?esc(p.adres)+'<br>':''}
+        ${p.email?esc(p.email)+'<br>':''}
+        ${p.tel?esc(p.tel)+'<br>':''}
+        ${p.kvk?'KvK: '+esc(p.kvk)+'<br>':''}
+        ${p.btw?'BTW: '+esc(p.btw)+'<br>':''}
+        ${p.iban?'IBAN: '+esc(p.iban):''}
+      </div>
+    </div>
+    <div class="right">
+      <strong>FACTUUR</strong><br>
+      <span class="muted">Nr: ${factuurNr}<br>Datum: ${vandaag}</span>
+    </div>
+  </div>
+
+  <div style="margin-bottom:20px;">
+    <span class="muted">Aan:</span><br>
+    <strong>${esc(opdr)}</strong>
+  </div>
+
+  <div class="muted">Gewerkte uren — ${maandLabel}</div>
+  <table>
+    <thead><tr>
+      <th>Datum</th><th>Omschrijving</th>
+      <th style="text-align:right;">Uren</th>
+      <th style="text-align:right;">Tarief</th>
+      <th style="text-align:right;">Bedrag</th>
+    </tr></thead>
+    <tbody>${rijen}</tbody>
+  </table>
+
+  <div class="tot">Totaal: € ${totBedrag.toFixed(2)}</div>
+  ${p.iban?`<p class="muted" style="margin-top:24px;">Gelieve het bedrag over te maken op ${esc(p.iban)} t.n.v. ${esc(bedrijf)} o.v.v. ${factuurNr}.</p>`:''}
+
+  <button onclick="window.print()" style="margin-top:30px;padding:10px 20px;font-size:14px;border:none;border-radius:6px;background:#1e3a8a;color:#fff;cursor:pointer;">Afdrukken / opslaan als PDF</button>
+  </body></html>`;
+
+  const w = window.open('','_blank');
+  if(!w){ toast('Sta pop-ups toe om de factuur te openen.','warning'); return; }
+  w.document.write(html);
+  w.document.close();
 }
 
 // Herlaad kassaoverzicht periodiek als eigenaar actief is — zodat ingediende kassalijsten verschijnen
@@ -10264,9 +10723,12 @@ function mobBouwNav(){
     { id:'uploads',     icon:'📎', label:'Bonnen' },
     { id:'overzichten', icon:'📋', label:'Lijsten' },
   ];
+  // Uren-tab: zichtbaar als uren-registratie aan staat voor dit bedrijf
+  // én deze persoon opdrachtgevers toegewezen heeft gekregen.
+  const urenZichtbaar = isUrenAan() && (_actieveKassier?.opdrachtgevers||[]).length > 0;
   // Overzichten altijd tonen als kassa actief is
   const zichtbaar = tabs.filter(t=>
-    modules.includes(t.id) ||
+    (t.id==='uren' ? urenZichtbaar : modules.includes(t.id)) ||
     (t.id==='overzichten' && modules.includes('kassa'))
   );
   nav.innerHTML = zichtbaar.map(t=>
