@@ -1541,10 +1541,70 @@ body.kassier-mobiel .mob-kassa-totaal {
         appId: "1:412388229605:web:ea2b4fc84a68536706ef0c"
       };
       firebase.initializeApp(_FB_CONFIG);
-      // Automatisch anoniem inloggen zodat Firestore Security Rules werken
-      firebase.auth().signInAnonymously().catch(e => console.error("Auth fout:", e));
       const db      = firebase.firestore();
       const storage = firebase.storage();
+
+      // ============================================================
+      // MAGIC LINK AUTH (fase 1)
+      // Vervangt het oude anonieme inloggen. De gebruiker typt zijn
+      // e-mail, krijgt een inloglink gemaild, klikt erop en is binnen.
+      // Geen wachtwoord, geen PIN nodig voor de identiteit zelf.
+      // ============================================================
+      const _MAGIC_EMAIL_KEY = 'ledger_magic_email';
+
+      // Instellingen voor de inloglink: na klikken kom je terug op deze app.
+      const _ACTION_CODE_SETTINGS = {
+        url: 'https://yschaken27.github.io/Ysboekhouding/',
+        handleCodeInApp: true
+      };
+
+      window.FBAuth = {
+        // Is er iemand ingelogd (echt account)?
+        currentUser(){ return firebase.auth().currentUser; },
+        currentEmail(){
+          const u = firebase.auth().currentUser;
+          return u && u.email ? u.email.toLowerCase() : null;
+        },
+
+        // Stuur een inloglink naar het opgegeven e-mailadres.
+        async stuurInlogLink(email){
+          const adres = (email||'').trim().toLowerCase();
+          if(!adres || adres.indexOf('@') < 0) throw new Error('Ongeldig e-mailadres');
+          await firebase.auth().sendSignInLinkToEmail(adres, _ACTION_CODE_SETTINGS);
+          // Onthoud het adres lokaal zodat we het na het klikken niet
+          // opnieuw hoeven te vragen (op hetzelfde apparaat).
+          try{ window.localStorage.setItem(_MAGIC_EMAIL_KEY, adres); }catch(e){}
+          return true;
+        },
+
+        // Is de huidige URL een inloglink waar we op geklikt hebben?
+        isInlogLink(){
+          return firebase.auth().isSignInWithEmailLink(window.location.href);
+        },
+
+        // Handel de inloglink af. Geeft het e-mailadres terug bij succes.
+        // Als we het adres niet kennen (ander apparaat), vraagt 'vraagEmail'
+        // om het opnieuw — die geef je mee als functie die een string teruggeeft.
+        async handelInlogLinkAf(vraagEmail){
+          let adres = null;
+          try{ adres = window.localStorage.getItem(_MAGIC_EMAIL_KEY); }catch(e){}
+          if(!adres && typeof vraagEmail === 'function'){
+            adres = await vraagEmail();
+          }
+          if(!adres) throw new Error('Geen e-mailadres bekend');
+          adres = adres.trim().toLowerCase();
+          const result = await firebase.auth().signInWithEmailLink(adres, window.location.href);
+          try{ window.localStorage.removeItem(_MAGIC_EMAIL_KEY); }catch(e){}
+          // Verwijder de inlogcode uit de URL zodat een refresh niet opnieuw probeert.
+          try{ window.history.replaceState({}, document.title, _ACTION_CODE_SETTINGS.url); }catch(e){}
+          return result.user && result.user.email ? result.user.email.toLowerCase() : adres;
+        },
+
+        async uitloggen(){
+          try{ window.localStorage.removeItem(_MAGIC_EMAIL_KEY); }catch(e){}
+          return firebase.auth().signOut();
+        }
+      };
 
       window.FB = {
         db, storage,
@@ -1962,6 +2022,16 @@ body.kassier-mobiel .mob-kassa-totaal {
         <button onclick="loginAls('kassier')" class="btn btn-secondary" style="padding:16px;font-size:16px;border-radius:10px;">
           👤 Gebruiker
         </button>
+      </div>
+
+      <!-- MAGIC LINK TEST (fase 1) — tijdelijk, wordt in fase 2 de hoofd-login -->
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em;">Inloggen via e-mail (nieuw)</div>
+        <input id="login-magic-email" type="email" inputmode="email" placeholder="jouw@email.nl"
+          style="width:100%;padding:12px;font-size:15px;border-radius:10px;border:2px solid var(--border);margin-bottom:8px;box-sizing:border-box;"
+          onkeydown="if(event.key==='Enter') stuurMagicLink()">
+        <button onclick="stuurMagicLink()" class="btn btn-secondary" style="width:100%;padding:12px;font-size:15px;border-radius:10px;">📧 Stuur inloglink</button>
+        <div id="login-magic-status" style="font-size:13px;margin-top:8px;display:none;"></div>
       </div>
     </div>
 
@@ -8681,6 +8751,33 @@ async function syncBedrijvenVanuitFirebase(){
   }
 }
 
+// ============================================================
+// MAGIC LINK — inloglink aanvragen (fase 1)
+// ============================================================
+async function stuurMagicLink(){
+  const inp = document.getElementById('login-magic-email');
+  const status = document.getElementById('login-magic-status');
+  const email = (inp && inp.value || '').trim().toLowerCase();
+  function toon(tekst, kleur){
+    if(!status) return;
+    status.style.display = 'block';
+    status.style.color = kleur;
+    status.textContent = tekst;
+  }
+  if(!email || email.indexOf('@') < 0){
+    toon('Vul een geldig e-mailadres in.', '#dc2626');
+    return;
+  }
+  toon('Bezig met versturen…', 'var(--text-mid)');
+  try{
+    await FBAuth.stuurInlogLink(email);
+    toon('Inloglink verstuurd naar ' + email + '. Check je inbox (ook spam) en klik op de link.', '#16a34a');
+  }catch(err){
+    console.warn('Versturen inloglink mislukt:', err);
+    toon('Kon de inloglink niet versturen: ' + (err && err.message ? err.message : 'onbekende fout'), '#dc2626');
+  }
+}
+
 async function initLogin(){
   // Sync bedrijvenlijst vanuit Firebase zodat alle devices alle bedrijven kennen
   await syncBedrijvenVanuitFirebase();
@@ -9676,6 +9773,38 @@ renderGB();
 renderImports();
 // Laad PINs van server
 laadPinnen();
+
+// ============================================================
+// MAGIC LINK — afhandeling bij opstarten (fase 1)
+// Als de huidige URL een inloglink is (de gebruiker heeft op de
+// link in zijn mail geklikt), dan loggen we hem hier in. Daarna
+// blijft het normale loginscherm voorlopig staan; pas in fase 2
+// nemen we de identiteit echt over.
+// ============================================================
+(function _verwerkMagicLinkBijOpstart(){
+  try{
+    if(window.FBAuth && FBAuth.isInlogLink()){
+      FBAuth.handelInlogLinkAf(function(){
+        // Ander apparaat dan waar de link is aangevraagd:
+        // vraag het e-mailadres nog één keer.
+        return window.prompt('Bevestig je e-mailadres om het inloggen af te ronden:');
+      }).then(function(email){
+        console.log('Ingelogd via magic link als:', email);
+        if(typeof toast === 'function'){
+          toast('Ingelogd als ' + email, 'success');
+        }
+      }).catch(function(err){
+        console.warn('Magic link kon niet worden afgehandeld:', err);
+        if(typeof toast === 'function'){
+          toast('Inloglink ongeldig of verlopen. Vraag een nieuwe aan.', 'error');
+        }
+      });
+    }
+  }catch(e){
+    console.warn('Fout bij magic-link afhandeling:', e);
+  }
+})();
+
 // Bijlage input event listeners — wacht op DOM
 document.addEventListener('DOMContentLoaded', function(){
   const bi = document.getElementById('f-bijlage-input');
