@@ -8712,13 +8712,13 @@ async function _bepaalToegankelijkeBedrijven(email){
     return { rol:'eigenaar', bedrijven: alle };
   }
 
-  // Kassier: lees per bedrijf de gastenlijst.
+  // Kassier: lees per bedrijf de toegangslijst (toegang/lijst, veld emails).
+  // Dit moet via getGastenlijst — dezelfde plek waar setGastenlijst schrijft.
   const toegestaan = [];
   for(const b of alle){
     try{
-      const json = await fbAanroep(fb=>fb.laadAlles(b));
-      const d = JSON.parse(json||'{}');
-      const lijst = (d.toegang && d.toegang.emails) || d.toegangEmails || [];
+      const json = await fbAanroep(fb=>fb.getGastenlijst(b));
+      const lijst = JSON.parse(json || '[]');
       if(Array.isArray(lijst) && lijst.map(x=>String(x).toLowerCase()).includes(email)){
         toegestaan.push(b);
       }
