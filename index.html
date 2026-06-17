@@ -3754,6 +3754,48 @@ function checkOnline(){
   return true;
 }
 
+// ============================================================
+// OFFLINE-BLOKKADE: de hele app vereist internet (cloud-only)
+// Zonder verbinding verschijnt een scherm over alles heen,
+// dat automatisch verdwijnt zodra de verbinding terug is.
+// ============================================================
+function toonOfflineBlokkade(){
+  let el = document.getElementById('offline-blokkade');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'offline-blokkade';
+    el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(20,28,38,.96);display:flex;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(4px);';
+    el.innerHTML = '<div style="max-width:360px;text-align:center;color:#fff;font-family:var(--sans,sans-serif);">'
+      + '<div style="font-size:48px;margin-bottom:16px;">&#128246;</div>'
+      + '<div style="font-size:20px;font-weight:600;margin-bottom:10px;">Geen internetverbinding</div>'
+      + '<div style="font-size:15px;line-height:1.5;opacity:.85;">Deze app werkt alleen met internet. Verbind met wifi of mobiele data; zodra je weer online bent, gaat het scherm vanzelf verder.</div>'
+      + '</div>';
+    document.body.appendChild(el);
+  }
+  el.style.display = 'flex';
+}
+
+function verbergOfflineBlokkade(){
+  const el = document.getElementById('offline-blokkade');
+  if(el) el.style.display = 'none';
+}
+
+function updateOfflineBlokkade(){
+  if(navigator.onLine) verbergOfflineBlokkade();
+  else toonOfflineBlokkade();
+}
+
+window.addEventListener('online', updateOfflineBlokkade);
+window.addEventListener('offline', updateOfflineBlokkade);
+// Bij het laden meteen controleren
+if(typeof document !== 'undefined'){
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', updateOfflineBlokkade);
+  } else {
+    updateOfflineBlokkade();
+  }
+}
+
 
 // ============================================================
 // SYNC STATUS
@@ -3873,6 +3915,10 @@ function saveCloud(){
 }
 
 function _doSaveCloud(){
+  // Zonder internet niets naar de cloud schrijven. Firebase is de enige
+  // bron van waarheid; er wordt bewust GEEN offline kopie bewaard die later
+  // gemerged moet worden (dat veroorzaakte teruggekeerde/verwijderde data).
+  if(!checkOnline()){ _syncBezig=false; return; }
   if(_syncBezig){ _pendingSave=true; return; }
   _syncBezig=true;
   toonSyncStatus('opslaan');
@@ -3890,7 +3936,7 @@ function _doSaveCloud(){
   }
   function onFail(err){
     toonSyncStatus('fout');
-    toast('Cloud opslaan mislukt — data lokaal opgeslagen.','warning');
+    toast('Opslaan mislukt — controleer je internetverbinding en probeer opnieuw.','error');
     console.error('Save fout:', err);
     _syncBezig=false;
     if(_pendingSave){ _pendingSave=false; _doSaveCloud(); }
@@ -4059,6 +4105,8 @@ async function slaaBijlagenOp(factuurId){
     // Lokale modus: gebruik IndexedDB zoals voorheen
     return _slaaBijlagenIDB(factuurId);
   }
+  // Cloud modus: zonder internet kan er niets geüpload worden
+  if(!checkOnline()) return [];
   // Cloud modus: upload naar Google Drive
   const meta = [];
   for(let i=0; i<_bijlagenBuffer.length; i++){
@@ -4959,6 +5007,7 @@ async function slaFactuurOp(){
 
   // Als aangemaakt vanuit een bon — markeer upload als verwerkt
   if(window._pendingBonUploadId){
+    if(!checkOnline()) return;
     const bonId = window._pendingBonUploadId;
     window._pendingBonUploadId = null;
     fbAanroep(fb=>fb.updateUploadStatus(huidigBedrijf, bonId, 'verwerkt'))
@@ -6583,6 +6632,7 @@ function bonMaakFactuur(uploadId, omschrijving, uploadDatum){
 }
 
 function bonAfkeuren(uploadId){
+  if(!checkOnline()) return;
   fbAanroep(fb=>fb.updateUploadStatus(huidigBedrijf, uploadId, 'afgekeurd'))
     .then(()=>{
       toast('Bon afgekeurd.','success');
@@ -8725,6 +8775,7 @@ async function laadPinnen(){
 }
 
 async function slaaPinOp(rol, pin){
+  if(!checkOnline()) return false;
   if(!window._pinnen) window._pinnen = {};
   const gehashtePin = await hashPin(pin);
   window._pinnen[rol] = gehashtePin;
@@ -8793,21 +8844,22 @@ async function laadBedrijfNamenUitFirebase(){
 }
 
 async function syncBedrijvenVanuitFirebase(){
-  // Firebase is de enige bron van waarheid voor de bedrijvenlijst
-  // localStorage is alleen cache voor als Firebase tijdelijk niet bereikbaar is
+  // Firebase is de ENIGE bron van waarheid voor de bedrijvenlijst.
+  // localStorage is uitsluitend een noodcache voor als Firebase tijdelijk
+  // onbereikbaar is — het mag NOOIT bepalen welke bedrijven bestaan.
   try{
     const json = await fbAanroep(fb=>fb.getBedrijvenLijst());
     const firebaseBedrijven = JSON.parse(json||'[]');
-    if(!firebaseBedrijven.length) return;
-    // Merge: Firebase bedrijven zijn leidend, maar bewaar ook lokale die Firebase niet kent
-    const lokaal = JSON.parse(localStorage.getItem('ledger_bedrijven')||'["Persoonlijk"]');
-    const merged = [...new Set([...firebaseBedrijven, ...lokaal])];
-    // Sla op in geheugen en cache
-    window._bedrijvenLijst = merged;
-    localStorage.setItem('ledger_bedrijven', JSON.stringify(merged));
+    // 'Persoonlijk' is een vast lokaal bedrijf dat altijd bestaat.
+    const lijst = [...new Set(['Persoonlijk', ...firebaseBedrijven])];
+    // Firebase is leidend: de lijst is exact wat Firebase teruggeeft
+    // (plus 'Persoonlijk'). Verwijderde bedrijven worden NIET teruggehaald
+    // uit localStorage. We overschrijven de cache met deze actuele lijst.
+    window._bedrijvenLijst = lijst;
+    localStorage.setItem('ledger_bedrijven', JSON.stringify(lijst));
     console.log('[Bedrijven] Gesynchroniseerd vanuit Firebase:', firebaseBedrijven.join(', '));
   }catch(e){
-    // Firebase niet bereikbaar — gebruik localStorage cache
+    // Firebase niet bereikbaar — val terug op localStorage cache.
     console.warn('[Bedrijven] Firebase sync mislukt, gebruik lokale cache:', e);
     const cached = JSON.parse(localStorage.getItem('ledger_bedrijven')||'["Persoonlijk"]');
     window._bedrijvenLijst = cached;
