@@ -9782,26 +9782,41 @@ laadPinnen();
 // nemen we de identiteit echt over.
 // ============================================================
 (function _verwerkMagicLinkBijOpstart(){
-  try{
-    if(window.FBAuth && FBAuth.isInlogLink()){
+  function toonInLogin(tekst, kleur){
+    var status = document.getElementById('login-magic-status');
+    if(status){
+      status.style.display = 'block';
+      status.style.color = kleur;
+      status.textContent = tekst;
+    }
+  }
+  function afhandelen(){
+    try{
+      if(!(window.FBAuth && FBAuth.isInlogLink())) return;
+      toonInLogin('Bezig met inloggen…', 'var(--text-mid)');
       FBAuth.handelInlogLinkAf(function(){
         // Ander apparaat dan waar de link is aangevraagd:
         // vraag het e-mailadres nog één keer.
         return window.prompt('Bevestig je e-mailadres om het inloggen af te ronden:');
       }).then(function(email){
         console.log('Ingelogd via magic link als:', email);
-        if(typeof toast === 'function'){
-          toast('Ingelogd als ' + email, 'success');
-        }
+        if(typeof toast === 'function') toast('Ingelogd als ' + email, 'success');
+        toonInLogin('✅ Ingelogd als ' + email + ' (fase 1: het loginscherm blijft nu nog staan).', '#16a34a');
       }).catch(function(err){
         console.warn('Magic link kon niet worden afgehandeld:', err);
-        if(typeof toast === 'function'){
-          toast('Inloglink ongeldig of verlopen. Vraag een nieuwe aan.', 'error');
-        }
+        if(typeof toast === 'function') toast('Inloglink ongeldig of verlopen.', 'error');
+        toonInLogin('❌ Inloggen mislukt: ' + (err && err.message ? err.message : 'onbekende fout'), '#dc2626');
       });
+    }catch(e){
+      console.warn('Fout bij magic-link afhandeling:', e);
+      toonInLogin('❌ Fout: ' + (e && e.message ? e.message : e), '#dc2626');
     }
-  }catch(e){
-    console.warn('Fout bij magic-link afhandeling:', e);
+  }
+  // Wacht tot de DOM klaar is, zodat toast() en het statusveld bestaan.
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', afhandelen);
+  } else {
+    afhandelen();
   }
 })();
 
