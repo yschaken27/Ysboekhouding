@@ -3178,6 +3178,9 @@ body.kassier-mobiel .mob-kassa-totaal {
               <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;">
                 <input type="checkbox" value="uploads" id="nk-mod-uploads" style="width:auto;"> 📎 Bonnen uploaden
               </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;">
+                <input type="checkbox" value="uren" id="nk-mod-uren" style="width:auto;"> ⏱ Uren invullen
+              </label>
             </div>
           </div>
         </div>
@@ -3231,6 +3234,14 @@ body.kassier-mobiel .mob-kassa-totaal {
       <div style="margin-bottom:8px;">
         <div style="font-size:12px;font-weight:600;color:var(--text-mid);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Modules</div>
         <div id="gd-modules" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+      </div>
+
+      <!-- Opdrachtgevers + tarieven (alleen bij uren-module) -->
+      <div id="gd-opdrachtgevers-wrap" style="margin-top:18px;display:none;">
+        <div style="font-size:12px;font-weight:600;color:var(--text-mid);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Opdrachtgevers &amp; tarieven</div>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:10px;line-height:1.6;">Voeg de opdrachtgevers toe waarvoor deze persoon uren mag schrijven. Per opdrachtgever kun je één of meer uurtarieven instellen (bijv. dag en nacht). Hij kan straks alleen hieruit kiezen.</div>
+        <div id="gd-opdrachtgevers-lijst" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;"></div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="voegOpdrachtgeverToe()">+ Opdrachtgever</button>
       </div>
 
     </div>
@@ -8975,7 +8986,7 @@ function renderGebruikersBeheer(){
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:4px;">
       ${kassiers.map(k=>{
         const modules = k.modules||['dashboard','kassa','uploads'];
-        const modLabels = modules.map(m=>({dashboard:'📊',kassa:'💰',facturen:'🧾',uploads:'📎'}[m]||m)).join(' ');
+        const modLabels = modules.map(m=>({dashboard:'📊',kassa:'💰',facturen:'🧾',uploads:'📎',uren:'⏱'}[m]||m)).join(' ');
         const initials = (k.naam||'?').charAt(0).toUpperCase();
         return `
           <div onclick="openGebruikerDetail('${k.id}')" style="
@@ -9025,15 +9036,87 @@ function openGebruikerDetail(id){
     </label>`).join('');
 
   // Modules checkboxes
-  const modDefs = [{v:'dashboard',l:'📊 Dashboard'},{v:'kassa',l:'💰 Kassa'},{v:'facturen',l:'🧾 Facturen'},{v:'uploads',l:'📎 Bonnen'}];
+  const modDefs = [{v:'dashboard',l:'📊 Dashboard'},{v:'kassa',l:'💰 Kassa'},{v:'facturen',l:'🧾 Facturen'},{v:'uploads',l:'📎 Bonnen'},{v:'uren',l:'⏱ Uren'}];
   document.getElementById('gd-modules').innerHTML = modDefs.map(m=>`
     <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;
       background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;">
-      <input type="checkbox" value="${m.v}" style="width:auto;" ${(k.modules||['dashboard','kassa','uploads']).includes(m.v)?'checked':''}>
+      <input type="checkbox" value="${m.v}" style="width:auto;" ${(k.modules||['dashboard','kassa','uploads']).includes(m.v)?'checked':''} onchange="updateOpdrachtgeverZichtbaarheid()">
       ${m.l}
     </label>`).join('');
 
+  // Opdrachtgevers: werkkopie maken zodat 'Annuleren' niets opslaat.
+  _gdOpdrachtgevers = JSON.parse(JSON.stringify(k.opdrachtgevers || []));
+  renderOpdrachtgevers();
+  updateOpdrachtgeverZichtbaarheid();
+
   openModal('modal-gebruiker-detail');
+}
+
+// Werkkopie van de opdrachtgevers tijdens het bewerken
+let _gdOpdrachtgevers = [];
+
+// Toon de opdrachtgevers-sectie alleen als de uren-module is aangevinkt
+function updateOpdrachtgeverZichtbaarheid(){
+  const urenAan = !!document.querySelector('#gd-modules input[value="uren"]:checked');
+  const wrap = document.getElementById('gd-opdrachtgevers-wrap');
+  if(wrap) wrap.style.display = urenAan ? 'block' : 'none';
+}
+
+function renderOpdrachtgevers(){
+  const el = document.getElementById('gd-opdrachtgevers-lijst');
+  if(!el) return;
+  if(!_gdOpdrachtgevers.length){
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);">Nog geen opdrachtgevers toegevoegd.</div>';
+    return;
+  }
+  el.innerHTML = _gdOpdrachtgevers.map((o,oi)=>`
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+        <input type="text" value="${esc(o.naam||'')}" placeholder="Naam opdrachtgever"
+          oninput="_gdOpdrachtgevers[${oi}].naam=this.value"
+          style="flex:1;font-size:13px;padding:7px 9px;">
+        <button type="button" onclick="verwijderOpdrachtgever(${oi})" title="Verwijderen"
+          style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;">🗑</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;" id="gd-tarieven-${oi}">
+        ${(o.tarieven||[]).map((t,ti)=>`
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input type="text" value="${esc(t.label||'')}" placeholder="Label (bijv. Dag)"
+              oninput="_gdOpdrachtgevers[${oi}].tarieven[${ti}].label=this.value"
+              style="flex:1;font-size:12px;padding:6px 8px;">
+            <span style="font-size:12px;color:var(--text-dim);">€</span>
+            <input type="number" step="0.01" value="${t.bedrag!=null?t.bedrag:''}" placeholder="0.00"
+              oninput="_gdOpdrachtgevers[${oi}].tarieven[${ti}].bedrag=parseFloat(this.value)||0"
+              style="width:80px;font-size:12px;padding:6px 8px;">
+            <span style="font-size:11px;color:var(--text-dim);">/uur</span>
+            <button type="button" onclick="verwijderTarief(${oi},${ti})" title="Tarief verwijderen"
+              style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:14px;">✕</button>
+          </div>`).join('')}
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm" style="margin-top:8px;font-size:11px;"
+        onclick="voegTariefToe(${oi})">+ Tarief</button>
+    </div>`).join('');
+}
+
+function voegOpdrachtgeverToe(){
+  _gdOpdrachtgevers.push({ naam:'', tarieven:[{label:'',bedrag:0}] });
+  renderOpdrachtgevers();
+}
+
+function verwijderOpdrachtgever(oi){
+  _gdOpdrachtgevers.splice(oi,1);
+  renderOpdrachtgevers();
+}
+
+function voegTariefToe(oi){
+  if(!_gdOpdrachtgevers[oi].tarieven) _gdOpdrachtgevers[oi].tarieven=[];
+  _gdOpdrachtgevers[oi].tarieven.push({label:'',bedrag:0});
+  renderOpdrachtgevers();
+}
+
+function verwijderTarief(oi,ti){
+  _gdOpdrachtgevers[oi].tarieven.splice(ti,1);
+  renderOpdrachtgevers();
 }
 
 async function slaGebruikerDetailOp(){
@@ -9054,6 +9137,21 @@ async function slaGebruikerDetailOp(){
   k.naam = naam;
   k.bedrijven = gekozenBedrijven;
   k.modules = gekozenModules;
+
+  // Opdrachtgevers opslaan als de uren-module aan staat; anders leeg laten.
+  if(gekozenModules.includes('uren')){
+    k.opdrachtgevers = _gdOpdrachtgevers
+      .map(o=>({
+        naam: (o.naam||'').trim(),
+        tarieven: (o.tarieven||[])
+          .filter(t=>(t.label||'').trim() || t.bedrag)
+          .map(t=>({ label:(t.label||'').trim(), bedrag: parseFloat(t.bedrag)||0 }))
+      }))
+      .filter(o=>o.naam && o.tarieven.length);
+  } else {
+    k.opdrachtgevers = [];
+  }
+
   save();
   localStorage.setItem('ledger_kassiers_cache', JSON.stringify(DB.kassiers));
 
@@ -10161,6 +10259,7 @@ function mobBouwNav(){
   const tabs = [
     { id:'dashboard',   icon:'📊', label:'Dashboard' },
     { id:'kassa',       icon:'💰', label:'Kassa' },
+    { id:'uren',        icon:'⏱', label:'Uren' },
     { id:'facturen',    icon:'🧾', label:'Facturen' },
     { id:'uploads',     icon:'📎', label:'Bonnen' },
     { id:'overzichten', icon:'📋', label:'Lijsten' },
@@ -10178,18 +10277,19 @@ function mobBouwNav(){
 }
 
 function mobNav(tab){
-  const allTabs = ['dashboard','kassa','facturen','uploads','overzichten'];
+  const allTabs = ['dashboard','kassa','uren','facturen','uploads','overzichten'];
   allTabs.forEach(t=>{
     const btn = document.getElementById('mob-btn-'+t);
     const page = document.getElementById('mob-page-'+t);
     if(btn) btn.classList.toggle('active', t===tab);
     if(page) page.classList.toggle('active', t===tab);
   });
-  const titels = { dashboard:'Dashboard', kassa:'Kassa', facturen:'Facturen', uploads:'Bonnen', overzichten:'Lijsten' };
+  const titels = { dashboard:'Dashboard', kassa:'Kassa', uren:'Uren', facturen:'Facturen', uploads:'Bonnen', overzichten:'Lijsten' };
   const titEl = document.getElementById('mob-topbar-naam');
   if(titEl) titEl.textContent = titels[tab]||'';
   if(tab==='dashboard')   renderMobDashboard();
   if(tab==='kassa')       initMobKassa();
+  if(tab==='uren')        initMobUren();
   if(tab==='overzichten') renderMobOverzichten();
   if(tab==='facturen')    renderMobFacturen();
   if(tab==='uploads')     initMobUploads();
