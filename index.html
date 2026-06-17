@@ -1617,9 +1617,27 @@ body.kassier-mobiel .mob-kassa-totaal {
         db, storage,
 
         async getBedrijvenLijst(){
-          // Haal alle bedrijven op uit Firebase
-          const snap = await db.collection('bedrijven').get();
-          return JSON.stringify(snap.docs.map(d=>d.id));
+          // Haal alle bedrijven op uit Firebase.
+          // Probleem dat dit oplost: bedrijven die zijn aangemaakt zonder een
+          // veld op het hoofddocument zijn "ghost documents". Ze staan wel in
+          // de Firebase Console maar komen NIET terug uit collection().get().
+          // Daarom voegen we de namen uit de collectionGroup 'data' toe: elk
+          // bedrijf heeft een data/main, en het bovenliggende bedrijf-id halen
+          // we daar uit. Zo verschijnen ook oudere bedrijven gewoon in de lijst.
+          const namen = new Set();
+          try{
+            const snap = await db.collection('bedrijven').get();
+            snap.docs.forEach(d=>namen.add(d.id));
+          }catch(e){}
+          try{
+            const grp = await db.collectionGroup('data').get();
+            grp.docs.forEach(d=>{
+              // pad: bedrijven/{naam}/data/{docId} -> parent.parent is het bedrijf
+              const bedrijfRef = d.ref.parent && d.ref.parent.parent;
+              if(bedrijfRef && bedrijfRef.id) namen.add(bedrijfRef.id);
+            });
+          }catch(e){}
+          return JSON.stringify(Array.from(namen));
         },
 
         async laadAlles(bedrijf){
@@ -1692,6 +1710,15 @@ body.kassier-mobiel .mob-kassa-totaal {
         },
 
         async maakBedrijf(naam){
+          // Schrijf eerst een echt veld naar het bedrijf-document zelf.
+          // Zonder dit blijft bedrijven/{naam} een "ghost document": het is
+          // wel zichtbaar in de Firebase Console, maar verschijnt NIET in
+          // collection('bedrijven').get(), waardoor andere apparaten het niet
+          // zien. Met dit veld komt het document gewoon in de lijst.
+          await db.collection('bedrijven').doc(naam).set({
+            naam,
+            aangemaakt: firebase.firestore.FieldValue.serverTimestamp()
+          }, {merge:true});
           await db.collection('bedrijven').doc(naam).collection('data').doc('main').set({
             eigenaarPin:'0000', kassierPin:'1234',
             kassiers:[],
