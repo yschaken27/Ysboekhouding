@@ -1552,6 +1552,13 @@ body.kassier-mobiel .mob-kassa-totaal {
       // ============================================================
       const _MAGIC_EMAIL_KEY = 'ledger_magic_email';
 
+      // Wie is de hoofdeigenaar? Dit e-mailadres is altijd eigenaar van
+      // alle bedrijven. Andere ingelogde e-mailadressen zijn kassier en
+      // zien alleen de bedrijven waar ze op de gastenlijst staan.
+      // (Dit moet exact overeenkomen met de Security Rules in fase 3.)
+      const _HOOFD_EIGENAAR = 'ymeraldo@hotmail.com';
+      window._HOOFD_EIGENAAR = _HOOFD_EIGENAAR;
+
       // Instellingen voor de inloglink: na klikken kom je terug op deze app.
       const _ACTION_CODE_SETTINGS = {
         url: 'https://yschaken27.github.io/Ysboekhouding/',
@@ -1662,6 +1669,25 @@ body.kassier-mobiel .mob-kassa-totaal {
             ref.doc('transacties').set({items: d.transacties||[]}),
             ref.doc('kassalijsten').set({items: d.kassalijsten||[]}),
           ]);
+          return true;
+        },
+
+        // ===== GASTENLIJST (fase 2) =====
+        // De toegangslijst van een bedrijf staat in
+        // bedrijven/{bedrijf}/toegang/lijst met een veld emails[].
+        // Iedereen op die lijst is kassier van dat bedrijf.
+        async getGastenlijst(bedrijf){
+          const snap = await db.collection('bedrijven').doc(bedrijf)
+            .collection('toegang').doc('lijst').get();
+          const data = snap.exists ? snap.data() : {};
+          return JSON.stringify(data.emails || []);
+        },
+
+        async setGastenlijst(bedrijf, emailsJson){
+          const emails = JSON.parse(emailsJson || '[]');
+          await db.collection('bedrijven').doc(bedrijf)
+            .collection('toegang').doc('lijst')
+            .set({ emails: emails }, {merge:true});
           return true;
         },
 
@@ -2014,25 +2040,28 @@ body.kassier-mobiel .mob-kassa-totaal {
 
     <!-- STAP 1: Kies rol -->
     <div id="login-stap-rol">
-      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:16px;">Wie ben jij?</div>
-      <div style="display:flex;flex-direction:column;gap:12px;">
-        <button onclick="loginAls('eigenaar')" class="btn btn-primary" style="padding:16px;font-size:16px;border-radius:10px;">
-          🔑 Eigenaar
-        </button>
-        <button onclick="loginAls('kassier')" class="btn btn-secondary" style="padding:16px;font-size:16px;border-radius:10px;">
-          👤 Gebruiker
-        </button>
-      </div>
+      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px;">Inloggen</div>
+      <div style="font-size:12px;color:var(--text-mid);margin-bottom:16px;">Vul je e-mailadres in. Je krijgt een inloglink in je mail — klik erop en je bent binnen. Geen wachtwoord nodig.</div>
+      <input id="login-magic-email" type="email" inputmode="email" placeholder="jouw@email.nl"
+        style="width:100%;padding:14px;font-size:16px;border-radius:10px;border:2px solid var(--border);margin-bottom:10px;box-sizing:border-box;"
+        onkeydown="if(event.key==='Enter') stuurMagicLink()">
+      <button onclick="stuurMagicLink()" class="btn btn-primary" style="width:100%;padding:14px;font-size:16px;border-radius:10px;">📧 Stuur inloglink</button>
+      <div id="login-magic-status" style="font-size:13px;margin-top:10px;display:none;"></div>
 
-      <!-- MAGIC LINK TEST (fase 1) — tijdelijk, wordt in fase 2 de hoofd-login -->
-      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
-        <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em;">Inloggen via e-mail (nieuw)</div>
-        <input id="login-magic-email" type="email" inputmode="email" placeholder="jouw@email.nl"
-          style="width:100%;padding:12px;font-size:15px;border-radius:10px;border:2px solid var(--border);margin-bottom:8px;box-sizing:border-box;"
-          onkeydown="if(event.key==='Enter') stuurMagicLink()">
-        <button onclick="stuurMagicLink()" class="btn btn-secondary" style="width:100%;padding:12px;font-size:15px;border-radius:10px;">📧 Stuur inloglink</button>
-        <div id="login-magic-status" style="font-size:13px;margin-top:8px;display:none;"></div>
+      <!-- Oude rol-knoppen: verborgen vangnet, verdwijnt in fase 3 -->
+      <div style="display:none;">
+        <button onclick="loginAls('eigenaar')">🔑 Eigenaar</button>
+        <button onclick="loginAls('kassier')">👤 Gebruiker</button>
       </div>
+    </div>
+
+    <!-- STAP: Bedrijf kiezen (na inloggen via e-mail) -->
+    <div id="login-stap-bedrijf-kiezer" style="display:none;">
+      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px;">Kies een bedrijf</div>
+      <div id="login-bedrijf-kiezer-sub" style="font-size:12px;color:var(--text-mid);margin-bottom:16px;">Welke administratie wil je openen?</div>
+      <div id="login-bedrijf-kiezer-lijst" style="display:flex;flex-direction:column;gap:10px;"></div>
+      <div id="login-bedrijf-kiezer-leeg" style="display:none;font-size:13px;color:var(--text-mid);margin-top:12px;"></div>
+      <button onclick="uitloggen()" style="background:none;border:none;color:var(--text-dim);font-size:13px;cursor:pointer;margin-top:16px;">← Uitloggen</button>
     </div>
 
     <!-- STAP 2a: Eigenaar PIN -->
@@ -8754,6 +8783,125 @@ async function syncBedrijvenVanuitFirebase(){
 // ============================================================
 // MAGIC LINK — inloglink aanvragen (fase 1)
 // ============================================================
+// ============================================================
+// MAGIC LINK — na inloggen: bepaal bedrijven en toon kiezer (fase 2)
+// ============================================================
+
+// Toon een specifieke login-stap, verberg de rest.
+function _toonLoginStap(id){
+  ['login-stap-rol','login-stap-bedrijf-kiezer','login-stap-eigenaar','login-stap-kassier-bedrijf','login-stap-kassier-pin'].forEach(function(s){
+    var el = document.getElementById(s);
+    if(el) el.style.display = (s === id) ? 'block' : 'none';
+  });
+}
+
+// Welke bedrijven mag dit e-mailadres zien, en in welke rol?
+// Hoofdeigenaar ziet alles als eigenaar. Anders: kassier bij de bedrijven
+// waar zijn e-mail op de gastenlijst (toegang/lijst) staat.
+async function _bepaalToegankelijkeBedrijven(email){
+  email = (email||'').trim().toLowerCase();
+  const isEigenaar = email === (window._HOOFD_EIGENAAR||'').toLowerCase();
+
+  // Zorg dat we de actuele bedrijvenlijst hebben.
+  try{ await syncBedrijvenVanuitFirebase(); }catch(e){}
+  const alle = getBedrijven();
+
+  if(isEigenaar){
+    return { rol:'eigenaar', bedrijven: alle };
+  }
+
+  // Kassier: lees per bedrijf de gastenlijst.
+  const toegestaan = [];
+  for(const b of alle){
+    try{
+      const json = await fbAanroep(fb=>fb.laadAlles(b));
+      const d = JSON.parse(json||'{}');
+      const lijst = (d.toegang && d.toegang.emails) || d.toegangEmails || [];
+      if(Array.isArray(lijst) && lijst.map(x=>String(x).toLowerCase()).includes(email)){
+        toegestaan.push(b);
+      }
+    }catch(e){}
+  }
+  return { rol:'kassier', bedrijven: toegestaan };
+}
+
+// Bouw de bedrijfskiezer op na succesvol inloggen.
+async function toonBedrijfsKiezer(email){
+  _toegankelijkeRol = null;
+  const sub = document.getElementById('login-bedrijf-kiezer-sub');
+  const lijstEl = document.getElementById('login-bedrijf-kiezer-lijst');
+  const leegEl = document.getElementById('login-bedrijf-kiezer-leeg');
+  if(lijstEl) lijstEl.innerHTML = '<div style="color:var(--text-mid);font-size:13px;">Bedrijven laden…</div>';
+  if(leegEl) leegEl.style.display = 'none';
+  _toonLoginStap('login-stap-bedrijf-kiezer');
+
+  const res = await _bepaalToegankelijkeBedrijven(email);
+  _toegankelijkeRol = res.rol;
+  const namen = getBedrijfProfielNamen();
+
+  if(sub){
+    sub.textContent = res.rol === 'eigenaar'
+      ? 'Je bent ingelogd als eigenaar. Kies welke administratie je wilt openen.'
+      : 'Welkom! Kies het bedrijf dat je wilt openen.';
+  }
+
+  if(!res.bedrijven.length){
+    if(lijstEl) lijstEl.innerHTML = '';
+    if(leegEl){
+      leegEl.style.display = 'block';
+      leegEl.textContent = res.rol === 'kassier'
+        ? 'Je e-mailadres staat nog bij geen enkel bedrijf op de toegangslijst. Vraag de eigenaar om je toe te voegen.'
+        : 'Er zijn nog geen bedrijven.';
+    }
+    return;
+  }
+
+  if(lijstEl){
+    lijstEl.innerHTML = res.bedrijven.map(function(b){
+      const weergave = (namen[b]||b);
+      const veilig = b.replace(/'/g, "\\'");
+      return '<button onclick="kiesBedrijfNaLogin(\'' + veilig + '\')" class="btn btn-secondary" '
+        + 'style="padding:16px;font-size:16px;border-radius:10px;text-align:left;">🏢 ' + weergave + '</button>';
+    }).join('');
+  }
+}
+
+// De gebruiker koos een bedrijf in de kiezer → log werkelijk in.
+// Hergebruikt dezelfde "ingelogd"-stappen als de oude PIN-flow.
+async function kiesBedrijfNaLogin(bedrijf){
+  const rol = _toegankelijkeRol || 'eigenaar';
+  _loginRol = (rol === 'kassier') ? 'kassier' : 'eigenaar';
+
+  if(_loginRol === 'kassier'){
+    const email = (window.FBAuth && FBAuth.currentEmail && FBAuth.currentEmail()) || 'Gebruiker';
+    _actieveKassier = { naam: email, bedrijven: [bedrijf] };
+  } else {
+    _actieveKassier = null;
+  }
+
+  // Wissel naar het gekozen bedrijf en laad de data.
+  if(bedrijf !== huidigBedrijf){
+    huidigBedrijf = bedrijf;
+    try{ localStorage.setItem('ledger_actief_bedrijf', bedrijf); }catch(e){}
+  }
+  try{ await fbAanroep(fb=>fb.laadAlles(bedrijf)); }catch(e){}
+  load();
+
+  stopLoginSyncInterval();
+  document.getElementById('login-overlay').style.display = 'none';
+  pasNavAanRol();
+
+  if(_loginRol === 'kassier'){
+    const badge = document.getElementById('kassier-naam-badge');
+    if(badge) badge.textContent = '👤 ' + _actieveKassier.naam;
+    toast('Welkom 👋','success');
+  } else {
+    toast('Ingelogd als eigenaar 🔑','success');
+  }
+}
+
+let _toegankelijkeRol = null;
+
 async function stuurMagicLink(){
   const inp = document.getElementById('login-magic-email');
   const status = document.getElementById('login-magic-status');
@@ -9035,30 +9183,33 @@ function pasNavAanRol(){
 function uitloggen(){
   _loginRol = null;
   _loginTarget = null;
+  _toegankelijkeRol = null;
   document.body.classList.remove('kassier-mobiel');
   _actieveKassier = null;
   _loginKassierBedrijf = null;
   document.body.classList.remove('kassier-modus');
+  // Beëindig de Firebase-sessie zodat je echt uitlogt.
+  try{ if(window.FBAuth && FBAuth.uitloggen) FBAuth.uitloggen(); }catch(e){}
   // Reset alle login stappen
-  ['login-stap-eigenaar','login-stap-kassier-bedrijf','login-stap-kassier-pin'].forEach(id=>{
+  ['login-stap-bedrijf-kiezer','login-stap-eigenaar','login-stap-kassier-bedrijf','login-stap-kassier-pin'].forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.style.display = 'none';
   });
   const stapRol = document.getElementById('login-stap-rol');
   if(stapRol) stapRol.style.display = 'block';
-  // Reset PIN velden
-  ['login-pin-eigenaar','login-pin-kassier','login-kassier-bedrijf-input'].forEach(id=>{
+  // Reset velden
+  ['login-pin-eigenaar','login-pin-kassier','login-kassier-bedrijf-input','login-magic-email'].forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.value = '';
   });
+  const st = document.getElementById('login-magic-status');
+  if(st) st.style.display = 'none';
   // Toon login overlay
   document.getElementById('login-overlay').style.display = 'flex';
   // Verberg uitloggen en instellingen knop
   const instBtn = document.getElementById('inst-btn');
   if(instBtn) instBtn.style.display = 'none';
-  // Herlaad kassiers zodat nieuw toegevoegde gebruikers direct kunnen inloggen
   resetPinPogingen();
-  laadKassiersVoorLogin();
 }
 
 // ── PIN wijzigen via instellingen modal ──
@@ -9792,7 +9943,34 @@ laadPinnen();
   }
   function afhandelen(){
     try{
-      if(!(window.FBAuth && FBAuth.isInlogLink())) return;
+      if(!window.FBAuth){
+        toonInLogin('❌ FBAuth niet geladen.', '#dc2626');
+        return;
+      }
+      var isLink = false;
+      try{ isLink = FBAuth.isInlogLink(); }catch(e){ console.warn('isInlogLink fout:', e); }
+      if(!isLink){
+        // Geen herkende inloglink. Toon dit zichtbaar zodat we weten waarom.
+        console.log('Geen inloglink herkend. URL =', window.location.href);
+        var heeftCode = window.location.href.indexOf('oobCode') >= 0 || window.location.href.indexOf('mode=signIn') >= 0;
+        if(heeftCode){
+          toonInLogin('⚠️ De link bevat wél een inlogcode, maar Firebase herkent hem niet. Controleer of dit domein bij "Authorized domains" staat.', '#d97706');
+        }
+        // Geen inlogparameters: misschien is de gebruiker al ingelogd
+        // (Firebase onthoudt de sessie). Dan tonen we meteen de kiezer.
+        try{
+          firebase.auth().onAuthStateChanged(function(user){
+            if(user && user.email && typeof toonBedrijfsKiezer === 'function'){
+              // Alleen tonen als we nog op het loginscherm staan.
+              var overlay = document.getElementById('login-overlay');
+              if(overlay && overlay.style.display !== 'none'){
+                toonBedrijfsKiezer(user.email.toLowerCase());
+              }
+            }
+          });
+        }catch(e){ console.warn('onAuthStateChanged niet beschikbaar:', e); }
+        return;
+      }
       toonInLogin('Bezig met inloggen…', 'var(--text-mid)');
       FBAuth.handelInlogLinkAf(function(){
         // Ander apparaat dan waar de link is aangevraagd:
@@ -9801,7 +9979,8 @@ laadPinnen();
       }).then(function(email){
         console.log('Ingelogd via magic link als:', email);
         if(typeof toast === 'function') toast('Ingelogd als ' + email, 'success');
-        toonInLogin('✅ Ingelogd als ' + email + ' (fase 1: het loginscherm blijft nu nog staan).', '#16a34a');
+        // Toon nu de bedrijfskiezer.
+        if(typeof toonBedrijfsKiezer === 'function') toonBedrijfsKiezer(email);
       }).catch(function(err){
         console.warn('Magic link kon niet worden afgehandeld:', err);
         if(typeof toast === 'function') toast('Inloglink ongeldig of verlopen.', 'error');
