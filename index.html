@@ -4117,6 +4117,13 @@ async function verwijderBedrijf(naam){
       // Verwijder uploads subcollectie
       const upSnap = await db.collection('bedrijven').doc(naam).collection('uploads').get().catch(()=>null);
       if(upSnap) await Promise.all(upSnap.docs.map(d=>d.ref.delete().catch(()=>{})));
+      // Verwijder ook eventuele toegang/gastenlijst subcollectie
+      const toeSnap = await db.collection('bedrijven').doc(naam).collection('toegang').get().catch(()=>null);
+      if(toeSnap) await Promise.all(toeSnap.docs.map(d=>d.ref.delete().catch(()=>{})));
+      // BELANGRIJK: verwijder tot slot het bedrijf-document zelf. Zonder dit
+      // blijft bedrijven/{naam} bestaan (met zijn naam-veld) en blijft het
+      // bedrijf op andere apparaten in de lijst staan.
+      await db.collection('bedrijven').doc(naam).delete().catch(()=>{});
       toast(`Bedrijf "${naam}" volledig verwijderd.`,'info');
     }
   }catch(e){
