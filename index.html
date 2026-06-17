@@ -1651,8 +1651,6 @@ body.kassier-mobiel .mob-kassa-totaal {
           ]);
           const main = mainSnap.exists ? mainSnap.data() : {};
           return JSON.stringify({
-            eigenaarPin: main.eigenaarPin||'0000',
-            kassierPin:  main.kassierPin||'1234',
             kassiers:    main.kassiers||[],
             profiel:     main.profiel||{},
             grootboek:   main.grootboek||[],
@@ -1672,8 +1670,6 @@ body.kassier-mobiel .mob-kassa-totaal {
           const ref = db.collection('bedrijven').doc(bedrijf).collection('data');
           await Promise.all([
             ref.doc('main').set({
-              eigenaarPin: d.eigenaarPin||'',
-              kassierPin:  d.kassierPin||'',
               kassiers:    d.kassiers||[],
               profiel:     d.profiel||{},
               grootboek:   d.grootboek||[],
@@ -1720,7 +1716,6 @@ body.kassier-mobiel .mob-kassa-totaal {
             aangemaakt: firebase.firestore.FieldValue.serverTimestamp()
           }, {merge:true});
           await db.collection('bedrijven').doc(naam).collection('data').doc('main').set({
-            eigenaarPin:'0000', kassierPin:'1234',
             kassiers:[],
             profiel:{
               naam,
@@ -1758,19 +1753,6 @@ body.kassier-mobiel .mob-kassa-totaal {
         async checkBonBestaat(bedrijf, bonId){
           const snap = await db.collection('bedrijven').doc(bedrijf).collection('uploads').doc(bonId).get();
           return snap.exists;
-        },
-
-        async getPinnen(bedrijf){
-          const snap = await db.collection('bedrijven').doc(bedrijf).collection('data').doc('main').get();
-          if(!snap.exists) return JSON.stringify({eigenaar:'0000',kassier:'1234'});
-          const d = snap.data();
-          return JSON.stringify({eigenaar:d.eigenaarPin||'0000', kassier:d.kassierPin||'1234'});
-        },
-
-        async slaaPinOp(bedrijf, rol, pin){
-          const veld = rol==='eigenaar' ? 'eigenaarPin' : 'kassierPin';
-          await db.collection('bedrijven').doc(bedrijf).collection('data').doc('main').set({[veld]:String(pin)}, {merge:true});
-          return true;
         },
 
         async uploadBijlage(bedrijf, jsonStr){
@@ -2074,12 +2056,6 @@ body.kassier-mobiel .mob-kassa-totaal {
         onkeydown="if(event.key==='Enter') stuurMagicLink()">
       <button onclick="stuurMagicLink()" class="btn btn-primary" style="width:100%;padding:14px;font-size:16px;border-radius:10px;">📧 Stuur inloglink</button>
       <div id="login-magic-status" style="font-size:13px;margin-top:10px;display:none;"></div>
-
-      <!-- Oude rol-knoppen: verborgen vangnet, verdwijnt in fase 3 -->
-      <div style="display:none;">
-        <button onclick="loginAls('eigenaar')">🔑 Eigenaar</button>
-        <button onclick="loginAls('kassier')">👤 Gebruiker</button>
-      </div>
     </div>
 
     <!-- STAP: Bedrijf kiezen (na inloggen via e-mail) -->
@@ -2089,43 +2065,6 @@ body.kassier-mobiel .mob-kassa-totaal {
       <div id="login-bedrijf-kiezer-lijst" style="display:flex;flex-direction:column;gap:10px;"></div>
       <div id="login-bedrijf-kiezer-leeg" style="display:none;font-size:13px;color:var(--text-mid);margin-top:12px;"></div>
       <button onclick="uitloggen()" style="background:none;border:none;color:var(--text-dim);font-size:13px;cursor:pointer;margin-top:16px;">← Uitloggen</button>
-    </div>
-
-    <!-- STAP 2a: Eigenaar PIN -->
-    <div id="login-stap-eigenaar" style="display:none;">
-      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px;">🔑 Eigenaar inloggen</div>
-      <div style="font-size:12px;color:var(--text-mid);margin-bottom:16px;">Voer je eigenaar PIN in</div>
-      <input id="login-pin-eigenaar" type="password" inputmode="numeric" maxlength="6"
-        style="text-align:center;font-size:28px;letter-spacing:.4em;font-family:var(--mono);padding:14px;border-radius:10px;border:2px solid var(--border);width:100%;"
-        placeholder="••••" onkeydown="if(event.key==='Enter') bevestigPin()">
-      <button onclick="bevestigPin()" class="btn btn-primary" style="width:100%;margin-top:12px;padding:14px;font-size:16px;border-radius:10px;">Inloggen</button>
-      <div id="login-fout-eigenaar" style="color:#dc2626;font-size:13px;margin-top:8px;display:none;">Verkeerde PIN. Probeer opnieuw.</div>
-      <button onclick="resetLogin()" style="background:none;border:none;color:var(--text-dim);font-size:13px;cursor:pointer;margin-top:12px;">← Terug</button>
-    </div>
-
-    <!-- STAP 2b: Gebruiker — voer bedrijfsnaam in -->
-    <div id="login-stap-kassier-bedrijf" style="display:none;">
-      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px;">👤 Gebruiker inloggen</div>
-      <div style="font-size:12px;color:var(--text-mid);margin-bottom:16px;">Stap 1 van 2 — Voer de bedrijfsnaam in</div>
-      <input id="login-kassier-bedrijf-input" type="text" placeholder="Bedrijfsnaam"
-        style="width:100%;padding:14px;font-size:16px;border-radius:10px;border:2px solid var(--border);margin-bottom:12px;"
-        onkeydown="if(event.key==='Enter') kassierNaarPin()">
-      <button onclick="kassierNaarPin()" class="btn btn-primary" style="width:100%;padding:14px;font-size:16px;border-radius:10px;">Volgende →</button>
-      <div id="login-fout-bedrijf" style="color:#dc2626;font-size:13px;margin-top:8px;display:none;">Bedrijfsnaam niet gevonden.</div>
-      <button onclick="resetLogin()" style="background:none;border:none;color:var(--text-dim);font-size:13px;cursor:pointer;margin-top:12px;">← Terug</button>
-    </div>
-
-    <!-- STAP 2c: Gebruiker — voer PIN in -->
-    <div id="login-stap-kassier-pin" style="display:none;">
-      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px;">👤 Gebruiker inloggen</div>
-      <div id="login-kassier-bedrijf-label" style="font-size:13px;color:var(--accent);font-weight:600;margin-bottom:6px;"></div>
-      <div style="font-size:12px;color:var(--text-mid);margin-bottom:16px;">Stap 2 van 2 — Voer je PIN in</div>
-      <input id="login-pin-kassier" type="password" inputmode="numeric" maxlength="6"
-        style="text-align:center;font-size:28px;letter-spacing:.4em;font-family:var(--mono);padding:14px;border-radius:10px;border:2px solid var(--border);width:100%;"
-        placeholder="••••" onkeydown="if(event.key==='Enter') bevestigPin()">
-      <button onclick="bevestigPin()" class="btn btn-primary" style="width:100%;margin-top:12px;padding:14px;font-size:16px;border-radius:10px;">Inloggen</button>
-      <div id="login-fout-kassier" style="color:#dc2626;font-size:13px;margin-top:8px;display:none;">Verkeerde PIN. Probeer opnieuw.</div>
-      <button onclick="kassierTerugNaarBedrijf()" style="background:none;border:none;color:var(--text-dim);font-size:13px;cursor:pointer;margin-top:12px;">← Terug</button>
     </div>
 
   </div>
@@ -2140,7 +2079,7 @@ body.kassier-mobiel .mob-kassa-totaal {
       <span class="topbar-bedrijf" id="sidebar-bedrijf-naam" onclick="if(_loginRol==='eigenaar')openBedrijfModal()">Persoonlijk</span>
       <button id="wissel-btn" onclick="if(_loginRol==='eigenaar')openBedrijfModal()" class="btn btn-secondary btn-sm" style="padding:3px 8px;font-size:11px;">⇄</button>
       <div class="topbar-spacer"></div>
-      <button id="inst-btn" onclick="openInstellingenModal('pin')" style="background:none;border:none;color:rgba(255,255,255,.6);cursor:pointer;font-size:12px;padding:4px 8px;border-radius:4px;display:none;" title="Instellingen">⚙ Instellingen</button>
+      <button id="inst-btn" onclick="openInstellingenModal()" style="background:none;border:none;color:rgba(255,255,255,.6);cursor:pointer;font-size:12px;padding:4px 8px;border-radius:4px;display:none;" title="Instellingen">⚙ Instellingen</button>
       <button id="pwa-install-btn" onclick="installPWA()" style="display:none;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;cursor:pointer;font-size:12px;padding:4px 10px;border-radius:4px;" title="Installeer als app">📱 Installeer app</button>
       <button onclick="uitloggen()" style="background:none;border:none;color:rgba(255,255,255,.6);cursor:pointer;font-size:12px;padding:4px 8px;border-radius:4px;" title="Uitloggen">⎋ Uitloggen</button>
       <span class="topbar-sync" id="sync-status-top"></span>
@@ -3198,47 +3137,11 @@ body.kassier-mobiel .mob-kassa-totaal {
       <button class="modal-close" onclick="closeModal('modal-instellingen')">✕</button>
     </div>
 
-    <div class="tabs" style="margin-bottom:20px;">
-      <div class="tab active" id="inst-tab-pin" onclick="switchInstTab('pin')">🔑 Eigenaar PIN</div>
-      <div class="tab" id="inst-tab-kassiers" onclick="switchInstTab('kassiers')">👤 Gebruikers</div>
-    </div>
-
-    <!-- TAB: PIN -->
-    <div id="inst-wrap-pin">
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:16px;font-size:12px;color:var(--text-mid);line-height:1.7;">
-        <strong style="color:var(--text);">Eigenaar PIN</strong><br>
-        De PIN wordt opgeslagen in Firebase en geldt op elk apparaat.
-        Met de eigenaar PIN heb je volledige toegang tot de app.
-      </div>
-
-      <!-- Eigenaar PIN wijzigen -->
-      <div class="card">
-        <div class="card-title">PIN wijzigen</div>
-        <div class="form-grid">
-          <div class="form-group">
-            <label>Huidige PIN</label>
-            <input type="password" id="inst-eigen-huidig" inputmode="numeric" maxlength="6" placeholder="••••">
-          </div>
-          <div class="form-group">
-            <label>Nieuwe PIN</label>
-            <input type="password" id="inst-eigen-nieuw" inputmode="numeric" maxlength="6" placeholder="Minimaal 4 cijfers">
-          </div>
-          <div class="form-group">
-            <label>Bevestig nieuwe PIN</label>
-            <input type="password" id="inst-eigen-bevestig" inputmode="numeric" maxlength="6" placeholder="Herhaal nieuwe PIN">
-          </div>
-          <div class="form-group" style="display:flex;align-items:flex-end;">
-            <button class="btn btn-primary" style="width:100%;" onclick="verwerkPINwijziging('eigenaar')">PIN wijzigen</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- TAB: KASSIERS -->
-    <div id="inst-wrap-kassiers" style="display:none;">
+    <!-- GEBRUIKERS -->
+    <div id="inst-wrap-kassiers">
       <div style="font-size:12px;color:var(--text-mid);margin-bottom:14px;line-height:1.7;">
-        Voeg kassiers toe en stel per kassier in tot welke bedrijven zij toegang hebben.
-        Elke gebruiker heeft een eigen naam en PIN.
+        Voeg gebruikers toe met hun e-mailadres en stel per gebruiker in tot welke bedrijven zij toegang hebben.
+        Zij loggen in via een inloglink die naar hun e-mail wordt gestuurd, en krijgen altijd de kassier-weergave.
       </div>
 
       <!-- Bestaande kassiers -->
@@ -3253,8 +3156,8 @@ body.kassier-mobiel .mob-kassa-totaal {
             <input id="nk-naam" type="text" placeholder="Bijv. Sarah">
           </div>
           <div class="form-group">
-            <label>PIN (4-6 cijfers)</label>
-            <input id="nk-pin" type="password" inputmode="numeric" maxlength="6" placeholder="••••">
+            <label>E-mailadres</label>
+            <input id="nk-email" type="email" inputmode="email" placeholder="sarah@email.nl">
           </div>
           <div class="form-group full">
             <label>Toegang tot bedrijven</label>
@@ -3306,13 +3209,10 @@ body.kassier-mobiel .mob-kassa-totaal {
         </div>
       </div>
 
-      <!-- PIN wijzigen -->
+      <!-- E-mailadres (inlogsleutel, niet wijzigbaar) -->
       <div style="margin-bottom:18px;">
-        <div style="font-size:12px;font-weight:600;color:var(--text-mid);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">PIN wijzigen</div>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <input id="gd-pin" type="password" inputmode="numeric" maxlength="6" placeholder="Nieuwe PIN (leeg = ongewijzigd)"
-            style="flex:1;font-size:13px;">
-        </div>
+        <div style="font-size:12px;font-weight:600;color:var(--text-mid);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">E-mailadres (inloggen)</div>
+        <div id="gd-email-disp" style="font-size:13px;color:var(--text);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-family:var(--mono,monospace);"></div>
       </div>
 
       <!-- Naam bewerken -->
@@ -8695,93 +8595,9 @@ async function verwijderBijlage(type, id, index){
 }
 // ===== LOGIN SYSTEEM =====
 // PIN standaard '1234' voor kassier — eigenaar heeft geen PIN nodig
-// Sla PIN op in localStorage (in productie via Apps Script properties)
-let _loginRol = null; // 'eigenaar' of 'gebruiker'
-let _loginTarget = null;
+// Rol en actieve gebruiker worden gezet bij login via de e-mail-inloglink.
+let _loginRol = null; // 'eigenaar' of 'kassier'
 let _actieveKassier = null;
-let _loginKassierBedrijf = null;
-let _pinPogingen = 0;
-let _pinGeblokkeerd = false;
-let _pinDeblokkeerTimer = null;
-const MAX_PIN_POGINGEN = 5;
-const PIN_BLOKKEER_DUUR = 300; // seconden (5 minuten)
-
-function registreerMisluktePinPoging(){
-  _pinPogingen++;
-  if(_pinPogingen >= MAX_PIN_POGINGEN){
-    _pinGeblokkeerd = true;
-    let seconden = PIN_BLOKKEER_DUUR;
-    // Toon blokkering
-    ['login-fout-eigenaar','login-fout-kassier'].forEach(id=>{
-      const el = document.getElementById(id);
-      if(el){ el.style.display='block'; el.textContent=`Te veel pogingen. Probeer het over ${seconden} seconden.`; }
-    });
-    // Disable PIN invoer
-    ['login-pin-eigenaar','login-pin-kassier'].forEach(id=>{
-      const el = document.getElementById(id);
-      if(el) el.disabled = true;
-    });
-    clearInterval(_pinDeblokkeerTimer);
-    _pinDeblokkeerTimer = setInterval(()=>{
-      seconden--;
-      ['login-fout-eigenaar','login-fout-kassier'].forEach(id=>{
-        const el = document.getElementById(id);
-        if(el && el.style.display!=='none') el.textContent=`Te veel pogingen. Probeer het over ${seconden} seconden.`;
-      });
-      if(seconden <= 0){
-        clearInterval(_pinDeblokkeerTimer);
-        _pinGeblokkeerd = false;
-        _pinPogingen = 0;
-        ['login-pin-eigenaar','login-pin-kassier'].forEach(id=>{
-          const el = document.getElementById(id);
-          if(el) el.disabled = false;
-        });
-        ['login-fout-eigenaar','login-fout-kassier'].forEach(id=>{
-          const el = document.getElementById(id);
-          if(el) el.style.display='none';
-        });
-      }
-    }, 1000);
-  }
-}
-
-function resetPinPogingen(){
-  _pinPogingen = 0;
-  _pinGeblokkeerd = false;
-  clearInterval(_pinDeblokkeerTimer);
-}
-const EIGENAAR_PIN_KEY = 'ledger_eigenaar_pin';
-const KASSIER_PIN_KEY  = 'ledger_kassier_pin';
-
-// Hash een PIN met SHA-256 via de Web Crypto API
-async function hashPin(pin){
-  const encoder = new TextEncoder();
-  const data = encoder.encode(String(pin));
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-function getPin(rol){
-  // Alleen Firebase PIN gebruiken — geen onveilige fallback
-  return (window._pinnen||{})[rol] || localStorage.getItem(rol==='eigenaar'?EIGENAAR_PIN_KEY:KASSIER_PIN_KEY) || null;
-}
-
-async function laadPinnen(){
-  return fbAanroep(fb=>fb.getPinnen(huidigBedrijf))
-    .then(json=>{ window._pinnen=JSON.parse(json||'{}'); })
-    .catch(()=>{});
-}
-
-async function slaaPinOp(rol, pin){
-  if(!checkOnline()) return false;
-  if(!window._pinnen) window._pinnen = {};
-  const gehashtePin = await hashPin(pin);
-  window._pinnen[rol] = gehashtePin;
-  return fbAanroep(fb=>fb.slaaPinOp(huidigBedrijf, rol, gehashtePin))
-    .then(()=>true).catch(()=>false);
-}
 
 async function laadKassiersVoorLogin(){
   // Laad kassiers van ALLE bekende bedrijven
@@ -8875,7 +8691,7 @@ async function syncBedrijvenVanuitFirebase(){
 
 // Toon een specifieke login-stap, verberg de rest.
 function _toonLoginStap(id){
-  ['login-stap-rol','login-stap-bedrijf-kiezer','login-stap-eigenaar','login-stap-kassier-bedrijf','login-stap-kassier-pin'].forEach(function(s){
+  ['login-stap-rol','login-stap-bedrijf-kiezer'].forEach(function(s){
     var el = document.getElementById(s);
     if(el) el.style.display = (s === id) ? 'block' : 'none';
   });
@@ -9015,9 +8831,8 @@ async function stuurMagicLink(){
 async function initLogin(){
   // Sync bedrijvenlijst vanuit Firebase zodat alle devices alle bedrijven kennen
   await syncBedrijvenVanuitFirebase();
-  // Laad profielnamen, kassiers en PINs parallel
+  // Laad profielnamen en kassiers parallel
   await Promise.all([
-    laadPinnen(),
     laadKassiersVoorLogin(),
     laadBedrijfNamenUitFirebase(),
   ]);
@@ -9029,13 +8844,6 @@ async function initLogin(){
     console.log('Gebruikers geladen:', DB.kassiers.map(k=>k.naam).join(', '));
   }
   document.getElementById('login-overlay').style.display = 'flex';
-  // Toon kort een melding zodat je weet of sync werkt
-  if(USE_CLOUD && aantalGebruikers === 0){
-    setTimeout(()=>{
-      const fout = document.getElementById('login-fout-kassier');
-      if(fout) { fout.style.display='block'; fout.textContent='Geen gebruikers gevonden — controleer de verbinding.'; }
-    }, 500);
-  }
   // Start login sync interval — hersynct elke 30s zolang loginscherm open is
   startLoginSyncInterval();
 }
@@ -9062,161 +8870,8 @@ function stopLoginSyncInterval(){
   }
 }
 
-function loginAls(rol){
-  _loginTarget = rol;
-  // Verberg alle stappen
-  ['login-stap-rol','login-stap-eigenaar','login-stap-kassier-bedrijf','login-stap-kassier-pin'].forEach(id=>{
-    document.getElementById(id).style.display = 'none';
-  });
-
-  if(rol === 'eigenaar'){
-    document.getElementById('login-stap-eigenaar').style.display = 'block';
-    document.getElementById('login-pin-eigenaar').value = '';
-    document.getElementById('login-fout-eigenaar').style.display = 'none';
-    setTimeout(()=>document.getElementById('login-pin-eigenaar').focus(), 100);
-  } else {
-    // Kassier: toon tekstveld voor bedrijfsnaam
-    document.getElementById('login-kassier-bedrijf-input').value = '';
-    document.getElementById('login-stap-kassier-bedrijf').style.display = 'block';
-    document.getElementById('login-fout-bedrijf').style.display = 'none';
-    setTimeout(()=>document.getElementById('login-kassier-bedrijf-input').focus(), 100);
-  }
-  laadPinnen();
-}
-
-function kassierNaarPin(){
-  const ingevoerd = (document.getElementById('login-kassier-bedrijf-input').value||'').trim();
-  if(!ingevoerd){
-    document.getElementById('login-fout-bedrijf').style.display = 'block';
-    document.getElementById('login-fout-bedrijf').textContent = 'Vul een bedrijfsnaam in.';
-    return;
-  }
-  // Zoek op identifier én op weergavenaam — kassier typt wat hij ziet
-  const bedrijven = getBedrijven();
-  const namen = getBedrijfProfielNamen();
-  const gevondenBedrijf = bedrijven.find(b =>
-    b.toLowerCase() === ingevoerd.toLowerCase() ||
-    (namen[b]||'').toLowerCase() === ingevoerd.toLowerCase()
-  );
-  if(!gevondenBedrijf){
-    document.getElementById('login-fout-bedrijf').style.display = 'block';
-    document.getElementById('login-fout-bedrijf').textContent = 'Bedrijfsnaam niet gevonden.';
-    return;
-  }
-  _loginKassierBedrijf = gevondenBedrijf;
-  // Toon weergavenaam aan kassier
-  document.getElementById('login-kassier-bedrijf-label').textContent = '📍 ' + (namen[gevondenBedrijf]||gevondenBedrijf);
-  document.getElementById('login-stap-kassier-bedrijf').style.display = 'none';
-  document.getElementById('login-stap-kassier-pin').style.display = 'block';
-  document.getElementById('login-pin-kassier').value = '';
-  document.getElementById('login-fout-kassier').style.display = 'none';
-
-  // Herlaad kassiers vers uit Firebase voor dit bedrijf
-  fbAanroep(fb=>fb.laadAlles(gevondenBedrijf))
-    .then(json=>{
-      try{
-        const d = JSON.parse(json||'{}');
-        if(d.kassiers?.length) DB.kassiers = d.kassiers;
-      }catch(e){}
-      setTimeout(()=>document.getElementById('login-pin-kassier').focus(), 100);
-    })
-    .catch(()=>{
-      setTimeout(()=>document.getElementById('login-pin-kassier').focus(), 100);
-    });
-}
-
-function kassierTerugNaarBedrijf(){
-  document.getElementById('login-stap-kassier-pin').style.display = 'none';
-  document.getElementById('login-stap-kassier-bedrijf').style.display = 'block';
-}
-
-function resetLogin(){
-  _loginTarget = null;
-  _loginKassierBedrijf = null;
-  ['login-stap-eigenaar','login-stap-kassier-bedrijf','login-stap-kassier-pin'].forEach(id=>{
-    document.getElementById(id).style.display = 'none';
-  });
-  document.getElementById('login-stap-rol').style.display = 'block';
-}
-
-async function bevestigPin(){
-  // Blokkeer als te veel pogingen
-  if(_pinGeblokkeerd) return;
-
-  if(_loginTarget === 'eigenaar'){
-    const ingevoerd = document.getElementById('login-pin-eigenaar').value.trim();
-    const ingevoerdHash = await hashPin(ingevoerd);
-    const opgeslagenPin = getPin('eigenaar');
-    // Ondersteun zowel gehashte PINs als plaintext legacy PINs
-    if(!opgeslagenPin){
-      document.getElementById('login-fout-eigenaar').style.display = 'block';
-      document.getElementById('login-fout-eigenaar').textContent = 'Geen verbinding — probeer het opnieuw.';
-      return;
-    }
-    const klopt = ingevoerdHash === opgeslagenPin || ingevoerd === opgeslagenPin;
-    if(klopt){
-      resetPinPogingen();
-      _loginRol = 'eigenaar';
-      _actieveKassier = null;
-      stopLoginSyncInterval();
-      document.getElementById('login-overlay').style.display = 'none';
-      pasNavAanRol();
-      toast('Ingelogd als eigenaar 🔑','success');
-    } else {
-      registreerMisluktePinPoging();
-      document.getElementById('login-fout-eigenaar').style.display = 'block';
-      document.getElementById('login-pin-eigenaar').value = '';
-    }
-  } else {
-    // Kassier: check PIN + bedrijfstoegang
-    const ingevoerd = document.getElementById('login-pin-kassier').value.trim();
-    const ingevoerdHash = await hashPin(ingevoerd);
-    const gekozenBedrijf = _loginKassierBedrijf;
-    const kassiers = DB.kassiers||[];
-
-    // Zoek kassier met juiste PIN (ondersteun zowel hash als plaintext legacy)
-    const gevonden = kassiers.find(k=>{
-      const pinKlopt = String(k.pin) === ingevoerdHash || String(k.pin) === ingevoerd;
-      return pinKlopt && (k.bedrijven||[]).includes(gekozenBedrijf);
-    });
-
-    // Geen fallback PIN meer — eigenaar moet eerst gebruikers aanmaken
-    const fallback = false;
-
-    if(!kassiers.length){
-      document.getElementById('login-fout-kassier').style.display = 'block';
-      document.getElementById('login-fout-kassier').textContent = 'Nog geen gebruikers aangemaakt. Vraag de eigenaar dit in te stellen.';
-      return;
-    }
-
-    if(gevonden || fallback){
-      _loginRol = 'kassier';
-      _actieveKassier = gevonden || { naam:'Kassier', bedrijven:[gekozenBedrijf] };
-      // Wissel naar het gekozen bedrijf
-      if(gekozenBedrijf !== huidigBedrijf){
-        huidigBedrijf = gekozenBedrijf;
-        localStorage.setItem('ledger_actief_bedrijf', gekozenBedrijf);
-        load();
-      }
-      document.getElementById('login-overlay').style.display = 'none';
-      pasNavAanRol();
-      const badge = document.getElementById('kassier-naam-badge');
-      if(badge) badge.textContent = `👤 ${_actieveKassier.naam}`;
-      toast(`Welkom ${_actieveKassier.naam} 👋`,'success');
-    } else if(kassiers.some(k=>k.pin===ingevoerdHash||k.pin===ingevoerd) && !gevonden){
-      // PIN klopt maar geen toegang tot dit bedrijf
-      registreerMisluktePinPoging();
-      document.getElementById('login-fout-kassier').style.display = 'block';
-      document.getElementById('login-fout-kassier').textContent = `Geen toegang tot ${gekozenBedrijf}.`;
-      document.getElementById('login-pin-kassier').value = '';
-    } else {
-      registreerMisluktePinPoging();
-      document.getElementById('login-fout-kassier').style.display = 'block';
-      document.getElementById('login-fout-kassier').textContent = 'Verkeerde PIN. Probeer opnieuw.';
-      document.getElementById('login-pin-kassier').value = '';
-    }
-  }
-}
+// (De oude PIN-login is verwijderd. Inloggen gaat nu volledig via de
+//  e-mail-inloglink; rol en bedrijf worden bepaald in kiesBedrijfNaLogin.)
 
 function pasNavAanRol(){
   const isKassier = _loginRol === 'kassier';
@@ -9268,26 +8923,20 @@ function pasNavAanRol(){
 
 function uitloggen(){
   _loginRol = null;
-  _loginTarget = null;
   _toegankelijkeRol = null;
   document.body.classList.remove('kassier-mobiel');
   _actieveKassier = null;
-  _loginKassierBedrijf = null;
   document.body.classList.remove('kassier-modus');
   // Beëindig de Firebase-sessie zodat je echt uitlogt.
   try{ if(window.FBAuth && FBAuth.uitloggen) FBAuth.uitloggen(); }catch(e){}
   // Reset alle login stappen
-  ['login-stap-bedrijf-kiezer','login-stap-eigenaar','login-stap-kassier-bedrijf','login-stap-kassier-pin'].forEach(id=>{
-    const el = document.getElementById(id);
-    if(el) el.style.display = 'none';
-  });
+  const stapKiezer = document.getElementById('login-stap-bedrijf-kiezer');
+  if(stapKiezer) stapKiezer.style.display = 'none';
   const stapRol = document.getElementById('login-stap-rol');
   if(stapRol) stapRol.style.display = 'block';
   // Reset velden
-  ['login-pin-eigenaar','login-pin-kassier','login-kassier-bedrijf-input','login-magic-email'].forEach(id=>{
-    const el = document.getElementById(id);
-    if(el) el.value = '';
-  });
+  const emailVeld = document.getElementById('login-magic-email');
+  if(emailVeld) emailVeld.value = '';
   const st = document.getElementById('login-magic-status');
   if(st) st.style.display = 'none';
   // Toon login overlay
@@ -9295,13 +8944,6 @@ function uitloggen(){
   // Verberg uitloggen en instellingen knop
   const instBtn = document.getElementById('inst-btn');
   if(instBtn) instBtn.style.display = 'none';
-  resetPinPogingen();
-}
-
-// ── PIN wijzigen via instellingen modal ──
-async function wijzigPin(rol){
-  // Render PIN wijzig sectie in instellingen
-  openInstellingenModal(rol);
 }
 
 // ===== KASSIER BEHEER =====
@@ -9350,6 +8992,7 @@ function renderGebruikersBeheer(){
             </div>
             <div style="flex:1;min-width:0;">
               <div style="font-size:14px;font-weight:600;color:var(--text);">${esc(k.naam)}</div>
+              <div style="font-size:11px;color:var(--text-mid);margin-top:1px;font-family:var(--mono,monospace);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(k.email||'(geen e-mail)')}</div>
               <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">${modLabels} · ${(k.bedrijven||[]).join(', ')}</div>
             </div>
             <div style="color:var(--text-dim);font-size:18px;">›</div>
@@ -9370,7 +9013,8 @@ function openGebruikerDetail(id){
   document.getElementById('gd-titel').textContent = k.naam;
   document.getElementById('gd-naam-disp').textContent = k.naam;
   document.getElementById('gd-naam-input').value = k.naam;
-  document.getElementById('gd-pin').value = '';
+  const emailDisp = document.getElementById('gd-email-disp');
+  if(emailDisp) emailDisp.textContent = k.email || '(geen e-mail — opnieuw toevoegen)';
 
   // Bedrijven checkboxes
   document.getElementById('gd-bedrijven').innerHTML = bedrijven.map(b=>`
@@ -9393,12 +9037,11 @@ function openGebruikerDetail(id){
 }
 
 async function slaGebruikerDetailOp(){
+  if(!checkOnline()) return;
   const k = (DB.kassiers||[]).find(k=>k.id===_gdKassierId);
   if(!k) return;
   const naam = document.getElementById('gd-naam-input').value.trim();
-  const pin  = document.getElementById('gd-pin').value.trim();
   if(!naam){ toast('Naam mag niet leeg zijn.','error'); return; }
-  if(pin && pin.length<4){ toast('PIN moet minimaal 4 cijfers zijn.','error'); return; }
 
   const bedrijvenChecks = document.querySelectorAll('#gd-bedrijven input[type="checkbox"]:checked');
   const gekozenBedrijven = [...bedrijvenChecks].map(c=>c.value);
@@ -9409,33 +9052,67 @@ async function slaGebruikerDetailOp(){
   if(!gekozenModules.length){ toast('Selecteer minimaal één module.','error'); return; }
 
   k.naam = naam;
-  if(pin) k.pin = await hashPin(pin);
   k.bedrijven = gekozenBedrijven;
   k.modules = gekozenModules;
   save();
   localStorage.setItem('ledger_kassiers_cache', JSON.stringify(DB.kassiers));
+
+  // Laat de toegangslijsten op de server meebewegen met de gekozen bedrijven.
+  if(k.email) await syncToegangVoorEmail(k.email, gekozenBedrijven);
+
   closeModal('modal-gebruiker-detail');
   renderGebruikersBeheer();
   toast(`Gebruiker "${naam}" opgeslagen.`,'success');
 }
 
 async function verwijderKassierViaDetail(){
+  if(!checkOnline()) return;
   const k = (DB.kassiers||[]).find(k=>k.id===_gdKassierId);
   if(!k) return;
-  const ok = await bevestig(`Gebruiker "${k.naam}" verwijderen?`,'Gebruiker verwijderen','Verwijderen');
+  const ok = await bevestig(`Gebruiker "${k.naam}" verwijderen? Zij kunnen daarna niet meer inloggen.`,'Gebruiker verwijderen','Verwijderen');
   if(!ok) return;
+  // Haal het e-mailadres van alle toegangslijsten af (lege selectie = overal weg).
+  if(k.email) await syncToegangVoorEmail(k.email, []);
   DB.kassiers = DB.kassiers.filter(k=>k.id!==_gdKassierId);
   save();
+  localStorage.setItem('ledger_kassiers_cache', JSON.stringify(DB.kassiers));
   closeModal('modal-gebruiker-detail');
   renderGebruikersBeheer();
-  toast('Gebruiker verwijderd.','info');
+  toast('Gebruiker verwijderd en toegang ingetrokken.','info');
+}
+
+// Voeg het e-mailadres toe aan de toegangslijst van de opgegeven bedrijven,
+// en haal het weg bij bedrijven die niet (meer) in de lijst staan.
+// Dit is wat de server-rules controleren: zonder dit kan de gebruiker niet inloggen.
+async function syncToegangVoorEmail(email, gekozenBedrijven){
+  const adres = String(email||'').trim().toLowerCase();
+  if(!adres) return;
+  const alle = getBedrijven();
+  for(const b of alle){
+    try{
+      const json = await fbAanroep(fb=>fb.getGastenlijst(b));
+      let lijst = JSON.parse(json||'[]');
+      if(!Array.isArray(lijst)) lijst = [];
+      lijst = lijst.map(x=>String(x).toLowerCase());
+      const moetErin = gekozenBedrijven.includes(b);
+      const staatErin = lijst.includes(adres);
+      if(moetErin && !staatErin){
+        lijst.push(adres);
+        await fbAanroep(fb=>fb.setGastenlijst(b, JSON.stringify(lijst)));
+      } else if(!moetErin && staatErin){
+        lijst = lijst.filter(x=>x!==adres);
+        await fbAanroep(fb=>fb.setGastenlijst(b, JSON.stringify(lijst)));
+      }
+    }catch(e){ console.warn('Toegang sync mislukt voor bedrijf', b, e); }
+  }
 }
 
 async function voegKassierToe(){
-  const naam = document.getElementById('nk-naam')?.value.trim();
-  const pin  = document.getElementById('nk-pin')?.value.trim();
+  if(!checkOnline()) return;
+  const naam  = document.getElementById('nk-naam')?.value.trim();
+  const email = document.getElementById('nk-email')?.value.trim().toLowerCase();
   if(!naam){ toast('Vul een naam in.','error'); return; }
-  if(!pin||pin.length<4){ toast('PIN moet minimaal 4 cijfers zijn.','error'); return; }
+  if(!email || email.indexOf('@')<0){ toast('Vul een geldig e-mailadres in.','error'); return; }
 
   const checks = document.querySelectorAll('#nk-bedrijven input[type="checkbox"]:checked');
   const bedrijven = [...checks].map(c=>c.value);
@@ -9445,144 +9122,34 @@ async function voegKassierToe(){
   const modules = [...modChecks].map(c=>c.value);
   if(!modules.length){ toast('Selecteer minimaal één module.','error'); return; }
 
-  const gehashtePin = await hashPin(pin);
+  // Voorkom dubbele invoer van hetzelfde e-mailadres.
+  if((DB.kassiers||[]).some(k=>String(k.email||'').toLowerCase()===email)){
+    toast('Er bestaat al een gebruiker met dit e-mailadres.','error'); return;
+  }
+
   if(!DB.kassiers) DB.kassiers = [];
-  DB.kassiers.push({ id:uid(), naam, pin: gehashtePin, bedrijven, modules });
+  DB.kassiers.push({ id:uid(), naam, email, bedrijven, modules });
   save();
   localStorage.setItem('ledger_kassiers_cache', JSON.stringify(DB.kassiers));
+
+  // Schrijf het e-mailadres naar de toegangslijst van de gekozen bedrijven,
+  // zodat de server deze gebruiker laat inloggen.
+  await syncToegangVoorEmail(email, bedrijven);
+
   document.getElementById('nk-naam').value = '';
-  document.getElementById('nk-pin').value  = '';
+  document.getElementById('nk-email').value = '';
   renderGebruikersBeheer();
-  toast(`Gebruiker "${naam}" aangemaakt en gesynchroniseerd.`,'success');
+  toast(`Gebruiker "${naam}" toegevoegd. Zij kunnen nu inloggen met ${email}.`,'success');
 }
 
-function openKassierBewerken(id){
-  const k = (DB.kassiers||[]).find(k=>k.id===id);
-  if(!k) return;
-
-  // Simpele inline bewerking
-  const el = document.getElementById('kassiers-lijst');
-  const bedrijven = getBedrijven();
-
-  el.innerHTML = `
-    <div style="background:var(--surface2);border:2px solid var(--accent);border-radius:var(--radius);padding:14px;margin-bottom:8px;">
-      <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:10px;">Gebruiker bewerken</div>
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Naam</label>
-          <input id="bk-naam" type="text" value="${k.naam}">
-        </div>
-        <div class="form-group">
-          <label>Nieuwe PIN <span style="color:var(--text-dim);font-size:10px;">leeg = ongewijzigd</span></label>
-          <input id="bk-pin" type="password" inputmode="numeric" maxlength="6" placeholder="Leeg laten voor ongewijzigd">
-        </div>
-        <div class="form-group full">
-          <label>Toegang tot bedrijven</label>
-          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;">
-            ${bedrijven.map(b=>`
-              <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;
-                background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;">
-                <input type="checkbox" value="${b}" style="width:auto;" ${(k.bedrijven||[]).includes(b)?'checked':''}>
-                ${b}
-              </label>`).join('')}
-          </div>
-        </div>
-        <div class="form-group full">
-          <label>Modules</label>
-          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;" id="bk-modules">
-            ${['dashboard','kassa','facturen','uploads'].map(m=>{
-              const lbl = {dashboard:'📊 Dashboard',kassa:'💰 Kassa',facturen:'🧾 Facturen',uploads:'📎 Bonnen uploaden'}[m]||m;
-              const checked = (k.modules||['dashboard','kassa','uploads']).includes(m)?'checked':'';
-              return `<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;"><input type="checkbox" value="${m}" style="width:auto;" ${checked}> ${lbl}</label>`;
-            }).join('')}
-          </div>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;margin-top:10px;">
-        <button class="btn btn-primary btn-sm" onclick="slaKassierBewerktOp('${id}')">Opslaan</button>
-        <button class="btn btn-secondary btn-sm" onclick="renderGebruikersBeheer()">Annuleren</button>
-      </div>
-    </div>` + el.innerHTML;
-}
-
-async function slaKassierBewerktOp(id){
-  const k = (DB.kassiers||[]).find(k=>k.id===id);
-  if(!k) return;
-  const naam = document.getElementById('bk-naam')?.value.trim();
-  const pin  = document.getElementById('bk-pin')?.value.trim();
-  const checks = document.querySelectorAll('[id^="bk-"] ~ div input[type="checkbox"]:checked, .form-group input[type="checkbox"]:checked');
-
-  // Lees bedrijven checkboxes
-  const alleChecks = document.querySelectorAll('#inst-wrap-kassiers input[type="checkbox"]');
-  const gekozenBedrijven = [...alleChecks].filter(c=>c.checked&&c.value&&c.value!=='on').map(c=>c.value);
-
-  if(!naam){ toast('Naam mag niet leeg zijn.','error'); return; }
-  if(pin && pin.length<4){ toast('PIN moet minimaal 4 cijfers zijn.','error'); return; }
-  if(!gekozenBedrijven.length){ toast('Selecteer minimaal één bedrijf.','error'); return; }
-
-  const modInputs = document.querySelectorAll('#bk-modules input[type="checkbox"]:checked');
-  const gekozenModules = [...modInputs].map(c=>c.value).filter(Boolean);
-
-  k.naam = naam;
-  if(pin) k.pin = await hashPin(pin);
-  k.bedrijven = gekozenBedrijven;
-  k.modules = gekozenModules.length ? gekozenModules : ['dashboard','kassa','uploads'];
-  save();
-  renderGebruikersBeheer();
-  toast(`Kassier "${naam}" bijgewerkt.`,'success');
-}
-
-async function verwijderKassier(id){
-  const k = (DB.kassiers||[]).find(k=>k.id===id);
-  if(!k) return;
-  const ok = await bevestig(`Kassier "${k.naam}" verwijderen?`,'Gebruiker verwijderen','Verwijderen');
-  if(!ok) return;
-  DB.kassiers = DB.kassiers.filter(k=>k.id!==id);
-  save();
-  renderGebruikersBeheer();
-  toast(`Kassier verwijderd.`,'info');
-}
-
-
-
-function openInstellingenModal(tab){
+function openInstellingenModal(){
   // Alleen eigenaar mag instellingen openen
   if(_loginRol !== 'eigenaar'){
     toast('Alleen de eigenaar kan instellingen wijzigen.','error');
     return;
   }
-  // Reset velden
-  ['inst-eigen-huidig','inst-eigen-nieuw','inst-eigen-bevestig'].forEach(id=>{
-    const el = document.getElementById(id);
-    if(el) el.value = '';
-  });
-  // Zorg dat beide tabs zichtbaar zijn voor eigenaar
-  const tabKassiers = document.getElementById('inst-tab-kassiers');
-  if(tabKassiers) tabKassiers.style.display = '';
-  switchInstTab(tab||'pin');
+  renderGebruikersBeheer();
   openModal('modal-instellingen');
-}
-
-function switchInstTab(tab){
-  document.getElementById('inst-tab-pin').classList.toggle('active', tab==='pin');
-  document.getElementById('inst-tab-kassiers').classList.toggle('active', tab==='kassiers');
-  document.getElementById('inst-wrap-pin').style.display = tab==='pin' ? '' : 'none';
-  document.getElementById('inst-wrap-kassiers').style.display = tab==='kassiers' ? '' : 'none';
-  if(tab==='kassiers') renderGebruikersBeheer();
-}
-
-async function verwerkPINwijziging(rol){
-  const huidig    = document.getElementById('inst-eigen-huidig').value.trim();
-  const nieuw     = document.getElementById('inst-eigen-nieuw').value.trim();
-  const bevestig  = document.getElementById('inst-eigen-bevestig').value.trim();
-  const huidigHash = await hashPin(huidig);
-  const opgeslagenPin = getPin('eigenaar');
-  if(huidigHash !== opgeslagenPin && huidig !== opgeslagenPin){ toast('Huidige PIN klopt niet.','error'); return; }
-  if(!nieuw || nieuw.length < 4){ toast('Nieuwe PIN moet minimaal 4 cijfers zijn.','error'); return; }
-  if(nieuw !== bevestig){ toast('PINs komen niet overeen.','error'); return; }
-  const ok = await slaaPinOp('eigenaar', nieuw);
-  if(ok){ toast('PIN gewijzigd.','success'); closeModal('modal-instellingen'); }
-  else toast('PIN opslaan mislukt.','error');
 }
 
 // ===== KASSALIJST =====
@@ -10008,8 +9575,6 @@ load();
 renderDashboard();
 renderGB();
 renderImports();
-// Laad PINs van server
-laadPinnen();
 
 // ============================================================
 // MAGIC LINK — afhandeling bij opstarten (fase 1)
