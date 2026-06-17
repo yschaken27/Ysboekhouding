@@ -4047,6 +4047,7 @@ function loadCloud(){
       renderDashboard(); renderGB(); renderImports();
       // Uren-zichtbaarheid bijwerken nu de bedrijfsinstelling (profiel) geladen is
       if(_loginRol === 'kassier'){
+        verrijkActieveKassier();
         if(typeof mobBouwNav === 'function') mobBouwNav();
         if(typeof renderMobDashboard === 'function') renderMobDashboard();
       } else {
@@ -8728,6 +8729,25 @@ async function verwijderBijlage(type, id, index){
 let _loginRol = null; // 'eigenaar' of 'kassier'
 let _actieveKassier = null;
 
+// Vul _actieveKassier aan met de volledige gegevens uit DB.kassiers
+// (modules én opdrachtgevers). Wordt herkend op e-mailadres.
+// DB.kassiers laadt async, dus deze functie wordt op meerdere momenten aangeroepen.
+function verrijkActieveKassier(){
+  if(_loginRol !== 'kassier' || !_actieveKassier) return false;
+  const email = String(_actieveKassier.naam || '').toLowerCase();
+  const k = (DB.kassiers||[]).find(x=>String(x.email||'').toLowerCase()===email);
+  if(!k) return false;
+  // Naam (weergavenaam) en bedrijven behouden of aanvullen, modules + opdrachtgevers overnemen.
+  _actieveKassier = {
+    naam: k.naam || _actieveKassier.naam,
+    email: k.email || email,
+    bedrijven: k.bedrijven || _actieveKassier.bedrijven || [],
+    modules: k.modules || ['dashboard','kassa','uploads'],
+    opdrachtgevers: k.opdrachtgevers || []
+  };
+  return true;
+}
+
 async function laadKassiersVoorLogin(){
   // Laad kassiers van ALLE bekende bedrijven
   // Fallback naar lokale cache als Firebase offline is
@@ -8917,6 +8937,9 @@ async function kiesBedrijfNaLogin(bedrijf){
   }
   try{ await fbAanroep(fb=>fb.laadAlles(bedrijf)); }catch(e){}
   load();
+
+  // Vul de kassier-gegevens aan (modules + opdrachtgevers) uit de zojuist geladen data.
+  verrijkActieveKassier();
 
   stopLoginSyncInterval();
   document.getElementById('login-overlay').style.display = 'none';
