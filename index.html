@@ -3991,53 +3991,26 @@ function loadCloud(){
   loadLokaal();
   renderDashboard(); renderGB(); renderImports();
 
-  function mergeArrayOpId(lokaal, cloud){
-    // Merge twee arrays op basis van id — combineer unieke items van beide
-    // Items die alleen in cloud zitten worden toegevoegd (bijv. kassiersinvoer)
-    // Items die in beide zitten: meest recente wint op basis van aangemaakt timestamp
-    if(!cloud?.length) return lokaal||[];
-    if(!lokaal?.length) return cloud||[];
-    const map = {};
-    // Zet cloud items in map
-    cloud.forEach(item=>{ if(item?.id) map[item.id] = item; });
-    // Overschrijf met lokale items als lokaal recenter is
-    lokaal.forEach(item=>{
-      if(!item?.id) return;
-      const cloudItem = map[item.id];
-      if(!cloudItem){
-        // Alleen lokaal — toevoegen
-        map[item.id] = item;
-      } else {
-        // Beide aanwezig — vergelijk timestamp
-        const lokaalTs = new Date(item.aangemaakt||item.datum||0).getTime();
-        const cloudTs  = new Date(cloudItem.aangemaakt||cloudItem.datum||0).getTime();
-        map[item.id] = lokaalTs >= cloudTs ? item : cloudItem;
-      }
-    });
-    return Object.values(map);
-  }
-
   function verwerkCloudData(jsonStr){
     try {
       const d = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
       if(_recentlySaved){ toonSyncStatus('opgeslagen'); return; }
 
-      // Merge per item op ID — voorkomt overschrijven van kassiersinvoer
-      DB.verkoop     = mergeArrayOpId(DB.verkoop,     d.verkoop);
-      DB.inkoop      = mergeArrayOpId(DB.inkoop,      d.inkoop);
-      DB.transacties = mergeArrayOpId(DB.transacties, d.transacties);
-      DB.regels      = mergeArrayOpId(DB.regels,      d.regels);
-      DB.memoriaal   = mergeArrayOpId(DB.memoriaal,   d.memoriaal);
-      DB.vasteActiva = mergeArrayOpId(DB.vasteActiva, d.vasteActiva);
-      DB.kassalijsten= mergeArrayOpId(DB.kassalijsten,d.kassalijsten);
-      DB.uren        = mergeArrayOpId(DB.uren,        d.uren);
-      DB.kassiers    = mergeArrayOpId(DB.kassiers,    d.kassiers);
-
-      // Grootboek: merge op id maar houd cloud saldo als bron van waarheid
-      // tenzij we recentlySaved zijn (dan is lokaal de bron)
-      if((d.grootboek?.length||0) >= DB.grootboek.length){
-        DB.grootboek = d.grootboek;
-      }
+      // Firebase is de enige bron van waarheid. Geen merge: de cloud overschrijft
+      // altijd de lokale data. Eigen invoer (kassalijsten, uren) wordt los van save()
+      // direct naar Firebase geschreven, dus die zit hier al in de clouddata.
+      // De _recentlySaved-check hierboven beschermt een net-gedane eigen wijziging
+      // tegen een vertraagde echo, tot Firebase die bevestigt.
+      if(d.verkoop      !== undefined) DB.verkoop      = d.verkoop      || [];
+      if(d.inkoop       !== undefined) DB.inkoop       = d.inkoop       || [];
+      if(d.transacties  !== undefined) DB.transacties  = d.transacties  || [];
+      if(d.regels       !== undefined) DB.regels       = d.regels       || [];
+      if(d.memoriaal    !== undefined) DB.memoriaal    = d.memoriaal    || [];
+      if(d.vasteActiva  !== undefined) DB.vasteActiva  = d.vasteActiva  || [];
+      if(d.kassalijsten !== undefined) DB.kassalijsten = d.kassalijsten || [];
+      if(d.uren         !== undefined) DB.uren         = d.uren         || [];
+      if(d.kassiers     !== undefined) DB.kassiers     = d.kassiers     || [];
+      if(d.grootboek    !== undefined) DB.grootboek    = d.grootboek    || [];
 
       // Profiel: cloud wint altijd (eigenaar beheert dit)
       if(d.profiel && Object.keys(d.profiel).length) DB.profiel=d.profiel;
