@@ -1667,6 +1667,19 @@ body.kassier-mobiel .mob-kassa-totaal {
           });
         },
 
+        // Schrijf ALLEEN het kassiers-veld van data/main, los van save() en de
+        // balanscheck. Mirror van het uren/kassalijsten-patroon, maar omdat kassiers
+        // in 'main' wonen werken we gericht dat ene veld bij (update i.p.v. set),
+        // zodat profiel/grootboek/regels onaangeroerd blijven.
+        async slaKassiersOp(bedrijf, kassiersJson){
+          const kassiers = JSON.parse(kassiersJson || '[]');
+          const ref = db.collection('bedrijven').doc(bedrijf).collection('data').doc('main');
+          // set met merge: maakt 'main' aan als die nog niet bestaat, en raakt
+          // verder geen enkel ander veld.
+          await ref.set({ kassiers }, {merge:true});
+          return JSON.stringify({ok:true});
+        },
+
         async slaAllesOp(bedrijf, dataJson){
           const d = JSON.parse(dataJson);
           const ref = db.collection('bedrijven').doc(bedrijf).collection('data');
@@ -3917,7 +3930,11 @@ function save(){
   localStorage.setItem(storageKey(), JSON.stringify(DB));
   _recentlySaved = true;
   clearTimeout(window._recentSavedTimer);
-  window._recentSavedTimer = setTimeout(()=>{ _recentlySaved=false; }, 30000);
+  // Kort venster: lang genoeg om de eigen Firebase-echo van deze opslag op te
+  // vangen (komt doorgaans binnen 1-2s terug), kort genoeg dat een ECHTE wijziging
+  // van een ander apparaat niet lang geblokkeerd wordt. 30s was te lang en kon
+  // updates van het andere apparaat laten verdwijnen.
+  window._recentSavedTimer = setTimeout(()=>{ _recentlySaved=false; }, 3000);
   if(USE_CLOUD) saveCloud();
   else toonSyncStatus('lokaal');
 }
@@ -8730,19 +8747,26 @@ async function laadKassiersVoorLogin(){
     fbAanroep(fb=>fb.laadAlles(b)).then(json=>{
       try{
         const d = JSON.parse(json||'{}');
-        if(d.kassiers?.length){
-          firebaseGelukt = true;
+        // Geslaagde ophaling = Firebase bereikbaar, ook als de lijst leeg is.
+        // (Een lege lijst betekent: alle kassiers van dit bedrijf zijn verwijderd.)
+        firebaseGelukt = true;
+        if(Array.isArray(d.kassiers)){
+          if(!DB.kassiers) DB.kassiers = [];
+          // Firebase is de waarheid: bestaande kassier overschrijven met de
+          // cloud-versie, nieuwe toevoegen. (Kassiers van meerdere bedrijven
+          // worden hier samengevoegd, vandaar per id i.p.v. de hele lijst vervangen.)
           d.kassiers.forEach(k=>{
-            if(!(DB.kassiers||[]).find(x=>x.id===k.id)){
-              if(!DB.kassiers) DB.kassiers = [];
-              DB.kassiers.push(k);
-            }
+            const idx = DB.kassiers.findIndex(x=>x.id===k.id);
+            if(idx === -1) DB.kassiers.push(k);
+            else DB.kassiers[idx] = k;
           });
         }
-        if(d.kassalijsten?.length){
+        if(Array.isArray(d.kassalijsten)){
           if(!DB.kassalijsten) DB.kassalijsten = [];
           d.kassalijsten.forEach(kl=>{
-            if(!DB.kassalijsten.find(x=>x.id===kl.id)) DB.kassalijsten.push(kl);
+            const idx = DB.kassalijsten.findIndex(x=>x.id===kl.id);
+            if(idx === -1) DB.kassalijsten.push(kl);
+            else DB.kassalijsten[idx] = kl;
           });
         }
       }catch(e){}
@@ -8753,8 +8777,9 @@ async function laadKassiersVoorLogin(){
   if(firebaseGelukt && DB.kassiers?.length){
     localStorage.setItem('ledger_kassiers_cache', JSON.stringify(DB.kassiers));
   }
-  // Fallback: lokale cache als Firebase niks opleverde
-  if(!(DB.kassiers||[]).length){
+  // Fallback: lokale cache ALLEEN als Firebase onbereikbaar was.
+  // Niet als Firebase met succes een lege lijst gaf — dan is leeg de waarheid.
+  if(!firebaseGelukt && !(DB.kassiers||[]).length){
     try{
       const cached = JSON.parse(localStorage.getItem('ledger_kassiers_cache')||'[]');
       if(cached.length){
@@ -9269,6 +9294,7 @@ async function slaGebruikerDetailOp(){
   }
 
   save();
+  await slaKassiersOpCloud();
   localStorage.setItem('ledger_kassiers_cache', JSON.stringify(DB.kassiers));
 
   // Laat de toegangslijsten op de server meebewegen met de gekozen bedrijven.
@@ -9289,6 +9315,7 @@ async function verwijderKassierViaDetail(){
   if(k.email) await syncToegangVoorEmail(k.email, []);
   DB.kassiers = DB.kassiers.filter(k=>k.id!==_gdKassierId);
   save();
+  await slaKassiersOpCloud();
   localStorage.setItem('ledger_kassiers_cache', JSON.stringify(DB.kassiers));
   closeModal('modal-gebruiker-detail');
   renderGebruikersBeheer();
@@ -9343,7 +9370,10 @@ async function voegKassierToe(){
 
   if(!DB.kassiers) DB.kassiers = [];
   DB.kassiers.push({ id:uid(), naam, email, bedrijven, modules });
+  // Kassiers gaan via een eigen directe Firebase-write, los van save() en de
+  // balanscheck (anders kon een scheve balans het opslaan stilletjes blokkeren).
   save();
+  await slaKassiersOpCloud();
   localStorage.setItem('ledger_kassiers_cache', JSON.stringify(DB.kassiers));
 
   // Schrijf het e-mailadres naar de toegangslijst van de gekozen bedrijven,
@@ -9533,6 +9563,27 @@ function slaUrenOpCloud(ingave){
   toonSyncStatus('opslaan');
 
   fbAanroep(fb=>fb.voegUrenToe(huidigBedrijf, JSON.stringify(ingave)))
+    .then(result=>{
+      try{
+        const r = typeof result === 'string' ? JSON.parse(result) : result;
+        if(r?.ok) toonSyncStatus('opgeslagen');
+        else { toonSyncStatus('fout'); toast('Opslaan mislukt — probeer opnieuw.','error'); }
+      }catch(e){ toonSyncStatus('fout'); }
+    })
+    .catch(()=>{
+      toonSyncStatus('fout');
+      toast('Geen verbinding. Verbind met internet en probeer opnieuw.','error');
+    });
+}
+
+// Schrijf de kassiers-lijst direct naar Firebase, los van save() en de balanscheck.
+// Wordt aangeroepen na elke wijziging aan een gebruiker (toevoegen/bewerken/verwijderen).
+// Schrijft de VOLLEDIGE huidige DB.kassiers, zodat wijzigen en verwijderen ook
+// doorkomen (uren/kassalijsten zijn append-only, kassiers niet).
+function slaKassiersOpCloud(){
+  if(!checkOnline()) return Promise.resolve();
+  toonSyncStatus('opslaan');
+  return fbAanroep(fb=>fb.slaKassiersOp(huidigBedrijf, JSON.stringify(DB.kassiers||[])))
     .then(result=>{
       try{
         const r = typeof result === 'string' ? JSON.parse(result) : result;
