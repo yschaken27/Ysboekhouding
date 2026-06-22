@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -1665,6 +1665,52 @@ body.kassier-mobiel .mob-kassa-totaal {
             kassalijsten:klSnap.exists ? (klSnap.data().items||[]) : [],
             uren:        urSnap.exists ? (urSnap.data().items||[]) : [],
           });
+        },
+
+        // Realtime listener op alle bedrijfsdocs — callback bij elke wijziging.
+        // Geeft een unsubscribe-functie terug.
+        luisterAlles(bedrijf, callback, onError){
+          const ref = db.collection('bedrijven').doc(bedrijf).collection('data');
+          const docs = { main:null, verkoop:null, inkoop:null, transacties:null, kassalijsten:null, uren:null };
+          const unsubs = [];
+
+          function samenstellenEnCallback(){
+            if(Object.values(docs).some(v=>v===null)) return;
+            try{
+              const main = docs.main;
+              callback(JSON.stringify({
+                kassiers:     main.kassiers     || [],
+                profiel:      main.profiel      || {},
+                grootboek:    main.grootboek    || [],
+                regels:       main.regels       || [],
+                memoriaal:    main.memoriaal    || [],
+                vasteActiva:  main.vasteActiva  || [],
+                imports:      main.imports      || [],
+                verkoop:      docs.verkoop.items      || [],
+                inkoop:       docs.inkoop.items       || [],
+                transacties:  docs.transacties.items  || [],
+                kassalijsten: docs.kassalijsten.items || [],
+                uren:         docs.uren.items         || [],
+              }));
+            }catch(e){ if(onError) onError(e); }
+          }
+
+          function luisterOp(docId, sleutel){
+            const u = ref.doc(docId).onSnapshot(
+              snap=>{ docs[sleutel] = snap.exists ? snap.data() : {}; samenstellenEnCallback(); },
+              err =>{ if(onError) onError(err); }
+            );
+            unsubs.push(u);
+          }
+
+          luisterOp('main',         'main');
+          luisterOp('verkoop',      'verkoop');
+          luisterOp('inkoop',       'inkoop');
+          luisterOp('transacties',  'transacties');
+          luisterOp('kassalijsten', 'kassalijsten');
+          luisterOp('uren',         'uren');
+
+          return ()=>unsubs.forEach(u=>u());
         },
 
         // Schrijf ALLEEN het kassiers-veld van data/main, los van save() en de
@@ -4003,7 +4049,8 @@ function loadLokaal(){
   toonSyncStatus('lokaal');
 }
 
-function loadCloud(){
+let _stopCloudListeners = ()=>{};
+ loadCloud(){
   toonSyncStatus('laden');
   loadLokaal();
   renderDashboard(); renderGB(); renderImports();
@@ -4053,19 +4100,22 @@ function loadCloud(){
     }
   }
 
-  fbAanroep(fb=>fb.laadAlles(huidigBedrijf))
-    .then(verwerkCloudData)
-    .catch(err=>{
-      toonSyncStatus('fout');
-      toast('Cloud laden mislukt.','warning');
-      console.error('Load fout:', err);
-    });
+  _stopCloudListeners();
+  if(!window.FB){ toonSyncStatus('fout'); return; }
+  _stopCloudListeners = window.FB.luisterAlles(
+    huidigBedrijf,
+    verwerkCloudData,
+    err=>{ toonSyncStatus('fout'); toast('Cloud laden mislukt.','warning'); console.error('Load fout:', err); }
+  );
+  laadGebruikersInDB();
 }
 
 // ============================================================
 // BEDRIJVEN — cloud + lokaal
 // ============================================================
 async function wisselBedrijf(naam){
+  _stopCloudListeners();
+  _stopCloudListeners = ()=>{};
   huidigBedrijf=naam;
   localStorage.setItem('ledger_actief_bedrijf', naam);
   DB={ verkoop:[], inkoop:[], transacties:[], grootboek:[], regels:[], imports:[],
