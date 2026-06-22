@@ -4089,7 +4089,7 @@ function loadCloud(){
   );
   laadGebruikersInDB();
 }
- function laadGebruikersInDB(){
+async function laadGebruikersInDB(){
   try{
     const json = await fbAanroep(fb=>fb.laadGebruikers());
     const lijst = JSON.parse(json||'[]');
