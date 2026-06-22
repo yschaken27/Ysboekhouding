@@ -10379,32 +10379,6 @@ function sluitAllDrops(){
 }
 
 // Sluit dropdowns bij klik buiten — wacht op DOM
-// ===== PWA SERVICE WORKER =====
-if('serviceWorker' in navigator){
-  // Inline service worker via blob — werkt zonder extern bestand
-  const swCode = `
-    const CACHE = 'ys-boekhouding-v1';
-    const OFFLINE_ASSETS = []; // App is single HTML file
-
-    self.addEventListener('install', e => {
-      self.skipWaiting();
-    });
-
-    self.addEventListener('activate', e => {
-      e.waitUntil(clients.claim());
-    });
-
-    // Network first, cache fallback
-    self.addEventListener('fetch', e => {
-      e.respondWith(
-        fetch(e.request).catch(() => caches.match(e.request))
-      );
-    });
-  `;
-  const blob = new Blob([swCode], {type:'application/javascript'});
-  const swUrl = URL.createObjectURL(blob);
-  navigator.serviceWorker.register(swUrl).catch(()=>{});
-}
 
 // PWA install prompt opslaan voor later
 let _pwaInstallPrompt = null;
