@@ -9029,8 +9029,15 @@ function wachtwoordVergeten(){
     return;
   }
   FBAuth.wachtwoordResetten(email)
-    .then(()=>toon('Reset-mail verstuurd naar ' + email + '. Check je inbox.', '#16a34a'))
-    .catch(err=>toon('Kon de reset-mail niet versturen: ' + (err && err.message ? err.message : err), '#dc2626'));
+    .then(()=>{
+      toon('Reset-mail verstuurd naar ' + email + '. Check je inbox (ook spam).', '#16a34a');
+      if(typeof toast === 'function') toast('Reset-mail verstuurd naar ' + email, 'success');
+    })
+    .catch(err=>{
+      const msg = (err && err.message ? err.message : String(err));
+      toon('Kon de reset-mail niet versturen: ' + msg, '#dc2626');
+      if(typeof toast === 'function') toast('Reset-mail mislukt: ' + msg, 'error');
+    });
 }
 
 async function initLogin(){
