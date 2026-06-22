@@ -4089,6 +4089,16 @@ function loadCloud(){
   );
   laadGebruikersInDB();
 }
+ function laadGebruikersInDB(){
+  try{
+    const json = await fbAanroep(fb=>fb.laadGebruikers());
+    const lijst = JSON.parse(json||'[]');
+    if(Array.isArray(lijst)){
+      DB.kassiers = lijst;
+      localStorage.setItem(storageKey(), JSON.stringify(DB));
+    }
+  }catch(e){ /* offline: bestaande DB.kassiers bewaren */ }
+}
 
 // ============================================================
 // BEDRIJVEN — cloud + lokaal
