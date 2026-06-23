@@ -4845,21 +4845,6 @@ function downloadDashboard(){
     Rapport gegenereerd door Ledger · ${bedrijf} · ${datum}
   </div>
 </div>
-<script>
-if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('sw.js').then(reg=>{
-    reg.addEventListener('updatefound', ()=>{
-      const w = reg.installing;
-      w.addEventListener('statechange', ()=>{
-        if(w.state==='installed' && navigator.serviceWorker.controller){
-          if(typeof toast === 'function') toast('Nieuwe versie beschikbaar — pagina wordt herladen.','info');
-          setTimeout(()=>window.location.reload(), 2000);
-        }
-      });
-    });
-  });
-}
-</script>
 </body>
 </html>`;
 
@@ -11507,21 +11492,6 @@ function mobSluitDetail(e){
 }
 
 
-</script>
-<script>
-if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('sw.js').then(reg=>{
-    reg.addEventListener('updatefound', ()=>{
-      const w = reg.installing;
-      w.addEventListener('statechange', ()=>{
-        if(w.state==='installed' && navigator.serviceWorker.controller){
-          if(typeof toast === 'function') toast('Nieuwe versie beschikbaar — pagina wordt herladen.','info');
-          setTimeout(()=>window.location.reload(), 2000);
-        }
-      });
-    });
-  });
-}
 </script>
 </body>
 </html>
