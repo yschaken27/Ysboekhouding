@@ -141,29 +141,28 @@ async function _bepaalToegankelijkeBedrijven(email){
     return { rol:'eigenaar', bedrijven: alle };
   }
 
-  // Kassier: haal de bedrijvenlijst op uit DB.kassiers — die is al geladen door
-  // laadKassiersVoorLogin() vóór dit punt. DB.kassiers[x].bedrijven bevat exact
-  // welke bedrijven de eigenaar voor deze kassier heeft aangevinkt.
-  // Dit omzeilt het Firestore LIST-probleem (kassier mag bedrijven-collectie niet
-  // listen) zonder een extra collectie of security-rule nodig te hebben.
-  const kassierRecord = (DB.kassiers||[]).find(k=>
-    String(k.email||'').trim().toLowerCase() === email
-  );
-  if(kassierRecord && Array.isArray(kassierRecord.bedrijven) && kassierRecord.bedrijven.length){
-    console.log('[Login] Bedrijven uit DB.kassiers:', kassierRecord.bedrijven.join(', '));
-    return { rol:'kassier', bedrijven: kassierRecord.bedrijven };
-  }
-
-  // Fallback: bedrijven_toegang/{email} — voor kassiers die niet in het eerste
-  // geladen bedrijf (Persoonlijk) staan opgeslagen.
+  // Kassier: primaire bron is bedrijven_toegang/{email} — dit document wordt
+  // altijd bijgewerkt door syncToegangVoorEmail(), ook als de eigenaar een ander
+  // bedrijf bekijkt. Hierdoor werken toevoegen én verwijderen van bedrijven correct.
+  // Fallback: DB.kassiers — geladen bij initLogin, kan stale zijn als kassierdata
+  // is opgeslagen in een ander bedrijf dan 'Persoonlijk'.
   try{
     const json = await fbAanroep(fb=>fb.getBedrijvenVoorKassier(email));
     const lijst = JSON.parse(json||'[]');
     if(lijst.length){
       console.log('[Login] Bedrijven uit bedrijven_toegang:', lijst.join(', '));
-      return { rol:'kassier', bedrijven: [...new Set(['Persoonlijk', ...lijst])] };
+      return { rol:'kassier', bedrijven: lijst };
     }
   }catch(e){ console.warn('[Login] bedrijven_toegang ophalen mislukt:', e); }
+
+  // Fallback op DB.kassiers (werkt als bedrijven_toegang nog niet bestaat)
+  const kassierRecord = (DB.kassiers||[]).find(k=>
+    String(k.email||'').trim().toLowerCase() === email
+  );
+  if(kassierRecord && Array.isArray(kassierRecord.bedrijven) && kassierRecord.bedrijven.length){
+    console.log('[Login] Bedrijven uit DB.kassiers (fallback):', kassierRecord.bedrijven.join(', '));
+    return { rol:'kassier', bedrijven: kassierRecord.bedrijven };
+  }
 
   console.warn('[Login] Geen bedrijven gevonden voor kassier:', email);
   return { rol:'kassier', bedrijven: [] };
