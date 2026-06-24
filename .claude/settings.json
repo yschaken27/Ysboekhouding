@@ -1,0 +1,25 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "agent",
+            "if": "Edit(*.js)|Write(*.js)",
+            "prompt": "Een JS-bestand is zojuist gewijzigd: $ARGUMENTS\n\nJij bent de js-checker agent voor YS Boekhouding (C:\\Users\\ymera\\OneDrive\\Documenten\\Bookkeeping\\Ysboekhouding\\src\\). Lees het gewijzigde bestand en controleer op syntaxfouten, niet-gesloten accolades, en ontbrekende functies die in dit bestand worden aangeroepen. Rapporteer alleen echte fouten — geen stijlopmerkingen.",
+            "timeout": 60,
+            "statusMessage": "JS-checker draait..."
+          },
+          {
+            "type": "agent",
+            "if": "Edit(*.css)|Write(*.css)",
+            "prompt": "Een CSS-bestand is zojuist gewijzigd: $ARGUMENTS\n\nJij bent de css-checker agent voor YS Boekhouding (C:\\Users\\ymera\\OneDrive\\Documenten\\Bookkeeping\\Ysboekhouding\\src\\). Lees het gewijzigde bestand en controleer op ongeldige CSS-properties en niet-gesloten blokken. Rapporteer alleen echte fouten.",
+            "timeout": 60,
+            "statusMessage": "CSS-checker draait..."
+          }
+        ]
+      }
+    ]
+  }
+}

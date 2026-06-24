@@ -1,0 +1,73 @@
+﻿    <div class="page" id="page-verkoop">
+      <div class="page-header">
+        <div><h2>Verkoopfacturen</h2><p>Facturen die je verstuurt aan klanten</p></div>
+        <button class="btn btn-primary" onclick="openFactuurModal('verkoop')">+ Nieuwe verkoopfactuur</button>
+      </div>
+      <div class="toolbar">
+        <input class="search-input" type="text" placeholder="Zoeken op klant of nummer..." oninput="filterF('verkoop',this.value)">
+        <select onchange="filterFS('verkoop',this.value)" style="width:auto;">
+          <option value="">Alle statussen</option>
+          <option value="concept">Concept</option>
+          <option value="verstuurd">Verstuurd</option>
+          <option value="betaald">Betaald</option>
+          <option value="verlopen">Verlopen</option>
+        </select>
+      </div>
+      <div class="card"><div class="table-wrap"><table>
+        <thead><tr><th>Nummer</th><th>Klant</th><th>Datum</th><th>Vervaldatum</th><th>Excl. BTW</th><th>BTW</th><th>Incl. BTW</th><th>Status</th><th></th></tr></thead>
+        <tbody id="tbody-verkoop"><tr><td colspan="9"><div class="empty"><div class="icon">↑</div><p>Geen verkoopfacturen</p></div></td></tr></tbody>
+      </table></div></div>
+    </div>
+
+    <!-- INKOOPFACTUREN -->
+    <div class="page" id="page-inkoop">
+      <div class="page-header">
+        <div><h2>Inkoopfacturen</h2><p>Facturen die je ontvangt van leveranciers</p></div>
+        <button class="btn btn-primary" onclick="openFactuurModal('inkoop')">+ Nieuwe inkoopfactuur</button>
+      </div>
+      <div class="toolbar">
+        <input class="search-input" type="text" placeholder="Zoeken op leverancier of nummer..." oninput="filterF('inkoop',this.value)">
+        <select onchange="filterFS('inkoop',this.value)" style="width:auto;">
+          <option value="">Alle statussen</option>
+          <option value="ontvangen">Ontvangen</option>
+          <option value="te betalen">Te betalen</option>
+          <option value="betaald">Betaald</option>
+        </select>
+      </div>
+      <div class="card"><div class="table-wrap"><table>
+        <thead><tr><th>Nummer</th><th>Leverancier</th><th>Datum</th><th>Vervaldatum</th><th>Excl. BTW</th><th>BTW</th><th>Incl. BTW</th><th>Status</th><th></th></tr></thead>
+        <tbody id="tbody-inkoop"><tr><td colspan="9"><div class="empty"><div class="icon">↓</div><p>Geen inkoopfacturen</p></div></td></tr></tbody>
+      </table></div></div>
+    </div>
+
+    <!-- BANK -->
+    
+    <div class="page" id="page-bonnen">
+      <div class="page-header">
+        <div><h2>Bonnen &amp; uploads</h2><p>Gescande bonnen en facturen van kassiers</p></div>
+        <button class="btn btn-secondary btn-sm" onclick="laadBonnenPagina()">↺ Vernieuwen</button>
+      </div>
+
+      <!-- Bedrijf selector (zichtbaar als er meerdere bedrijven zijn) -->
+      <div id="bonnen-bedrijf-selector" style="display:none;margin-bottom:14px;background:var(--surface2);border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px;font-size:13px;">
+        <span style="color:var(--text-mid);">Bedrijf:</span>
+        <select id="bonnen-bedrijf-keuze" onchange="bonnenWisselBedrijf(this.value)"
+          style="background:var(--surface3);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:13px;cursor:pointer;">
+        </select>
+        <span style="font-size:11px;color:var(--text-dim);margin-left:auto;">Uploads zijn per bedrijf opgeslagen</span>
+      </div>
+
+      <!-- Status filter -->
+      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+        <button class="btn btn-sm" id="bonnen-filter-alle" onclick="setBonnenFilter('')"
+          style="background:var(--accent);color:#000;border-color:var(--accent);">Alle</button>
+        <button class="btn btn-secondary btn-sm" id="bonnen-filter-nieuw" onclick="setBonnenFilter('nieuw')">Nieuw</button>
+        <button class="btn btn-secondary btn-sm" id="bonnen-filter-verwerkt" onclick="setBonnenFilter('verwerkt')">Verwerkt</button>
+        <button class="btn btn-secondary btn-sm" id="bonnen-filter-afgekeurd" onclick="setBonnenFilter('afgekeurd')">Afgekeurd</button>
+      </div>
+
+      <div id="bonnen-lijst" style="font-size:13px;color:var(--text-dim);padding:24px 0;text-align:center;">
+        Laden...
+      </div>
+    </div>
+

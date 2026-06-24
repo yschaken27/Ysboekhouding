@@ -1,0 +1,199 @@
+﻿<div class="page" id="page-bank">
+      <div class="page-header">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <div>
+            <h2>Bank</h2>
+            <p id="bank-rekening-label">Selecteer een rekening</p>
+          </div>
+          <select id="bank-rekening-select" onchange="wisselBankRekening(this.value)"
+            style="font-size:13px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;">
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-secondary btn-sm" onclick="openBankBeherenModal()">⚙ Banken beheren</button>
+          <button class="btn btn-secondary btn-sm" onclick="openTransferModal()">⇄ Transfer</button>
+          <button class="btn btn-secondary btn-sm" onclick="openHandmatigModal()">+ Handmatig</button>
+        </div>
+      </div>
+
+      <!-- BANK SALDO STATS -->
+      <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(145px,1fr));margin-bottom:0;gap:10px;">
+        <div class="stat-card"><div class="label">Banksaldo</div><div class="value" id="bank-saldo-val">€ 0,00</div></div>
+        <div class="stat-card"><div class="label">Totaal ontvangen</div><div class="value green" id="bank-ontvangen-val">€ 0,00</div></div>
+        <div class="stat-card"><div class="label">Totaal uitgegeven</div><div class="value red" id="bank-uitgegeven-val">€ 0,00</div></div>
+        <div class="stat-card"><div class="label">Te koppelen</div><div class="value mono" id="bank-ongekoppeld-val" style="color:var(--warning);">0</div></div>
+      </div>
+
+      <!-- TABS -->
+      <div class="tabs" style="margin-top:20px;">
+        <div class="tab active" id="bank-tab-koppelen" onclick="switchBankTab('koppelen')">
+          Koppelen <span id="bank-tab-badge" style="background:var(--warning);color:#000;font-size:10px;font-family:var(--mono);padding:2px 6px;border-radius:10px;margin-left:6px;">0</span>
+        </div>
+        <div class="tab" id="bank-tab-alles" onclick="switchBankTab('alles')">Alle transacties</div>
+        <div class="tab" id="bank-tab-import" onclick="switchBankTab('import')">CSV importeren</div>
+        <div class="tab" id="bank-tab-statements" onclick="switchBankTab('statements')">Bank statements</div>
+      </div>
+
+      <!-- TAB: KOPPELEN -->
+      <div id="bank-wrap-koppelen">
+        <div class="card" style="margin-top:0;border-top-left-radius:0;">
+          <div class="toolbar">
+            <input class="search-input" type="text" placeholder="Zoeken op omschrijving..." oninput="filterT(this.value)">
+          </div>
+          <div id="bulk-bar" class="bulk-bar-wrap">
+            <span id="bulk-count" style="font-family:var(--mono);font-size:12px;color:var(--accent);"></span>
+            <select id="bulk-gb-sel" style="width:auto;flex:1;min-width:200px;"><option value="">— Selecteer grootboekrekening —</option></select>
+            <button class="btn btn-primary btn-sm" onclick="bevestigBulkKoppeling()">Afboeken op grootboek</button>
+            <button class="btn btn-secondary btn-sm" onclick="deselectAll()">Deselecteer alles</button>
+          </div>
+          <div id="tbody-transacties"></div>
+          <div id="t-paginering"></div>
+        </div>
+      </div>
+
+      <!-- TAB: ALLE TRANSACTIES -->
+      <div id="bank-wrap-alles" style="display:none;">
+        <div class="card" style="margin-top:0;border-top-left-radius:0;">
+          <div class="toolbar">
+            <input class="search-input" type="text" placeholder="Zoeken..." oninput="filterAllT(this.value)">
+          </div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Datum</th><th>Omschrijving</th><th>Bedrag</th><th>Status</th><th>Gekoppeld aan</th><th></th></tr></thead>
+            <tbody id="alles-tbody"></tbody>
+          </table></div>
+          <div id="alles-paginering"></div>
+        </div>
+      </div>
+
+      <!-- TAB: CSV IMPORT -->
+      <div id="bank-wrap-import" style="display:none;">
+        <div class="card" id="bank-stap1" style="margin-top:0;border-top-left-radius:0;">
+          <div style="font-family:var(--mono);font-size:12px;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px;">Stap 1 — CSV uploaden</div>
+          <p style="font-size:12px;color:var(--text-dim);margin-bottom:16px;">Upload je bankexport als CSV. Na het uploaden kun je instellen welke kolom datum, omschrijving en bedrag is.</p>
+          <div class="upload-zone" id="upload-zone" onclick="document.getElementById('csv-input').click()" ondragover="dragOver(event)" ondrop="dropCSV(event)" ondragleave="dragLeave()">
+            <div class="icon">⇡</div>
+            <p><strong>Klik om CSV te uploaden</strong> of sleep het bestand hierheen</p>
+            <p style="margin-top:6px;font-size:11px;color:var(--text-dim);">Separators: komma, puntkomma of tab — decimalen: punt of komma</p>
+          </div>
+          <input type="file" id="csv-input" accept=".csv,.txt" style="display:none" onchange="loadCSV(event)">
+        </div>
+        <div class="card" id="bank-stap2" style="display:none;margin-top:0;">
+          <div style="font-family:var(--mono);font-size:12px;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Stap 2 — Kolommen instellen</div>
+          <p style="font-size:12px;color:var(--text-dim);margin-bottom:16px;">Koppel elke kolom aan het juiste veld. De preview toont hoe de data eruitziet na importeren.</p>
+          <div class="mapper-wrap">
+            <div class="mapper-title">Kolom mapping</div>
+            <div class="mapper-grid" id="mapper-grid"></div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:8px;">Voorbeeld eerste 5 rijen:</div>
+            <div class="preview-table-wrap">
+              <table><thead><tr><th>Datum</th><th>Omschrijving</th><th>Bedrag</th></tr></thead>
+              <tbody id="preview-mapped-tbody"></tbody></table>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:16px;">
+            <button class="btn btn-secondary" onclick="resetCSV()">← Ander bestand</button>
+            <button class="btn btn-primary" onclick="bevestigImport()">Importeer <span id="import-count"></span> transacties</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: BANK STATEMENTS -->
+      <div id="bank-wrap-statements" style="display:none;">
+        <div class="card" style="margin-top:0;border-top-left-radius:0;">
+          <div id="imports-list"><div class="empty" style="padding:20px;"><p>Geen imports</p></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GROOTBOEK -->
+    <div class="page" id="page-kassalijst">
+      <!-- Header -->
+      <div style="background:var(--ys-navy);color:#fff;padding:16px;margin:-20px -20px 20px -20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <span style="font-size:18px;font-weight:700;">🏦 Kassa afsluiten</span>
+          <span id="kassier-naam-badge" style="font-size:12px;background:rgba(255,255,255,0.2);padding:4px 10px;border-radius:20px;"></span>
+        </div>
+        <input type="date" id="kassa-datum" style="font-size:14px;padding:8px 12px;border-radius:8px;border:none;background:rgba(255,255,255,0.15);color:#fff;width:100%;">
+      </div>
+
+      <!-- Begin van de dag -->
+      <div class="card" style="margin-bottom:16px;">
+        <div style="font-size:13px;font-weight:600;color:var(--text-mid);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em;">Begin van de dag</div>
+        <div style="font-size:13px;color:var(--text-dim);margin-bottom:6px;">Bedrag in kas bij opening</div>
+        <input type="number" id="kassa-beginsaldo" step="0.01" placeholder="0.00"
+          style="font-family:var(--mono);font-size:26px;text-align:right;font-weight:700;border:2px solid var(--border);"
+          oninput="herberekeKassa()">
+        <div style="font-size:12px;color:var(--text-dim);margin-top:6px;text-align:right;" id="kassa-begin-label">Automatisch ingevuld van vorige dag</div>
+      </div>
+
+      <!-- Eind van de dag -->
+      <div class="card" style="margin-bottom:16px;">
+        <div style="font-size:13px;font-weight:600;color:var(--text-mid);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em;">Eind van de dag</div>
+        <div style="font-size:13px;color:var(--text-dim);margin-bottom:6px;">Geteld bedrag in kas bij sluiting</div>
+        <input type="number" id="kassa-eindsaldo" step="0.01" placeholder="0.00"
+          style="font-family:var(--mono);font-size:26px;text-align:right;font-weight:700;border:2px solid var(--border);"
+          oninput="herberekeKassa()">
+      </div>
+
+      <!-- Verschil -->
+      <div class="card" style="margin-bottom:16px;background:var(--surface2);">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:15px;font-weight:600;">Verschil</span>
+          <span class="mono" id="kassa-af-verschil" style="font-weight:700;font-size:20px;">—</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+          <span style="font-size:13px;color:var(--text-mid);">Verwacht eindsaldo</span>
+          <span class="mono" id="kassa-af-verwacht" style="font-size:14px;">€ 0,00</span>
+        </div>
+      </div>
+
+      <!-- Notities -->
+      <div class="card" style="margin-bottom:80px;">
+        <div style="font-size:13px;color:var(--text-dim);margin-bottom:6px;">Notities (optioneel)</div>
+        <textarea id="kassa-notities" rows="3" placeholder="Bijv. kassaverschil door..."
+          style="font-size:14px;width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);"></textarea>
+
+        <button class="btn btn-primary" style="width:100%;margin-top:16px;padding:18px;font-size:17px;border-radius:12px;" onclick="slaKassaOp()">
+          📤 Indienen
+        </button>
+      </div>
+
+      <!-- Verborgen elementen die door JS worden gebruikt -->
+      <div style="display:none;">
+        <div id="kassa-categorieen"></div>
+        <div id="kassa-uitgaven"></div>
+        <span id="kassa-tot-inkomsten"></span>
+        <span id="kassa-tot-contant"></span>
+        <span id="kassa-tot-pin"></span>
+        <span id="kassa-tot-uitgaven"></span>
+        <span id="kassa-af-begin"></span>
+        <span id="kassa-af-contant"></span>
+        <span id="kassa-af-uitgaven"></span>
+      </div>
+    </div>
+
+    <!-- KASSAOVERZICHT (eigenaar view) -->
+    <div class="page" id="page-kassaoverzicht">
+      <div class="page-header">
+        <div><h2>Kassaoverzicht</h2><p>Ingediende kassalijsten — goedkeuren om te boeken</p></div>
+        <div style="display:flex;gap:8px;">
+          <select id="kassa-filter-status" onchange="renderKassaoverzicht()" style="font-size:13px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);">
+            <option value="">Alle</option>
+            <option value="ingediend">Wacht op goedkeuring</option>
+            <option value="goedgekeurd">Goedgekeurd</option>
+            <option value="afgewezen">Afgewezen</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- STATS -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
+        <div class="stat-card"><div class="label">Totaal omzet (geboekt)</div><div class="value" id="kov-omzet" style="color:#16a34a;">€ 0,00</div></div>
+        <div class="stat-card"><div class="label">Contant ontvangen</div><div class="value" id="kov-contant">€ 0,00</div></div>
+        <div class="stat-card"><div class="label">Wacht goedkeuring</div><div class="value" id="kov-wacht" style="color:var(--warning);">0</div></div>
+        <div class="stat-card"><div class="label">Kassaverschillen</div><div class="value" id="kov-verschil" style="color:#dc2626;">€ 0,00</div></div>
+      </div>
+
+      <div id="kassa-overzicht-lijst"></div>
+    </div>
+
+    <!-- URENOVERZICHT (eigenaar) -->

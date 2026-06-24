@@ -1,0 +1,58 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --bg:#f0f4f9;
+  --surface:#ffffff;
+  --surface2:#f4f7fb;
+  --surface3:#eaf0f8;
+  --border:#dde3ed;
+  --border-light:#c8d3e3;
+  --accent:#2563eb;
+  --accent-dim:rgba(37,99,235,.1);
+  --accent2:#0891b2;
+  --accent2-dim:rgba(8,145,178,.1);
+  --danger:#dc2626;
+  --danger-dim:rgba(220,38,38,.08);
+  --warning:#d97706;
+  --warning-dim:rgba(217,119,6,.1);
+  --success:#16a34a;
+  --text:#1e2a3b;
+  --text-dim:#94a3b8;
+  --text-mid:#64748b;
+  --mono:'JetBrains Mono',monospace;
+  --sans:'Inter',sans-serif;
+  --radius:8px;
+  --radius-lg:12px;
+  --shadow:0 1px 3px rgba(30,42,59,.08),0 4px 12px rgba(30,42,59,.06);
+  --shadow-lg:0 8px 32px rgba(30,42,59,.12);
+}
+
+/* RESET */
+*{box-sizing:border-box;margin:0;padding:0;}
+html{-webkit-font-smoothing:antialiased;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh;line-height:1.5;}
+
+/* LAYOUT */
+.app{display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+
+@media (max-width: 600px) {
+  .app{height:auto;overflow:visible;}
+  html,body{height:100%;overflow-y:auto;}
+}
+
+/* MAIN */
+.main{flex:1;overflow-y:auto;background:var(--bg);}
+.main::-webkit-scrollbar{width:5px;}
+.main::-webkit-scrollbar-track{background:var(--bg);}
+.main::-webkit-scrollbar-thumb{background:var(--border-light);border-radius:3px;}
+
+/* PAGES */
+.page{display:none;padding:20px 24px;height:0;overflow:hidden;}
+.page.active{display:block;height:auto;overflow:visible;animation:fadeIn .18s ease;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(5px);}to{opacity:1;transform:translateY(0);}}
+
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border-light);border-radius:3px;}
+
+@keyframes toastIn{from{opacity:0;transform:translateX(20px) scale(.95);}to{opacity:1;transform:translateX(0) scale(1);}}

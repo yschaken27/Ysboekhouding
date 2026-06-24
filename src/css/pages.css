@@ -1,0 +1,833 @@
+/* ===== MOBIEL KASSIER VIEW ===== */
+@media (max-width: 600px) {
+  /* Verberg alleen de bovenste topbar rij, houd de nav tabs zichtbaar */
+  .topbar-row1 { display: none !important; }
+  /* Nav tabs onderaan vastzetten als mobiele bottom bar */
+  .topbar {
+    position: fixed !important;
+    bottom: 0 !important;
+    top: auto !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 200 !important;
+    border-top: 1px solid var(--border) !important;
+    border-bottom: none !important;
+    box-shadow: 0 -2px 8px rgba(30,42,59,0.10) !important;
+  }
+  .topbar-row2 {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    flex-wrap: nowrap !important;
+    padding: 0 8px !important;
+    height: 52px !important;
+  }
+  .topbar-row2::-webkit-scrollbar { display: none; }
+  .nav-tab { font-size: 12px !important; padding: 0 12px !important; white-space: nowrap !important; }
+  /* Zorg dat main content niet achter de bottom bar valt */
+  .main { padding-bottom: calc(52px + env(safe-area-inset-bottom)) !important; }
+  .content { padding: 20px 12px; }
+  .page { padding: 0; }
+
+  /* Grote inputs op mobiel */
+  input[type="number"], input[type="text"] {
+    font-size: 16px !important; /* voorkomt zoom op iOS */
+    padding: 12px !important;
+    min-height: 48px;
+  }
+  textarea {
+    font-size: 16px !important;
+    padding: 12px !important;
+  }
+  select {
+    font-size: 16px !important;
+    padding: 10px !important;
+    min-height: 48px;
+  }
+
+  /* Grote knoppen */
+  .btn {
+    min-height: 48px;
+    font-size: 15px !important;
+  }
+
+  /* Kassa categorie rijen */
+  .kassa-cat-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .kassa-cat-row input {
+    width: 100% !important;
+  }
+
+  /* Login overlay */
+  .login-overlay { padding: 20px 16px; }
+  .login-box { width: 100%; max-width: 100%; padding: 24px 16px; }
+
+  /* PIN knoppen groter op mobiel */
+  .pin-btn {
+    min-height: 64px !important;
+    font-size: 22px !important;
+  }
+
+  /* Cards */
+  .card { padding: 14px; }
+}
+
+
+/* ===== MOBIELE UI OPTIMALISATIE — alleen kassier modus ===== */
+/* Eigenaar op laptop ziet altijd de desktop versie */
+@media (max-width: 768px) {
+  /* Alleen van toepassing als kassier ingelogd is */
+  body:not(.kassier-modus) .nav-row { flex-wrap: wrap; }
+}
+
+.kassier-modus {
+
+  /* Algemeen */
+  body { font-size: 15px; }
+  .content { padding: 12px; }
+
+  /* Topbar — compacter op mobiel */
+  .topbar {
+    padding: 8px 12px;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+  }
+  .topbar img { height: 28px !important; }
+  .topbar-bedrijf { font-size: 11px; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Nav rij — horizontaal scrollbaar op mobiel */
+  .nav-row {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+    padding: 0 8px;
+  }
+  .nav-row::-webkit-scrollbar { display: none; }
+  .nav-tab { font-size: 13px; padding: 8px 12px; white-space: nowrap; }
+
+  /* Cards — volle breedte */
+  .card { padding: 14px; border-radius: 10px; margin-bottom: 12px; }
+  .card-title { font-size: 14px; }
+
+  /* Grids — altijd 1 kolom op mobiel */
+  [style*="grid-template-columns: 1fr 1fr"],
+  [style*="grid-template-columns:1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+  [style*="grid-template-columns: 1fr 1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Tabellen — horizontaal scrollbaar */
+  .table-wrap, table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    font-size: 13px;
+  }
+  th, td { white-space: nowrap; padding: 8px 10px; }
+
+  /* Knoppen — groter touch target */
+  .btn {
+    min-height: 44px;
+    font-size: 14px;
+    padding: 10px 16px;
+    border-radius: 10px;
+  }
+  .btn-sm { min-height: 36px; font-size: 13px; }
+
+  /* Inputs — voorkomt iOS zoom */
+  input, select, textarea {
+    font-size: 16px !important;
+    min-height: 44px;
+    border-radius: 10px;
+  }
+  textarea { min-height: 80px; }
+
+  /* Page header — verticaal op mobiel */
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .page-header h2 { font-size: 20px; }
+  .page-header > div:last-child {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  /* Modals — volledig scherm op mobiel */
+  .modal-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    border-radius: 16px 16px 0 0 !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    max-height: 92vh;
+    overflow-y: auto;
+  }
+  .modal {
+    align-items: flex-end !important;
+  }
+
+  /* Factuur regels — verticaal op mobiel */
+  .factuur-regel {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  /* Bank koppel inline — groter */
+  .inline-wrap { padding: 12px; font-size: 14px; }
+
+  /* Rapportage rijen */
+  .report-row { font-size: 14px; padding: 6px 0; }
+
+  /* Dashboard stat cards — 2 kolommen */
+  .stat-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+  .stat-card { padding: 12px; }
+  .stat-val { font-size: 18px; }
+
+  /* Login overlay — mobiel geoptimaliseerd */
+  #login-overlay { padding: 16px; }
+  #login-overlay > div {
+    padding: 28px 20px;
+    border-radius: 16px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  /* Kassa pagina — al geoptimaliseerd maar nog beter */
+  #page-kassalijst .card { margin-bottom: 12px; }
+
+  /* Bottom safe area voor iPhone */
+  .content { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+
+  /* Verberg minder belangrijke kolommen in tabellen op mobiel */
+  .hide-mobile { display: none !important; }
+
+  /* Grotere touch targets voor acties */
+  button[onclick] { cursor: pointer; }
+
+  /* Sync indicator — niet in de weg op mobiel */
+  #sync-status {
+    font-size: 10px;
+    padding: 3px 8px;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    right: 8px;
+  }
+
+  /* Hamburger navigatie hint */
+  .nav-row::after {
+    content: '';
+    min-width: 20px;
+    display: block;
+  }
+}
+
+/* Extra klein (iPhone SE etc.) — alleen kassier */
+@media (max-width: 375px) {
+  .kassier-modus .stat-grid { grid-template-columns: 1fr !important; }
+  .kassier-modus .topbar-bedrijf { display: none; }
+}
+
+/* iOS standalone modus extra padding — alleen kassier */
+@media (display-mode: standalone) {
+  .kassier-modus .topbar { padding-top: max(8px, env(safe-area-inset-top)); }
+  .kassier-modus .content { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+}
+
+
+/* ============================================================
+   MOBIELE KASSIER INTERFACE — volledig herontwerp
+   ============================================================ */
+
+/* Verberg alles desktop voor mobiele kassier */
+body.kassier-mobiel .nav-row,
+body.kassier-mobiel .sidebar,
+body.kassier-mobiel .topbar { display: none !important; }
+
+/* Verberg desktop pagina-content */
+body.kassier-mobiel .content { display: none !important; }
+
+/* Body instelling */
+body.kassier-mobiel {
+  background: #0f172a;
+  overflow-x: hidden;
+}
+
+/* ---- TOPBAR ---- */
+.mob-topbar {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: calc(60px + env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top);
+  background: #0f172a;
+  color: #fff;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 20px;
+  padding-right: 20px;
+  z-index: 100;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+body.kassier-mobiel .mob-topbar { display: flex; }
+.mob-topbar-left h1 { font-size: 18px; font-weight: 700; margin: 0; color: #fff; }
+.mob-topbar-left p { font-size: 11px; color: rgba(255,255,255,0.45); margin: 0; }
+.mob-uitlog-btn {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.8);
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* ---- BOTTOM NAV ---- */
+.mob-bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: calc(64px + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  background: #1e293b;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  z-index: 100;
+}
+body.kassier-mobiel .mob-bottom-nav { display: flex; }
+.mob-nav-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.35);
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s;
+}
+.mob-nav-btn .mob-nav-icon { font-size: 20px; line-height: 1; }
+.mob-nav-btn.active { color: #60a5fa; }
+
+/* ---- SCROLL AREA — body scrollt, pages stacked ---- */
+body.kassier-mobiel {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+#mob-screen {
+  display: none;
+  min-height: 100vh;
+  padding-top: calc(60px + env(safe-area-inset-top));
+  padding-bottom: calc(80px + env(safe-area-inset-bottom));
+  background: #0f172a;
+}
+body.kassier-mobiel #mob-screen { display: block; }
+body.kassier-mobiel .app { display: none !important; }
+
+/* Desktop kassier: breder scherm maar zelfde interface */
+@media (min-width: 768px) {
+  body.kassier-mobiel .mob-topbar {
+    padding-left: max(20px, calc(50vw - 380px));
+    padding-right: max(20px, calc(50vw - 380px));
+  }
+  body.kassier-mobiel .mob-bottom-nav {
+    padding-left: max(0px, calc(50vw - 380px));
+    padding-right: max(0px, calc(50vw - 380px));
+  }
+  body.kassier-mobiel .mob-page {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 20px 24px 32px;
+  }
+}
+
+.mob-page { display: none; padding: 16px 14px 24px; height: 0; overflow: hidden; }
+.mob-page.active { display: block; height: auto; overflow: visible; }
+
+/* ---- DASHBOARD ---- */
+.mob-period-bar {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  margin-bottom: 20px;
+}
+.mob-period-bar::-webkit-scrollbar { display: none; }
+.mob-period-pill {
+  white-space: nowrap;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.12);
+  cursor: pointer;
+  background: transparent;
+  color: rgba(255,255,255,0.5);
+  -webkit-tap-highlight-color: transparent;
+  transition: all 0.15s;
+}
+.mob-period-pill.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+/* Hoofd omzet/kosten kaart */
+.mob-main-card {
+  background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%);
+  border-radius: 20px;
+  padding: 24px 20px;
+  margin-bottom: 12px;
+  position: relative;
+  overflow: hidden;
+}
+.mob-main-card::before {
+  content: '';
+  position: absolute;
+  top: -40px; right: -40px;
+  width: 160px; height: 160px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 50%;
+}
+.mob-main-card-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255,255,255,0.6);
+  margin-bottom: 8px;
+}
+.mob-main-card-val {
+  font-size: 34px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+  margin-bottom: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.mob-main-card-sub {
+  font-size: 13px;
+  color: rgba(255,255,255,0.5);
+}
+
+/* Stat rij */
+.mob-stat-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.mob-stat {
+  background: #1e293b;
+  border-radius: 14px;
+  padding: 14px;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.mob-stat-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255,255,255,0.35);
+  margin-bottom: 8px;
+}
+.mob-stat-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.mob-stat-val.green { color: #34d399; }
+.mob-stat-val.red { color: #f87171; }
+.mob-stat-val.blue { color: #60a5fa; }
+
+/* Sectie titel */
+.mob-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255,255,255,0.35);
+  margin: 20px 0 12px;
+}
+
+/* Lijst item */
+.mob-lijst-item {
+  background: #1e293b;
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid rgba(255,255,255,0.06);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mob-lijst-datum { font-size: 12px; color: rgba(255,255,255,0.4); margin-bottom: 3px; }
+.mob-lijst-bedrag { font-size: 18px; font-weight: 700; color: #fff; }
+.mob-lijst-status {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.mob-lijst-status.open { background: rgba(251,191,36,0.15); color: #fbbf24; }
+.mob-lijst-status.goed { background: rgba(52,211,153,0.15); color: #34d399; }
+.mob-lijst-status.afgekeurd { background: rgba(248,113,113,0.15); color: #f87171; }
+.mob-lijst-status.ingediend { background: rgba(96,165,250,0.15); color: #60a5fa; }
+
+/* ---- KASSA SCHERM ---- */
+.mob-kassa-header {
+  background: #1e293b;
+  border-radius: 16px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.mob-kassa-header-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255,255,255,0.35);
+  margin-bottom: 6px;
+}
+.mob-kassa-totaal {
+  font-size: 38px;
+  font-weight: 800;
+  color: #34d399;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.mob-kassa-sub {
+  font-size: 13px;
+  color: rgba(255,255,255,0.4);
+  margin-top: 4px;
+}
+
+/* Datum row */
+.mob-datum-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.mob-datum-row label {
+  font-size: 12px;
+  color: rgba(255,255,255,0.5);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mob-datum-row input {
+  flex: 1;
+  background: #1e293b;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  color: #fff;
+  font-size: 15px !important;
+  padding: 10px 14px;
+  font-family: inherit;
+  min-height: auto !important;
+}
+
+/* Categorie knoppen grid */
+.mob-cat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.mob-cat-btn {
+  background: #1e293b;
+  border: 2px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  padding: 12px 8px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  font-family: inherit;
+  transition: all 0.12s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: 64px;
+  justify-content: center;
+}
+.mob-cat-btn:active { opacity: 0.7; }
+.mob-cat-btn.heeft-waarde {
+  border-color: #3b82f6;
+  background: rgba(59,130,246,0.15);
+}
+.mob-cat-naam {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.65);
+  text-align: center;
+  line-height: 1.2;
+}
+.mob-cat-bedrag {
+  font-size: 15px;
+  font-weight: 700;
+  color: #34d399;
+  font-variant-numeric: tabular-nums;
+}
+.mob-cat-bedrag.leeg { color: rgba(255,255,255,0.2); }
+
+/* Beginsaldo + eindsaldo velden */
+.mob-saldo-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.mob-saldo-field {
+  background: #1e293b;
+  border-radius: 12px;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.mob-saldo-field label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255,255,255,0.35);
+  display: block;
+  margin-bottom: 6px;
+}
+.mob-saldo-field input {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid rgba(255,255,255,0.12) !important;
+  border-radius: 0 !important;
+  color: #fff !important;
+  font-size: 20px !important;
+  font-weight: 700 !important;
+  padding: 4px 0 !important;
+  width: 100%;
+  min-height: auto !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Notities */
+.mob-notities-field {
+  background: #1e293b;
+  border-radius: 14px;
+  padding: 14px;
+  border: 1px solid rgba(255,255,255,0.06);
+  margin-bottom: 16px;
+}
+.mob-notities-field label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255,255,255,0.35);
+  display: block;
+  margin-bottom: 8px;
+}
+.mob-notities-field textarea {
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.7);
+  font-size: 15px;
+  width: 100%;
+  resize: none;
+  font-family: inherit;
+  outline: none;
+  min-height: 60px;
+}
+
+/* Indienen knop */
+.mob-indienen-btn {
+  width: 100%;
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  padding: 16px;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.15s;
+}
+.mob-indienen-btn:active { opacity: 0.8; }
+.mob-indienen-btn:disabled { opacity: 0.3; }
+
+/* Override kassier-modus input regels voor mobiele velden */
+body.kassier-mobiel .mob-saldo-field input,
+body.kassier-mobiel .mob-datum-row input {
+  min-height: unset !important;
+  border-radius: 0 !important;
+  font-size: 18px !important;
+}
+body.kassier-mobiel .mob-notities-field textarea {
+  min-height: 50px !important;
+  font-size: 14px !important;
+  border-radius: 0 !important;
+}
+/* Zorg dat kassa totaal getal niet gereset wordt */
+body.kassier-mobiel .mob-kassa-totaal {
+  font-size: 38px !important;
+  min-height: unset !important;
+}
+
+/* ---- BEDRAG INVOER SHEET ---- */
+.mob-input-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 200;
+  align-items: flex-end;
+}
+.mob-input-overlay.open { display: flex; }
+.mob-input-sheet {
+  background: #1e293b;
+  border-radius: 24px 24px 0 0;
+  padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
+  width: 100%;
+}
+.mob-input-sheet-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  text-align: center;
+  margin-bottom: 20px;
+}
+.mob-input-display {
+  font-size: 44px;
+  font-weight: 800;
+  color: #34d399;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 20px;
+  min-height: 56px;
+}
+.mob-numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.mob-numpad-btn {
+  background: rgba(255,255,255,0.07);
+  border: none;
+  border-radius: 12px;
+  height: 54px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.1s;
+}
+.mob-numpad-btn:active { background: rgba(255,255,255,0.15); }
+.mob-numpad-btn.delete { font-size: 18px; }
+.mob-numpad-btn.ok {
+  background: #3b82f6;
+  grid-column: span 2;
+}
+.mob-numpad-btn.ok:active { background: #2563eb; }
+
+/* ---- DETAIL SHEET ---- */
+.mob-detail-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 200;
+  align-items: flex-end;
+}
+.mob-detail-overlay.open { display: flex; }
+.mob-detail-sheet {
+  background: #1e293b;
+  border-radius: 24px 24px 0 0;
+  padding: 20px;
+  width: 100%;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
+}
+.mob-detail-handle {
+  width: 36px; height: 4px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 2px;
+  margin: 0 auto 16px;
+}
+.mob-detail-titel { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 16px; }
+.mob-detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  font-size: 14px;
+}
+.mob-detail-row:last-child { border-bottom: none; }
+.mob-detail-row span:first-child { color: rgba(255,255,255,0.4); }
+.mob-detail-row span:last-child { font-weight: 600; color: #fff; }
+
+/* Overzichten filter */
+.mob-filter-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.mob-filter-bar::-webkit-scrollbar { display: none; }
+.mob-filter-pill {
+  white-space: nowrap;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.1);
+  cursor: pointer;
+  background: transparent;
+  color: rgba(255,255,255,0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  -webkit-tap-highlight-color: transparent;
+}
+.mob-filter-pill.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #fff;
+}

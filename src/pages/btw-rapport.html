@@ -1,0 +1,352 @@
+﻿    <div class="page" id="page-grootboek">
+      <div class="page-header">
+        <div><h2>Grootboek</h2><p>Rekeningschema</p></div>
+        <button class="btn btn-primary" onclick="openGBModal()">+ Nieuwe rekening</button>
+      </div>
+      <div class="card"><div class="table-wrap"><table>
+        <thead><tr><th>Nummer</th><th>Naam</th><th>Type</th><th>Saldo</th><th></th></tr></thead>
+        <tbody id="tbody-gb"></tbody>
+      </table></div></div>
+    </div>
+
+    <!-- BOEKINGSREGELS -->
+    <div class="page" id="page-regels">
+      <div class="page-header">
+        <div><h2>Boekingsregels</h2><p>Automatische suggesties op basis van omschrijving</p></div>
+        <button class="btn btn-primary" onclick="openRegelModal()">+ Nieuwe regel</button>
+      </div>
+      <div class="card">
+        <p style="font-size:12px;color:var(--text-dim);margin-bottom:16px;">Als een banktransactie een omschrijving bevat die overeenkomt met een regel, suggereert de app automatisch de bijbehorende grootboekrekening (geel).</p>
+        <div id="regels-list"><div class="empty"><span class="icon">⚙️</span><p>Geen boekingsregels ingesteld</p><p style="font-size:12px;margin-top:6px;">Regels matchen transacties automatisch aan grootboekrekeningen</p></div></div>
+      </div>
+    </div>
+
+    <!-- BOEKIN
+    <!-- MEMORIAAL -->
+    <div class="page" id="page-memoriaal">
+      <div class="page-header">
+        <div><h2>Memoriaal</h2><p>Boek bedragen direct tussen grootboekrekeningen</p></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
+
+        <!-- NIEUW MEMORIAAL FORMULIER -->
+        <div class="card">
+          <div style="font-family:var(--mono);font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:16px;">Nieuwe memoriaalboeking</div>
+          <div class="form-grid">
+            <div class="form-group"><label>Datum</label><input id="mem-datum" type="date"></div>
+            <div class="form-group"><label>Bedrag (excl. BTW)</label><input id="mem-bedrag" type="number" step="0.01" placeholder="0.00" oninput="memHerbereken()"></div>
+            <div class="form-group full"><label>Omschrijving <span style="color:var(--text-dim);font-size:10px;">optioneel</span></label><input id="mem-oms" type="text" placeholder="Bijv. maandelijkse afschrijving inventaris"></div>
+            <div class="form-group full"><label>Relatie <span style="color:var(--text-dim);font-size:10px;">optioneel — alleen bij verrekening open post</span></label>
+              <input id="mem-relatie" type="text" list="mem-relatie-list" placeholder="Contact naam...">
+              <datalist id="mem-relatie-list"></datalist>
+            </div>
+          </div>
+
+          <div style="margin-top:16px;">
+            <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px;">Boekingsregels</div>
+            <div style="display:grid;grid-template-columns:auto 1fr 1fr 80px 24px;gap:8px;align-items:center;padding:0 0 6px;border-bottom:1px solid var(--border);margin-bottom:8px;">
+              <div style="font-size:10px;color:var(--text-dim);">D/C</div>
+              <div style="font-size:10px;color:var(--text-dim);">Grootboekrekening</div>
+              <div style="font-size:10px;color:var(--text-dim);">Omschrijving</div>
+              <div style="font-size:10px;color:var(--text-dim);">Bedrag</div>
+              <div></div>
+            </div>
+            <div id="mem-regels"></div>
+            <button class="btn btn-secondary btn-sm" style="width:100%;margin-top:8px;" onclick="addMemRegel()">+ Regel toevoegen</button>
+          </div>
+
+          <div id="mem-saldo-check" style="margin-top:12px;padding:10px;border-radius:5px;font-family:var(--mono);font-size:12px;display:none;"></div>
+
+          <div style="margin-top:16px;display:flex;gap:8px;">
+            <button class="btn btn-secondary" onclick="resetMemoriaal()">Wissen</button>
+            <button class="btn btn-primary" style="flex:1;" onclick="slaMemoriaalOp()">Boeking opslaan</button>
+          </div>
+        </div>
+
+        <!-- MEMORIAAL GESCHIEDENIS -->
+        <div class="card">
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px;">Geschiedenis</div>
+          <div id="mem-lijst"><div class="empty"><p>Geen memoriaalboeking</p></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="page" id="page-mutaties">
+      <div class="page-header">
+        <div><h2>Mutaties</h2><p>Alle boekingen chronologisch</p></div>
+        <button class="btn btn-secondary" onclick="renderMutaties(true)">↻ Vernieuwen</button>
+      </div>
+      <div class="card">
+        <div class="toolbar" style="flex-wrap:wrap;gap:10px;">
+          <input class="search-input" type="text" placeholder="Zoeken op omschrijving..." oninput="mutFilter.zoek=this.value;renderMutaties(true)">
+          <select onchange="mutFilter.type=this.value;renderMutaties(true)" style="width:auto;">
+            <option value="">Alle typen</option>
+            <option value="verkoop">Verkoopfactuur</option>
+            <option value="inkoop">Inkoopfactuur</option>
+            <option value="grootboek">Grootboekboeking</option>
+          </select>
+          <select onchange="mutFilter.gb=this.value;renderMutaties(true)" style="width:auto;" id="mut-gb-filter">
+            <option value="">Alle rekeningen</option>
+          </select>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input type="date" id="mut-van" onchange="mutFilter.van=this.value;renderMutaties(true)" style="width:auto;">
+            <span style="color:var(--text-dim);font-size:12px;">t/m</span>
+            <input type="date" id="mut-tm" onchange="mutFilter.tm=this.value;renderMutaties(true)" style="width:auto;">
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Datum</th><th>Type</th><th>Omschrijving</th><th>Grootboekrekening</th><th>Debet</th><th>Credit</th><th>Saldo effect</th></tr></thead>
+            <tbody id="mut-tbody"></tbody>
+          </table>
+        </div>
+        <div id="mut-paginering"></div>
+      </div>
+    </div>
+
+    <!-- OPEN POSTEN -->
+    <div class="page" id="page-openposten">
+      <div class="page-header">
+        <div><h2>Open posten</h2><p>Onbetaalde facturen</p></div>
+        <button class="btn btn-secondary" onclick="renderOpenPosten()">↻ Vernieuwen</button>
+      </div>
+
+      <!-- STATS -->
+      <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:24px;">
+        <div class="stat-card"><div class="label">Te ontvangen</div><div class="value green" id="op-te-ontvangen">€ 0,00</div></div>
+        <div class="stat-card"><div class="label">Te betalen</div><div class="value red" id="op-te-betalen">€ 0,00</div></div>
+        <div class="stat-card"><div class="label">Vervallen (te ontvangen)</div><div class="value mono" id="op-vervallen-vk" style="color:var(--danger);">0</div></div>
+        <div class="stat-card"><div class="label">Vervallen (te betalen)</div><div class="value mono" id="op-vervallen-ik" style="color:var(--danger);">0</div></div>
+      </div>
+
+      <!-- TABS -->
+      <div class="tabs">
+        <div class="tab active" id="op-tab-vk" onclick="switchOPTab('vk')">Te ontvangen (debiteuren)</div>
+        <div class="tab" id="op-tab-ik" onclick="switchOPTab('ik')">Te betalen (crediteuren)</div>
+      </div>
+
+      <!-- VERKOOP OPEN POSTEN -->
+      <div id="op-vk-wrap">
+        <div class="card">
+          <div class="table-wrap"><table>
+            <thead><tr><th>Nummer</th><th>Klant</th><th>Factuurdatum</th><th>Vervaldatum</th><th>Bedrag incl.</th><th>Status</th><th>Dagen open</th><th></th></tr></thead>
+            <tbody id="op-vk-tbody"></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- INKOOP OPEN POSTEN -->
+      <div id="op-ik-wrap" style="display:none;">
+        <div class="card">
+          <div class="table-wrap"><table>
+            <thead><tr><th>Nummer</th><th>Leverancier</th><th>Factuurdatum</th><th>Vervaldatum</th><th>Bedrag incl.</th><th>Status</th><th>Dagen open</th><th></th></tr></thead>
+            <tbody id="op-ik-tbody"></tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BALANS -->
+    <div class="page" id="page-balans">
+      <div class="page-header">
+        <div><h2>Balans</h2><p>Activa en passiva</p></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <select id="balans-maand" onchange="renderBalans()" style="font-size:13px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);">
+            <option value="">Alle maanden</option>
+            <option value="1">Januari</option><option value="2">Februari</option>
+            <option value="3">Maart</option><option value="4">April</option>
+            <option value="5">Mei</option><option value="6">Juni</option>
+            <option value="7">Juli</option><option value="8">Augustus</option>
+            <option value="9">September</option><option value="10">Oktober</option>
+            <option value="11">November</option><option value="12">December</option>
+          </select>
+          <select id="balans-jaar" onchange="renderBalans()" style="font-size:13px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);"></select>
+          <button class="btn btn-secondary" onclick="renderBalans()">↻ Vernieuwen</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+        <div class="card"><div class="report-section"><h3>Activa</h3><div id="balans-activa"></div></div></div>
+        <div class="card"><div class="report-section"><h3>Passiva</h3><div id="balans-passiva"></div></div></div>
+      </div>
+    </div>
+
+    <!-- P&L -->
+    <div class="page" id="page-pl">
+      <div class="page-header">
+        <div><h2>Winst &amp; Verlies</h2><p>Resultatenrekening</p></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <select id="pl-maand" onchange="renderPL()" style="font-size:13px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);">
+            <option value="">Alle maanden</option>
+            <option value="1">Januari</option><option value="2">Februari</option>
+            <option value="3">Maart</option><option value="4">April</option>
+            <option value="5">Mei</option><option value="6">Juni</option>
+            <option value="7">Juli</option><option value="8">Augustus</option>
+            <option value="9">September</option><option value="10">Oktober</option>
+            <option value="11">November</option><option value="12">December</option>
+          </select>
+          <select id="pl-jaar" onchange="renderPL()" style="font-size:13px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);"></select>
+          <select id="pl-vergelijk-maand" onchange="renderPL()" style="font-size:13px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);">
+            <option value="">Geen vergelijking</option>
+            <option value="1">Januari</option><option value="2">Februari</option>
+            <option value="3">Maart</option><option value="4">April</option>
+            <option value="5">Mei</option><option value="6">Juni</option>
+            <option value="7">Juli</option><option value="8">Augustus</option>
+            <option value="9">September</option><option value="10">Oktober</option>
+            <option value="11">November</option><option value="12">December</option>
+          </select>
+          <select id="pl-vergelijk-jaar" onchange="renderPL()" style="font-size:13px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);"></select>
+          <button class="btn btn-secondary" onclick="renderPL()">↻ Vernieuwen</button>
+        </div>
+      </div>
+      <div class="card" style="max-width:780px;">
+        <div class="report-section"><h3>Omzet</h3><div id="pl-omzet"></div></div>
+        <div class="report-section"><h3>Kosten</h3><div id="pl-kosten"></div></div>
+        <div id="pl-resultaat"></div>
+      </div>
+    </div>
+
+    <!-- KASSALIJST INVULLEN (gebruiker view) -->
+    <div class="page" id="page-jaaropgave">
+      <div class="page-header">
+        <div><h2>Jaaropgave</h2><p>Fiscale berekening voor eenmanszaak — IB aangifte</p></div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select id="jaar-select" onchange="renderJaaropgave()" style="font-size:13px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);">
+          </select>
+          <button class="btn btn-secondary btn-sm" onclick="downloadJaaropgave()">↓ Download</button>
+          <button class="btn btn-primary btn-sm" onclick="voerJaarafsluitingUit()" style="background:#7c3aed;border-color:#7c3aed;">⚑ Jaarafsluiting</button>
+        </div>
+      </div>
+
+      <!-- FISCALE BEREKENING -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+
+        <!-- LINKS: Winst berekening -->
+        <div>
+          <div class="card" style="margin-bottom:12px;">
+            <div class="card-title">Winst uit onderneming</div>
+            <div id="jaar-winst-detail"></div>
+          </div>
+          <div class="card" style="margin-bottom:12px;">
+            <div class="card-title" style="color:#7c3aed;">Fiscale aftrekposten</div>
+            <div id="jaar-aftrekposten"></div>
+          </div>
+          <div class="card" style="border:2px solid var(--accent);">
+            <div class="card-title">Belastbaar inkomen</div>
+            <div id="jaar-belastbaar"></div>
+          </div>
+        </div>
+
+        <!-- RECHTS: Instellingen + Toelichting -->
+        <div>
+          <div class="card" style="margin-bottom:12px;">
+            <div class="card-title">Instellingen belastingjaar</div>
+            <div class="form-group" style="margin-bottom:10px;">
+              <label>Zelfstandigenaftrek</label>
+              <input type="number" id="jaar-zelfstandige-aftrek" value="5030" step="1"
+                oninput="renderJaaropgave()" style="font-family:var(--mono);">
+              <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Standaard 2025: €5.030 (afgebouwd, check belastingdienst.nl)</div>
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+              <label>MKB-winstvrijstelling</label>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <input type="number" id="jaar-mkb-pct" value="13.31" step="0.01" max="100"
+                  oninput="renderJaaropgave()" style="font-family:var(--mono);">
+                <span style="font-size:12px;color:var(--text-dim);">%</span>
+              </div>
+              <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Standaard 2025: 13,31% van de winst na aftrekposten</div>
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+              <label>Startersaftrek (indien van toepassing)</label>
+              <input type="number" id="jaar-starters-aftrek" value="0" step="1"
+                oninput="renderJaaropgave()" style="font-family:var(--mono);">
+              <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Eerste 3 jaar: €2.123 extra bovenop zelfstandigenaftrek</div>
+            </div>
+            <div class="form-group">
+              <label>Voldoet aan urencriterium (≥1.225 uur)</label>
+              <select id="jaar-urencriterium" onchange="renderJaaropgave()">
+                <option value="ja">Ja — recht op zelfstandigenaftrek</option>
+                <option value="nee">Nee — geen zelfstandigenaftrek</option>
+              </select>
+            </div>
+          </div>
+          <div class="card" style="background:#f0fdf4;border-color:#86efac;">
+            <div class="card-title" style="color:#16a34a;">Toelichting</div>
+            <div id="jaar-toelichting" style="font-size:12px;line-height:1.7;color:var(--text-mid);"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PRIVÉ MUTATIES -->
+      <div class="card" style="margin-top:12px;">
+        <div class="card-title" style="color:#7c3aed;">Privé-mutaties dit jaar</div>
+        <div id="jaar-prive-mutaties"></div>
+      </div>
+    </div>
+
+    <!-- VASTE ACTIVA -->
+
+    <!-- VASTE ACTIVA -->
+    <div class="page" id="page-btwaangifte">
+      <div class="page-header">
+        <div><h2>BTW aangifte</h2><p>Automatisch berekend op basis van geboekte facturen en transacties</p></div>
+        <button class="btn btn-secondary" onclick="renderBTWAangifte()">↻ Herbereken</button>
+      </div>
+
+      <!-- PERIODE KEUZE -->
+      <div class="card" style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:12px;color:var(--text-dim);">Periode</span>
+            <select id="btw-periode" onchange="renderBTWAangifte()" style="width:auto;">
+              <option value="Q1">Q1 (jan – mrt)</option>
+              <option value="Q2">Q2 (apr – jun)</option>
+              <option value="Q3">Q3 (jul – sep)</option>
+              <option value="Q4">Q4 (okt – dec)</option>
+            </select>
+            <select id="btw-jaar" onchange="renderBTWAangifte()" style="width:auto;"></select>
+          </div>
+          <div style="font-size:11px;color:var(--text-dim);">Bedragen zijn excl. BTW tenzij anders vermeld</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start;">
+
+        <!-- RUBRIEKEN -->
+        <div class="card">
+          <div style="font-family:var(--mono);font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:16px;">Rubrieken</div>
+
+          <div style="margin-bottom:20px;">
+            <div style="font-size:12px;font-weight:600;color:var(--text-mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);">Rubriek 1 — Prestaties binnenland</div>
+            <div class="btw-rubriek-row" id="btw-1a"><span class="btw-r-label">1a Leveringen/diensten hoog (21%)</span><span class="btw-r-grondslag" id="btw-1a-gs">€ 0,00</span><span class="btw-r-btw" id="btw-1a-btw">€ 0,00</span></div>
+            <div class="btw-rubriek-row" id="btw-1b"><span class="btw-r-label">1b Leveringen/diensten laag (9%)</span><span class="btw-r-grondslag" id="btw-1b-gs">€ 0,00</span><span class="btw-r-btw" id="btw-1b-btw">€ 0,00</span></div>
+            <div class="btw-rubriek-row" id="btw-1d"><span class="btw-r-label">1d Leveringen/diensten 0% / vrijgesteld</span><span class="btw-r-grondslag" id="btw-1d-gs">€ 0,00</span><span class="btw-r-btw" id="btw-1d-btw">€ 0,00</span></div>
+          </div>
+
+          <div style="margin-bottom:20px;">
+            <div style="font-size:12px;font-weight:600;color:var(--text-mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);">Rubriek 5 — Voorbelasting</div>
+            <div class="btw-rubriek-row"><span class="btw-r-label">5b Voorbelasting (inkoop BTW)</span><span class="btw-r-grondslag" id="btw-5b-gs">€ 0,00</span><span class="btw-r-btw" id="btw-5b-btw" style="color:var(--danger);">€ 0,00</span></div>
+          </div>
+
+          <div style="border-top:2px solid var(--border);padding-top:14px;margin-top:4px;">
+            <div class="btw-rubriek-row" style="font-weight:600;">
+              <span class="btw-r-label" style="font-size:13px;">Te betalen / Te ontvangen</span>
+              <span></span>
+              <span class="btw-r-btw" id="btw-saldo" style="font-size:15px;font-weight:700;">€ 0,00</span>
+            </div>
+            <div id="btw-saldo-label" style="font-size:11px;color:var(--text-dim);margin-top:4px;text-align:right;"></div>
+          </div>
+        </div>
+
+        <!-- SAMENVATTING + NOTITIES -->
+        <div>
+          <div class="card" style="margin-bottom:16px;">
+            <div style="font-family:var(--mono);font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px;">Samenvatting</div>
+            <div id="btw-samenvatting" style="font-size:12px;color:var(--text-dim);line-height:1.8;"></div>
+          </div>
+          <div class="card">
+            <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px;">Notities aangifte</div>
+            <textarea id="btw-notities" rows="5" placeholder="Bijv. correcties, bijzonderheden, KOR..." style="width:100%;font-size:12px;"></textarea>
+            <button class="btn btn-secondary btn-sm" style="margin-top:8px;" onclick="slaBANotitiesOp()">Notities opslaan</button>
+          </div>
+        </div>
+      </div>
+    </div>

@@ -1,0 +1,69 @@
+/* ===== YS BOEKHOUDING HUISSTIJL ===== */
+:root {
+  --ys-navy:   #1e3a8a;
+  --ys-blue:   #1d4ed8;
+  --ys-light:  #dbeafe;
+  --ys-gold:   #f59e0b;
+}
+
+/* Topbar verfijning */
+.topbar {
+  background: var(--ys-navy) !important;
+  box-shadow: 0 2px 8px rgba(30,58,138,0.18);
+}
+
+/* Primaire knoppen in YS navy */
+.btn-primary {
+  background: var(--ys-navy) !important;
+  border-color: var(--ys-navy) !important;
+}
+.btn-primary:hover {
+  background: var(--ys-blue) !important;
+  border-color: var(--ys-blue) !important;
+}
+
+/* Accent kleur in heel de app */
+.badge-blue, .amount-pos { color: var(--ys-navy) !important; }
+
+/* Nav actief item */
+.nav-tab.active, .nav-dropdown-item.active {
+  color: var(--ys-navy) !important;
+  border-color: var(--ys-navy) !important;
+}
+
+/* Card titels */
+.card-title { color: var(--ys-navy); }
+
+/* Page header */
+.page-header h2 { color: var(--ys-navy); }
+
+/* Subtotaal rijen */
+.report-row.subtotal { color: var(--ys-navy); }
+
+/* Login knop stijl */
+#login-overlay .btn-primary {
+  background: var(--ys-navy) !important;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Sync indicator */
+#sync-status {
+  font-size: 11px;
+  border-radius: 20px;
+  padding: 5px 14px;
+}
+
+/* Verbeterde invoervelden */
+input, select, textarea {
+  transition: border-color 0.15s;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--ys-navy) !important;
+  box-shadow: 0 0 0 3px rgba(30,58,138,0.1);
+}
+
+/* Mobiel — kassa grote indienknop */
+@media (max-width:600px) {
+  .btn-primary { font-weight: 600; }
+}

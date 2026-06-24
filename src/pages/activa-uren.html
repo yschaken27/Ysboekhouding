@@ -1,0 +1,38 @@
+﻿    <div class="page" id="page-urenoverzicht">
+      <div class="page-header">
+        <div><h2>Urenoverzicht</h2><p>Ingevulde uren per opdrachtgever — nakijken, goedkeuren en factureren</p></div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="month" id="uren-filter-maand" onchange="renderUrenoverzicht()" style="font-size:13px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);">
+        </div>
+      </div>
+
+      <!-- STATS -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
+        <div class="stat-card"><div class="label">Totaal uren (maand)</div><div class="value" id="uov-uren">0</div></div>
+        <div class="stat-card"><div class="label">Totaal bedrag</div><div class="value" id="uov-bedrag" style="color:#16a34a;">€ 0,00</div></div>
+        <div class="stat-card"><div class="label">Wacht goedkeuring</div><div class="value" id="uov-wacht" style="color:var(--warning);">0</div></div>
+        <div class="stat-card"><div class="label">Opdrachtgevers</div><div class="value" id="uov-opdr">0</div></div>
+      </div>
+
+      <div id="uren-overzicht-lijst"></div>
+    </div>
+
+    <!-- JAAROPGAVE -->
+    <div class="page" id="page-vasteactiva">
+      <div class="page-header">
+        <div><h2>Vaste activa</h2><p>Afschrijvingsschema's — automatisch gevuld via inkoopfacturen</p></div>
+      </div>
+
+      <!-- OVERZICHT STATS -->
+      <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:20px;">
+        <div class="stat-card"><div class="label">Totaal aanschafwaarde</div><div class="value" id="va-stat-aanschaf">€ 0,00</div></div>
+        <div class="stat-card"><div class="label">Totaal boekwaarde</div><div class="value green" id="va-stat-boekwaarde">€ 0,00</div></div>
+        <div class="stat-card"><div class="label">Totaal afgeschreven</div><div class="value red" id="va-stat-afgeschreven">€ 0,00</div></div>
+        <div class="stat-card"><div class="label">Maandelijkse afschrijving</div><div class="value mono" id="va-stat-maand">€ 0,00</div></div>
+      </div>
+
+      <!-- ACTIVA LIJST -->
+      <div id="va-lijst"><div class="empty"><span class="icon">⬛</span><p>Geen vaste activa geregistreerd</p><p style="font-size:12px;margin-top:6px;">Voeg een activum toe om een afschrijvingsschema bij te houden</p></div></div>
+    </div>
+
+    <!-- BTW AANGIFTE -->

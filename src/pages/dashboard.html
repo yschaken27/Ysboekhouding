@@ -1,0 +1,110 @@
+﻿    <div class="page active" id="page-dashboard">
+      <div class="page-header">
+        <div>
+          <h2>Dashboard</h2>
+          <p id="dash-bedrijf-sub">Financieel overzicht</p>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <!-- Periode filter -->
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            <button class="btn btn-sm" id="dash-filter-ytd" onclick="setDashPeriode('ytd')" style="background:var(--accent);color:#fff;font-weight:600;font-size:11px;padding:4px 10px;">Dit jaar</button>
+            <button class="btn btn-secondary btn-sm" id="dash-filter-q1" onclick="setDashPeriode('q1')" style="font-size:11px;padding:4px 10px;">Q1</button>
+            <button class="btn btn-secondary btn-sm" id="dash-filter-q2" onclick="setDashPeriode('q2')" style="font-size:11px;padding:4px 10px;">Q2</button>
+            <button class="btn btn-secondary btn-sm" id="dash-filter-q3" onclick="setDashPeriode('q3')" style="font-size:11px;padding:4px 10px;">Q3</button>
+            <button class="btn btn-secondary btn-sm" id="dash-filter-q4" onclick="setDashPeriode('q4')" style="font-size:11px;padding:4px 10px;">Q4</button>
+            <button class="btn btn-secondary btn-sm" id="dash-filter-all" onclick="setDashPeriode('all')" style="font-size:11px;padding:4px 10px;">Alles</button>
+            <!-- Maand dropdown -->
+            <select id="dash-maand-select" onchange="setDashPeriodeDropdown(this.value)"
+              style="font-size:11px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;
+              background:var(--surface);color:var(--text);cursor:pointer;height:28px;">
+              <option value="">📅 Maand...</option>
+              <option value="m01">Januari</option>
+              <option value="m02">Februari</option>
+              <option value="m03">Maart</option>
+              <option value="m04">April</option>
+              <option value="m05">Mei</option>
+              <option value="m06">Juni</option>
+              <option value="m07">Juli</option>
+              <option value="m08">Augustus</option>
+              <option value="m09">September</option>
+              <option value="m10">Oktober</option>
+              <option value="m11">November</option>
+              <option value="m12">December</option>
+            </select>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="downloadDashboard()" style="font-size:11px;">↓ Rapport</button>
+        </div>
+      </div>
+
+      <!-- ROW 1: 6 stat cards compact -->
+      <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:12px;">
+        <div class="stat-card" onclick="showPage('verkoop')" style="cursor:pointer;">
+          <div class="label">Omzet</div>
+          <div class="value" id="s-omzet" style="color:#16a34a;">€ 0,00</div>
+          <div id="s-omzet-sub" style="font-size:10px;color:var(--text-dim);margin-top:2px;font-family:var(--mono);"></div>
+        </div>
+        <div class="stat-card" onclick="showPage('inkoop')" style="cursor:pointer;">
+          <div class="label">Kosten</div>
+          <div class="value" id="s-inkoop" style="color:#dc2626;">€ 0,00</div>
+          <div id="s-inkoop-sub" style="font-size:10px;color:var(--text-dim);margin-top:2px;font-family:var(--mono);"></div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Marge</div>
+          <div class="value" id="s-marge" style="">€ 0,00</div>
+          <div id="s-marge-pct" style="font-size:10px;color:var(--text-dim);margin-top:2px;font-family:var(--mono);"></div>
+        </div>
+        <div class="stat-card" onclick="showPage('openposten')" style="cursor:pointer;">
+          <div class="label">Openstaand</div>
+          <div class="value" id="s-openstaand" style="color:var(--accent);">€ 0,00</div>
+          <div id="s-openstaand-sub" style="font-size:10px;color:var(--text-dim);margin-top:2px;font-family:var(--mono);"></div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Crediteuren</div>
+          <div class="value" id="s-crediteuren" style="">€ 0,00</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Banksaldo</div>
+          <div class="value" id="s-banksaldo" style="">€ 0,00</div>
+        </div>
+      </div>
+      <!-- Privé row -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px;" id="dash-prive-row">
+        <div class="stat-card" style="border-top:3px solid #7c3aed;">
+          <div class="label" style="color:#7c3aed;">👤 Privé-opnames (YTD)</div>
+          <div class="value" id="s-prive-opnames" style="color:#7c3aed;">€ 0,00</div>
+        </div>
+        <div class="stat-card" style="border-top:3px solid #059669;">
+          <div class="label" style="color:#059669;">👤 Privé-stortingen (YTD)</div>
+          <div class="value" id="s-prive-stortingen" style="color:#059669;">€ 0,00</div>
+        </div>
+        <div class="stat-card" style="border-top:3px solid #6366f1;">
+          <div class="label">Eigen vermogen netto</div>
+          <div class="value" id="s-prive-netto">€ 0,00</div>
+        </div>
+      </div>
+
+      <!-- ROW 2: Chart + Top klanten + Vervallen -->
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+        <div class="card" style="margin:0;">
+          <div class="card-title">Omzet vs Kosten</div>
+          <div style="position:relative;height:150px;">
+            <canvas id="dash-chart-maand"></canvas>
+          </div>
+        </div>
+        <div class="card" style="margin:0;overflow:hidden;">
+          <div class="card-title">Top klanten</div>
+          <div id="dash-top-klanten"></div>
+        </div>
+        <div class="card" style="margin:0;overflow:hidden;">
+          <div class="card-title">Vervallen facturen</div>
+          <div id="dash-vervallen"></div>
+        </div>
+      </div>
+
+      <!-- ROW 3: Recente facturen -->
+      <div class="card" style="margin:0;">
+        <div class="card-title">Recente facturen</div>
+        <div id="dash-recent"></div>
+      </div>
+    </div>
+    <!-- VERKOOPFACTUREN -->
