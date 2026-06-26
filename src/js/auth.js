@@ -537,84 +537,6 @@ function openGebruikerDetail(id){
   openModal('modal-gebruiker-detail');
 }
 
-// Werkkopie van de opdrachtgevers tijdens het bewerken
-let _gdOpdrachtgevers = [];
-
-// Toon de opdrachtgevers-sectie alleen als uren-registratie aan staat voor dit bedrijf
-function updateOpdrachtgeverZichtbaarheid(){
-  const wrap = document.getElementById('gd-opdrachtgevers-wrap');
-  if(wrap) wrap.style.display = isUrenAan() ? 'block' : 'none';
-}
-
-function renderOpdrachtgevers(){
-  const el = document.getElementById('gd-opdrachtgevers-lijst');
-  if(!el) return;
-  const centraal = DB.profiel?.opdrachtgevers || [];
-  if(!centraal.length){
-    el.innerHTML = `<div style="font-size:12px;color:var(--text-dim);line-height:1.6;">
-      Voeg eerst opdrachtgevers toe in het centrale register.
-      <button type="button" onclick="closeModal('modal-gebruiker-detail');openOpdrachtgeversModal();"
-        style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:12px;padding:0;text-decoration:underline;">
-        ⚙ Opdrachtgevers beheren →
-      </button>
-    </div>`;
-    return;
-  }
-  if(!_gdOpdrachtgevers.length){
-    el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);">Klik op "+ Opdrachtgever" hieronder om er een te koppelen.</div>';
-    return;
-  }
-  const opties = centraal.map(o=>`<option value="${esc(o.naam)}">${esc(o.naam)}</option>`).join('');
-  el.innerHTML = _gdOpdrachtgevers.map((o,oi)=>`
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;">
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-        <select onchange="_gdOpdrachtgevers[${oi}].naam=this.value" style="flex:1;font-size:13px;font-weight:600;padding:7px 9px;">
-          <option value="">— Kies opdrachtgever —</option>
-          ${centraal.map(o2=>`<option value="${esc(o2.naam)}"${o2.naam===o.naam?' selected':''}>${esc(o2.naam)}</option>`).join('')}
-        </select>
-        <button type="button" onclick="verwijderOpdrachtgever(${oi})" title="Ontkoppelen"
-          style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;">🗑</button>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:6px;" id="gd-tarieven-${oi}">
-        ${(o.tarieven||[]).map((t,ti)=>`
-          <div style="display:flex;gap:6px;align-items:center;">
-            <input type="text" value="${esc(t.label||'')}" placeholder="Label (bijv. Dag)"
-              oninput="_gdOpdrachtgevers[${oi}].tarieven[${ti}].label=this.value"
-              style="flex:1;font-size:12px;padding:6px 8px;">
-            <span style="font-size:12px;color:var(--text-dim);">€</span>
-            <input type="number" step="0.01" value="${t.bedrag!=null?t.bedrag:''}" placeholder="0.00"
-              oninput="_gdOpdrachtgevers[${oi}].tarieven[${ti}].bedrag=parseFloat(this.value)||0"
-              style="width:80px;font-size:12px;padding:6px 8px;">
-            <span style="font-size:11px;color:var(--text-dim);">/uur</span>
-            <button type="button" onclick="verwijderTarief(${oi},${ti})" title="Tarief verwijderen"
-              style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:14px;">✕</button>
-          </div>`).join('')}
-      </div>
-      <button type="button" class="btn btn-secondary btn-sm" style="margin-top:8px;font-size:11px;"
-        onclick="voegTariefToe(${oi})">+ Tarief</button>
-    </div>`).join('');
-}
-
-function voegOpdrachtgeverToe(){
-  _gdOpdrachtgevers.push({ naam:'', tarieven:[{label:'',bedrag:0}] });
-  renderOpdrachtgevers();
-}
-
-function verwijderOpdrachtgever(oi){
-  _gdOpdrachtgevers.splice(oi,1);
-  renderOpdrachtgevers();
-}
-
-function voegTariefToe(oi){
-  if(!_gdOpdrachtgevers[oi].tarieven) _gdOpdrachtgevers[oi].tarieven=[];
-  _gdOpdrachtgevers[oi].tarieven.push({label:'',bedrag:0});
-  renderOpdrachtgevers();
-}
-
-function verwijderTarief(oi,ti){
-  _gdOpdrachtgevers[oi].tarieven.splice(ti,1);
-  renderOpdrachtgevers();
-}
 
 async function slaGebruikerDetailOp(){
   if(!checkOnline()) return;
@@ -634,20 +556,6 @@ async function slaGebruikerDetailOp(){
   k.naam = naam;
   k.bedrijven = gekozenBedrijven;
   k.modules = gekozenModules;
-
-  // Opdrachtgevers opslaan als uren-registratie aan staat voor dit bedrijf; anders leeg laten.
-  if(isUrenAan()){
-    k.opdrachtgevers = _gdOpdrachtgevers
-      .map(o=>({
-        naam: (o.naam||'').trim(),
-        tarieven: (o.tarieven||[])
-          .filter(t=>(t.label||'').trim() || t.bedrag)
-          .map(t=>({ label:(t.label||'').trim(), bedrag: parseFloat(t.bedrag)||0 }))
-      }))
-      .filter(o=>o.naam && o.tarieven.length);
-  } else {
-    k.opdrachtgevers = [];
-  }
 
   save();
   await slaKassiersOpCloud();
