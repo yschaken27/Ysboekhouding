@@ -227,7 +227,15 @@ async function kiesBedrijfNaLogin(bedrijf){
     huidigBedrijf = bedrijf;
     try{ localStorage.setItem('ledger_actief_bedrijf', bedrijf); }catch(e){}
   }
-  try{ await fbAanroep(fb=>fb.laadAlles(bedrijf)); }catch(e){}
+  // Laad bedrijfsdata en gebruik het resultaat meteen om DB te vullen —
+  // zodat verrijkActieveKassier() direct modules + opdrachtgevers kan lezen,
+  // ook al is de async Firestore listener (loadCloud) nog niet gevuurd.
+  try{
+    const json = await fbAanroep(fb=>fb.laadAlles(bedrijf));
+    const d = JSON.parse(json||'{}');
+    if(Array.isArray(d.kassiers)) DB.kassiers = d.kassiers;
+    if(d.profiel && Object.keys(d.profiel).length) DB.profiel = d.profiel;
+  }catch(e){}
   load();
 
   // Vul de kassier-gegevens aan (modules + opdrachtgevers) uit de zojuist geladen data.
