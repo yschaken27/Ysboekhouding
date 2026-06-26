@@ -757,12 +757,18 @@ function _tekenCentraalOpdrachtgevers(){
             oninput="_cpOpdrachtgevers[${i}].email=this.value"
             style="flex:1;font-size:12px;padding:6px 8px;">
         </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:2px;">
+          <span style="font-size:12px;color:var(--text-dim);white-space:nowrap;">Uurtarief (€)</span>
+          <input type="number" min="0" step="0.01" value="${o.tarief!=null?o.tarief:''}" placeholder="bijv. 28.50"
+            oninput="_cpOpdrachtgevers[${i}].tarief=parseFloat(this.value)||null"
+            style="width:110px;font-size:12px;padding:6px 8px;">
+        </div>
       </div>
     </div>`).join('');
 }
 
 function voegCentraalOpdrachtgeverToe(){
-  _cpOpdrachtgevers.push({ naam:'', adres:'', btwNummer:'', email:'' });
+  _cpOpdrachtgevers.push({ naam:'', adres:'', btwNummer:'', email:'', tarief:null });
   _tekenCentraalOpdrachtgevers();
 }
 
@@ -778,6 +784,7 @@ function slaCentraalOpdrachtgeversOp(){
       adres: (o.adres||'').trim(),
       btwNummer: (o.btwNummer||'').trim(),
       email: (o.email||'').trim(),
+      tarief: o.tarief!=null ? parseFloat(o.tarief) : null,
     }))
     .filter(o=>o.naam);
   if(!DB.profiel) DB.profiel={};
@@ -822,12 +829,18 @@ function _tekenOpdrachtgeversModal(){
             oninput="_cpOpdrachtgevers[${i}].email=this.value"
             style="flex:1;font-size:12px;padding:6px 8px;">
         </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:2px;">
+          <span style="font-size:12px;color:var(--text-dim);white-space:nowrap;">Uurtarief (€)</span>
+          <input type="number" min="0" step="0.01" value="${o.tarief!=null?o.tarief:''}" placeholder="bijv. 28.50"
+            oninput="_cpOpdrachtgevers[${i}].tarief=parseFloat(this.value)||null"
+            style="width:110px;font-size:12px;padding:6px 8px;">
+        </div>
       </div>
     </div>`).join('');
 }
 
 function voegOpdrachtgeverModalToe(){
-  _cpOpdrachtgevers.push({ naam:'', adres:'', btwNummer:'', email:'' });
+  _cpOpdrachtgevers.push({ naam:'', adres:'', btwNummer:'', email:'', tarief:null });
   _tekenOpdrachtgeversModal();
 }
 
@@ -843,6 +856,7 @@ function slaOpdrachtgeversModalOp(){
       adres: (o.adres||'').trim(),
       btwNummer: (o.btwNummer||'').trim(),
       email: (o.email||'').trim(),
+      tarief: o.tarief!=null ? parseFloat(o.tarief) : null,
     }))
     .filter(o=>o.naam);
   if(!DB.profiel) DB.profiel={};

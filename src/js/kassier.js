@@ -220,29 +220,18 @@ function initMobUren(){
 }
 
 function mobUrenVulTarieven(){
-  const oi = parseInt(document.getElementById('mob-uren-opdrachtgever')?.value);
-  const opdr = _mobUrenOpdrachtgevers()[oi];
-  const wrap = document.getElementById('mob-uren-tarief-wrap');
-  const sel = document.getElementById('mob-uren-tarief');
-  const tarieven = opdr?.tarieven || [];
-  if(sel){
-    sel.innerHTML = tarieven.map((t,i)=>
-      `<option value="${i}">${esc(t.label||'Tarief')} — €${(t.bedrag||0).toFixed(2)}/u</option>`
-    ).join('');
-  }
-  // Tariefkeuze alleen tonen als er meer dan één is
-  if(wrap) wrap.style.display = tarieven.length > 1 ? 'block' : 'none';
+  // Tarief komt nu uit het centrale opdrachtgever-register (opdr.tarief)
+  if(document.getElementById('mob-uren-tarief-wrap'))
+    document.getElementById('mob-uren-tarief-wrap').style.display = 'none';
   mobUrenHerbereken();
 }
 
 function _mobUrenGekozenTarief(){
   const oi = parseInt(document.getElementById('mob-uren-opdrachtgever')?.value);
   const opdr = _mobUrenOpdrachtgevers()[oi];
-  const tarieven = opdr?.tarieven || [];
-  if(!tarieven.length) return null;
-  // Bij één tarief: dat tarief; bij meerdere: de gekozene
-  const ti = tarieven.length > 1 ? parseInt(document.getElementById('mob-uren-tarief')?.value) : 0;
-  return { opdrachtgever: opdr.naam, tarief: tarieven[ti] };
+  if(!opdr) return null;
+  const bedrag = parseFloat(opdr.tarief) || 0;
+  return { opdrachtgever: opdr.naam, tarief: { label: 'Uren', bedrag } };
 }
 
 function mobUrenHerbereken(){
