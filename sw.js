@@ -1,11 +1,11 @@
-const CACHE_NAME = 'ysboekhouding-v2';
+const CACHE_NAME = 'ysboekhouding-v3';
 
 // Bij installatie: meteen activeren zonder te wachten
 self.addEventListener('install', event => {
   self.skipWaiting();
 });
 
-// Bij activatie: verwijder ALLE oude caches (inclusief vorige blob-versie)
+// Bij activatie: verwijder ALLE oude caches
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
@@ -14,14 +14,21 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Navigatie-requests (HTML pagina): altijd vers van het netwerk halen
+// Alle eigen bestanden (HTML, JS, CSS): altijd vers van het netwerk
 // Fallback naar cache alleen als er geen internet is
 self.addEventListener('fetch', event => {
-  if (event.request.mode === 'navigate') {
+  const url = new URL(event.request.url);
+  const isEigenBestand = url.hostname === self.location.hostname && (
+    event.request.mode === 'navigate' ||
+    url.pathname.endsWith('.js') ||
+    url.pathname.endsWith('.css') ||
+    url.pathname.endsWith('.html')
+  );
+
+  if (isEigenBestand) {
     event.respondWith(
       fetch(event.request, { cache: 'no-store' })
         .then(response => {
-          // Sla de verse pagina op als offline fallback
           const clone = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
           return response;
@@ -29,5 +36,5 @@ self.addEventListener('fetch', event => {
         .catch(() => caches.match(event.request))
     );
   }
-  // Overige requests (Firebase, scripts): normaal doorlaten
+  // Firebase en overige externe requests: normaal doorlaten
 });
