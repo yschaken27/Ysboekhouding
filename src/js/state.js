@@ -453,7 +453,16 @@ function loadCloud(){
       if(d.vasteActiva  !== undefined) DB.vasteActiva  = d.vasteActiva  || [];
       if(d.kassalijsten !== undefined) DB.kassalijsten = d.kassalijsten || [];
       if(d.uren         !== undefined) DB.uren         = d.uren         || [];
-      if(d.kassiers     !== undefined) DB.kassiers     = d.kassiers     || [];
+      // Kassiers zijn globaal: merge per id zodat instellingen van alle bedrijven
+      // altijd samenkomen in één lijst, ongeacht welk bedrijf de listener vuurt.
+      if(d.kassiers !== undefined){
+        if(!DB.kassiers) DB.kassiers = [];
+        (d.kassiers||[]).forEach(k=>{
+          const idx = DB.kassiers.findIndex(x=>x.id===k.id);
+          if(idx === -1) DB.kassiers.push(k);
+          else DB.kassiers[idx] = k;
+        });
+      }
       if(d.grootboek    !== undefined) DB.grootboek    = d.grootboek    || [];
 
       // Profiel: cloud wint altijd (eigenaar beheert dit)
