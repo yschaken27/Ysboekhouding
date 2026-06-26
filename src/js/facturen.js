@@ -507,7 +507,7 @@ function berekenTotalen(){
     const bedrag=(parseFloat(inp[1]?.value)||0)*(parseFloat(inp[2]?.value)||0);
     const btwPct=parseInt(sels[1]?.value||'21')||0;
     sub+=bedrag;
-    btwTotaal+=bedrag*btwPct/100;
+    btwTotaal+=Math.round(bedrag*btwPct)/100;
   });
   if(isNaN(sub)) sub=0;
   if(isNaN(btwTotaal)) btwTotaal=0;
@@ -531,7 +531,7 @@ async function slaFactuurOp(){
     });
   });
   const sub2=regels.reduce((a,r)=>a+(parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0),0);
-  const btwTotaal=regels.reduce((a,r)=>a+(parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0)*(parseInt(r.btw)||0)/100,0);
+  const btwTotaal=regels.reduce((a,r)=>a+Math.round((parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0)*(parseInt(r.btw)||0))/100,0);
   // Validatie: factuur mag geen bedrag van 0 hebben
   if(sub2 === 0){ toast('Factuur heeft een totaal van €0,00 — vul een bedrag in.','error'); return; }
   const isNieuw=!DB.editId;

@@ -95,7 +95,7 @@ function slaKassaOp(){
   const naam = _actieveKassier?.naam || 'Gebruiker';
 
   // BTW tarief van bedrijfsprofiel — kassier stelt dit niet zelf in
-  const kassaBtwTarief = parseInt(DB.profiel?.btwStandaard||'9');
+  const kassaBtwTarief = parseInt(DB.profiel?.btwStandaard||'21');
   const omzetIncl = eindsaldo - begin;
   // Bereken excl BTW op basis van profieltarief
   const omzetExcl = kassaBtwTarief > 0 ? omzetIncl / (1 + kassaBtwTarief / 100) : omzetIncl;
@@ -729,7 +729,7 @@ async function keurKassaGoed(id){
 
   // Kassalijst bedragen — totaalOmzet is excl BTW, totaalOmzetIncl is incl BTW
   // Oudere kassalijsten zonder btwTarief veld: behandel totaalOmzet als incl voor backwards compat
-  const btwTarief  = parseInt(k.btwTarief ?? DB.profiel?.btwStandaard ?? '9');
+  const btwTarief  = parseInt(k.btwTarief ?? DB.profiel?.btwStandaard ?? '21');
   const kasOmzetIncl = parseFloat(k.totaalOmzetIncl || k.totaalOmzet || 0);
   const kasOmzetExcl = parseFloat(k.totaalOmzet || 0);
   const kasOmzetBtw  = parseFloat(k.omzetBtw || (kasOmzetIncl - kasOmzetExcl) || 0);
@@ -751,9 +751,9 @@ async function keurKassaGoed(id){
 
   // 3. BTW afdracht rekening — credit BTW te betalen
   // Maak rekening aan als die niet bestaat — voorkomt silent fail
-  let btwRek = DB.grootboek.find(g=>g.nummer==='1810') || DB.grootboek.find(g=>g.naam.toLowerCase().includes('btw te betalen'));
+  let btwRek = DB.grootboek.find(g=>g.nummer==='2300') || DB.grootboek.find(g=>g.nummer==='1810') || DB.grootboek.find(g=>g.naam.toLowerCase().includes('btw te betalen'));
   if(!btwRek && kasOmzetBtw > 0){
-    btwRek = { id:uid(), nummer:'1810', naam:'BTW te betalen', type:'schuld', saldo:0 };
+    btwRek = { id:uid(), nummer:'2300', naam:'BTW te betalen', type:'schuld', saldo:0 };
     if(!DB.grootboek) DB.grootboek = [];
     DB.grootboek.push(btwRek);
   }

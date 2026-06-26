@@ -677,7 +677,7 @@ async function voegKassierToe(){
 
   // Stuur wachtwoord-instellen mail zodat de kassier direct kan inloggen.
   try{
-    await firebase.auth().sendPasswordResetEmail(email);
+    await FBAuth.wachtwoordResetten(email);
     toast(`Gebruiker "${naam}" toegevoegd. Wachtwoord-mail verstuurd naar ${email}.`, 'success');
   }catch(e){
     console.warn('Wachtwoord-mail mislukt:', e);

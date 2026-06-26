@@ -504,26 +504,8 @@ function loadCloud(){
   laadGebruikersInDB();
 }
 async function laadGebruikersInDB(){
-  try{
-    const json = await fbAanroep(fb=>fb.laadGebruikers());
-    const lijst = JSON.parse(json||'[]');
-    if(Array.isArray(lijst)){
-      // Merge per id — nooit volledig vervangen. Deze aanroep loopt parallel aan
-      // verwerkCloudData() die ook DB.kassiers opbouwt. Een volledige vervanging zou
-      // de per-bedrijf merge-staat kunnen overschrijven met een verouderde centrale lijst.
-      if(!DB.kassiers) DB.kassiers = [];
-      lijst.forEach(k=>{
-        const idx = DB.kassiers.findIndex(x=>x.id===k.id);
-        if(idx === -1) DB.kassiers.push(k);
-        else DB.kassiers[idx] = k;
-      });
-      localStorage.setItem(storageKey(), JSON.stringify(DB));
-      // Herverrijk de actieve kassier — laadGebruikersInDB loopt asynchroon en
-      // kan DB.kassiers overschrijven nádat verrijkActieveKassier() al gedraaid had.
-      if(typeof verrijkActieveKassier === 'function') verrijkActieveKassier();
-      if(typeof mobBouwNav === 'function') mobBouwNav();
-    }
-  }catch(e){ /* offline: bestaande DB.kassiers bewaren */ }
+  // fb.laadGebruikers() bestaat niet in firebase-config.js — deze functie is dode code.
+  // Kassiers worden geladen via laadKassiersVoorLogin() en verwerkCloudData().
 }
 
 // ============================================================
