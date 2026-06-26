@@ -542,11 +542,17 @@ function renderOpdrachtgevers(){
   if(!el) return;
   const centraal = DB.profiel?.opdrachtgevers || [];
   if(!centraal.length){
-    el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);">Voeg eerst opdrachtgevers toe via <strong>Instellingen → Opdrachtgevers</strong>.</div>';
+    el.innerHTML = `<div style="font-size:12px;color:var(--text-dim);line-height:1.6;">
+      Voeg eerst opdrachtgevers toe in het centrale register.
+      <button type="button" onclick="closeModal('modal-gebruiker-detail');openOpdrachtgeversModal();"
+        style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:12px;padding:0;text-decoration:underline;">
+        ⚙ Opdrachtgevers beheren →
+      </button>
+    </div>`;
     return;
   }
   if(!_gdOpdrachtgevers.length){
-    el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);">Nog geen opdrachtgevers gekoppeld aan deze persoon.</div>';
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);">Klik op "+ Opdrachtgever" hieronder om er een te koppelen.</div>';
     return;
   }
   const opties = centraal.map(o=>`<option value="${esc(o.naam)}">${esc(o.naam)}</option>`).join('');
