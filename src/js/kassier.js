@@ -436,7 +436,7 @@ function urenKeur(id, status){
   renderUrenoverzicht();
 }
 
-function maakUrenFactuur(opdrEnc){
+async function maakUrenFactuur(opdrEnc){
   const opdr = decodeURIComponent(opdrEnc);
   const maand = _urenMaandFilter();
   const items = _urenVanMaand()
@@ -449,6 +449,20 @@ function maakUrenFactuur(opdrEnc){
 
   // Opdrachtgever-object opzoeken uit centraal register
   const opdrObj = (DB.profiel?.opdrachtgevers||[]).find(o=>o.naam===opdr) || {};
+
+  // Valideer verplichte factuurvelden
+  const ontbrekend = [];
+  if(!p.adres)      ontbrekend.push('Bedrijfsadres (Instellingen → Bedrijfsprofiel)');
+  if(!p.btw)        ontbrekend.push('BTW-nummer (Instellingen → Bedrijfsprofiel)');
+  if(!p.kvk)        ontbrekend.push('KvK-nummer (Instellingen → Bedrijfsprofiel)');
+  if(!opdrObj.adres) ontbrekend.push(`Adres van opdrachtgever "${opdr}" (Instellingen → Opdrachtgevers)`);
+  if(ontbrekend.length){
+    const ok = await bevestig(
+      `Waarschuwing: de factuur is mogelijk ongeldig.\n\nOntbrekende verplichte velden:\n• ${ontbrekend.join('\n• ')}\n\nToch doorgaan?`,
+      'Toch aanmaken', 'Annuleer'
+    );
+    if(!ok) return;
+  }
 
   // Factuurnummer — uniek oplopend UF-YYYY-NNN
   const factuurNr = nextFactuurNummer('uren');
