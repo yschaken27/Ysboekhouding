@@ -200,7 +200,14 @@ function slaKassiersOpCloud(){
 }
 // ============================================================
 function _mobUrenOpdrachtgevers(){
-  return (DB.profiel?.opdrachtgevers || []);
+  return (DB.profiel?.opdrachtgevers || []).map(o=>{
+    // Backward compat: oud enkel tarief-veld → tarieven array
+    if(!Array.isArray(o.tarieven)){
+      const t = parseFloat(o.tarief);
+      return {...o, tarieven: t > 0 ? [{naam:'Standaard', bedrag:t}] : []};
+    }
+    return o;
+  });
 }
 
 function initMobUren(){
@@ -219,18 +226,28 @@ function initMobUren(){
 }
 
 function mobUrenVulTarieven(){
-  // Tarief komt nu uit het centrale opdrachtgever-register (opdr.tarief)
-  if(document.getElementById('mob-uren-tarief-wrap'))
-    document.getElementById('mob-uren-tarief-wrap').style.display = 'none';
+  const oi = parseInt(document.getElementById('mob-uren-opdrachtgever')?.value);
+  const opdr = _mobUrenOpdrachtgevers()[oi];
+  const wrap = document.getElementById('mob-uren-tarief-wrap');
+  const sel  = document.getElementById('mob-uren-tarief');
+  const tarieven = opdr?.tarieven || [];
+  if(sel){
+    sel.innerHTML = tarieven.map((t,i)=>
+      `<option value="${i}">${esc(t.naam||'Tarief')} — €${(t.bedrag||0).toFixed(2)}/u</option>`
+    ).join('');
+  }
+  if(wrap) wrap.style.display = tarieven.length > 1 ? 'block' : 'none';
   mobUrenHerbereken();
 }
 
 function _mobUrenGekozenTarief(){
   const oi = parseInt(document.getElementById('mob-uren-opdrachtgever')?.value);
   const opdr = _mobUrenOpdrachtgevers()[oi];
-  if(!opdr) return null;
-  const bedrag = parseFloat(opdr.tarief) || 0;
-  return { opdrachtgever: opdr.naam, tarief: { label: 'Uren', bedrag } };
+  const tarieven = opdr?.tarieven || [];
+  if(!tarieven.length) return null;
+  const ti = tarieven.length > 1 ? parseInt(document.getElementById('mob-uren-tarief')?.value||'0') : 0;
+  const t = tarieven[ti] || tarieven[0];
+  return { opdrachtgever: opdr.naam, tarief: { label: t.naam || 'Uren', bedrag: t.bedrag || 0 } };
 }
 
 function mobUrenHerbereken(){

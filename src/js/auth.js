@@ -242,8 +242,17 @@ async function kiesBedrijfNaLogin(bedrijf){
     if(d.profiel && Object.keys(d.profiel).length) _versProfiel = d.profiel;
   }catch(e){}
   load();
-  // Zet de verse Firebase-data ná load() zodat localStorage ze niet overschrijft
-  if(_versKassiers) DB.kassiers = _versKassiers;
+  // Zet de verse Firebase-data ná load() zodat localStorage ze niet overschrijft.
+  // Kassier-instellingen zijn GLOBAAL: merge i.p.v. vervangen, anders wint het
+  // huidige bedrijf altijd over instellingen die in een ander bedrijf zijn bijgewerkt.
+  if(_versKassiers){
+    if(!DB.kassiers) DB.kassiers = [];
+    _versKassiers.forEach(k=>{
+      const idx = DB.kassiers.findIndex(x=>x.id===k.id);
+      if(idx === -1) DB.kassiers.push(k);
+      else DB.kassiers[idx] = k;
+    });
+  }
   if(_versProfiel)  DB.profiel  = _versProfiel;
 
   // Vul de kassier-gegevens aan (modules) uit de zojuist geladen data.

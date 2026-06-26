@@ -734,7 +734,13 @@ function openBedrijfModal(){
 let _cpOpdrachtgevers = [];
 
 function renderCentraalOpdrachtgevers(){
-  _cpOpdrachtgevers = JSON.parse(JSON.stringify(DB.profiel?.opdrachtgevers || []));
+  _cpOpdrachtgevers = JSON.parse(JSON.stringify(DB.profiel?.opdrachtgevers || [])).map(o=>{
+    if(!Array.isArray(o.tarieven)){
+      const t = parseFloat(o.tarief);
+      o.tarieven = t > 0 ? [{naam:'Standaard', bedrag:t}] : [{naam:'', bedrag:null}];
+    }
+    return o;
+  });
   _tekenCentraalOpdrachtgevers();
 }
 
@@ -766,18 +772,38 @@ function _tekenCentraalOpdrachtgevers(){
             oninput="_cpOpdrachtgevers[${i}].email=this.value"
             style="flex:1;font-size:12px;padding:6px 8px;">
         </div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:2px;">
-          <span style="font-size:12px;color:var(--text-dim);white-space:nowrap;">Uurtarief (€)</span>
-          <input type="number" min="0" step="0.01" value="${o.tarief!=null?o.tarief:''}" placeholder="bijv. 28.50"
-            oninput="_cpOpdrachtgevers[${i}].tarief=parseFloat(this.value)||null"
-            style="width:110px;font-size:12px;padding:6px 8px;">
+        <div style="margin-top:6px;">
+          <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">Tarieven</div>
+          ${(o.tarieven||[]).map((t,ti)=>`
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+              <input type="text" value="${esc(t.naam||'')}" placeholder="Omschrijving (bijv. Dag)"
+                oninput="_cpOpdrachtgevers[${i}].tarieven[${ti}].naam=this.value"
+                style="flex:1;font-size:12px;padding:5px 7px;">
+              <input type="number" min="0" step="0.01" value="${t.bedrag!=null?t.bedrag:''}" placeholder="€/u"
+                oninput="_cpOpdrachtgevers[${i}].tarieven[${ti}].bedrag=parseFloat(this.value)||null"
+                style="width:80px;font-size:12px;padding:5px 7px;">
+              <button type="button" onclick="_cpVerwijderTarief(${i},${ti})"
+                style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px;padding:0 4px;">✕</button>
+            </div>`).join('')}
+          <button type="button" onclick="_cpVoegTariefToe(${i})"
+            style="font-size:11px;color:var(--accent);background:none;border:none;cursor:pointer;padding:2px 0;">+ Tarief toevoegen</button>
         </div>
       </div>
     </div>`).join('');
 }
 
+function _cpVoegTariefToe(i){
+  if(!Array.isArray(_cpOpdrachtgevers[i].tarieven)) _cpOpdrachtgevers[i].tarieven=[];
+  _cpOpdrachtgevers[i].tarieven.push({naam:'',bedrag:null});
+  _tekenCentraalOpdrachtgevers();
+}
+function _cpVerwijderTarief(i,ti){
+  _cpOpdrachtgevers[i].tarieven.splice(ti,1);
+  _tekenCentraalOpdrachtgevers();
+}
+
 function voegCentraalOpdrachtgeverToe(){
-  _cpOpdrachtgevers.push({ naam:'', adres:'', btwNummer:'', email:'', tarief:null });
+  _cpOpdrachtgevers.push({ naam:'', adres:'', btwNummer:'', email:'', tarieven:[{naam:'', bedrag:null}] });
   _tekenCentraalOpdrachtgevers();
 }
 
@@ -793,7 +819,7 @@ function slaCentraalOpdrachtgeversOp(){
       adres: (o.adres||'').trim(),
       btwNummer: (o.btwNummer||'').trim(),
       email: (o.email||'').trim(),
-      tarief: o.tarief!=null ? parseFloat(o.tarief) : null,
+      tarieven: (o.tarieven||[]).map(t=>({naam:(t.naam||'').trim(), bedrag:parseFloat(t.bedrag)||0})).filter(t=>t.bedrag>0||t.naam),
     }))
     .filter(o=>o.naam);
   if(!DB.profiel) DB.profiel={};
@@ -805,7 +831,13 @@ function slaCentraalOpdrachtgeversOp(){
 
 // ===== OPDRACHTGEVERS MODAL (standalone) =====
 function openOpdrachtgeversModal(){
-  _cpOpdrachtgevers = JSON.parse(JSON.stringify(DB.profiel?.opdrachtgevers || []));
+  _cpOpdrachtgevers = JSON.parse(JSON.stringify(DB.profiel?.opdrachtgevers || [])).map(o=>{
+    if(!Array.isArray(o.tarieven)){
+      const t = parseFloat(o.tarief);
+      o.tarieven = t > 0 ? [{naam:'Standaard', bedrag:t}] : [{naam:'', bedrag:null}];
+    }
+    return o;
+  });
   _tekenOpdrachtgeversModal();
   openModal('modal-opdrachtgevers');
 }
@@ -838,18 +870,38 @@ function _tekenOpdrachtgeversModal(){
             oninput="_cpOpdrachtgevers[${i}].email=this.value"
             style="flex:1;font-size:12px;padding:6px 8px;">
         </div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:2px;">
-          <span style="font-size:12px;color:var(--text-dim);white-space:nowrap;">Uurtarief (€)</span>
-          <input type="number" min="0" step="0.01" value="${o.tarief!=null?o.tarief:''}" placeholder="bijv. 28.50"
-            oninput="_cpOpdrachtgevers[${i}].tarief=parseFloat(this.value)||null"
-            style="width:110px;font-size:12px;padding:6px 8px;">
+        <div style="margin-top:6px;">
+          <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">Tarieven</div>
+          ${(o.tarieven||[]).map((t,ti)=>`
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+              <input type="text" value="${esc(t.naam||'')}" placeholder="Omschrijving (bijv. Dag)"
+                oninput="_cpOpdrachtgevers[${i}].tarieven[${ti}].naam=this.value"
+                style="flex:1;font-size:12px;padding:5px 7px;">
+              <input type="number" min="0" step="0.01" value="${t.bedrag!=null?t.bedrag:''}" placeholder="€/u"
+                oninput="_cpOpdrachtgevers[${i}].tarieven[${ti}].bedrag=parseFloat(this.value)||null"
+                style="width:80px;font-size:12px;padding:5px 7px;">
+              <button type="button" onclick="_opmVerwijderTarief(${i},${ti})"
+                style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px;padding:0 4px;">✕</button>
+            </div>`).join('')}
+          <button type="button" onclick="_opmVoegTariefToe(${i})"
+            style="font-size:11px;color:var(--accent);background:none;border:none;cursor:pointer;padding:2px 0;">+ Tarief toevoegen</button>
         </div>
       </div>
     </div>`).join('');
 }
 
+function _opmVoegTariefToe(i){
+  if(!Array.isArray(_cpOpdrachtgevers[i].tarieven)) _cpOpdrachtgevers[i].tarieven=[];
+  _cpOpdrachtgevers[i].tarieven.push({naam:'',bedrag:null});
+  _tekenOpdrachtgeversModal();
+}
+function _opmVerwijderTarief(i,ti){
+  _cpOpdrachtgevers[i].tarieven.splice(ti,1);
+  _tekenOpdrachtgeversModal();
+}
+
 function voegOpdrachtgeverModalToe(){
-  _cpOpdrachtgevers.push({ naam:'', adres:'', btwNummer:'', email:'', tarief:null });
+  _cpOpdrachtgevers.push({ naam:'', adres:'', btwNummer:'', email:'', tarieven:[{naam:'', bedrag:null}] });
   _tekenOpdrachtgeversModal();
 }
 
@@ -865,7 +917,7 @@ function slaOpdrachtgeversModalOp(){
       adres: (o.adres||'').trim(),
       btwNummer: (o.btwNummer||'').trim(),
       email: (o.email||'').trim(),
-      tarief: o.tarief!=null ? parseFloat(o.tarief) : null,
+      tarieven: (o.tarieven||[]).map(t=>({naam:(t.naam||'').trim(), bedrag:parseFloat(t.bedrag)||0})).filter(t=>t.bedrag>0||t.naam),
     }))
     .filter(o=>o.naam);
   if(!DB.profiel) DB.profiel={};
