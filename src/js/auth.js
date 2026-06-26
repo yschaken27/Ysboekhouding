@@ -9,10 +9,12 @@ let _actieveKassier = null;
 // DB.kassiers laadt async, dus deze functie wordt op meerdere momenten aangeroepen.
 function verrijkActieveKassier(){
   if(_loginRol !== 'kassier' || !_actieveKassier) return false;
-  const email = String(_actieveKassier.naam || '').toLowerCase();
+  // Gebruik altijd .email als primaire sleutel — na de eerste verrijking is .naam
+  // de weergavenaam (bijv. "Jan"), niet het e-mailadres. Zonder .email fallback
+  // mislukt elke volgende verrijking en worden module-updates nooit doorgevoerd.
+  const email = String(_actieveKassier.email || _actieveKassier.naam || '').toLowerCase();
   const k = (DB.kassiers||[]).find(x=>String(x.email||'').toLowerCase()===email);
   if(!k) return false;
-  // Naam (weergavenaam) en bedrijven behouden of aanvullen, modules + opdrachtgevers overnemen.
   _actieveKassier = {
     naam: k.naam || _actieveKassier.naam,
     email: k.email || email,
