@@ -523,13 +523,11 @@ function openGebruikerDetail(id){
   const modDefs = [
     {v:'dashboard', l:'📊 Dashboard'},
     {v:'kassa',     l:'💰 Kassa'},
-    {v:'uren',      l:'⏱ Uren', alleenAlsUrenAan: true},
+    {v:'uren',      l:'⏱ Uren'},
     {v:'facturen',  l:'🧾 Facturen'},
     {v:'uploads',   l:'📎 Bonnen'},
   ];
-  document.getElementById('gd-modules').innerHTML = modDefs
-    .filter(m => !m.alleenAlsUrenAan || isUrenAan())
-    .map(m=>`
+  document.getElementById('gd-modules').innerHTML = modDefs.map(m=>`
     <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;
       background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;">
       <input type="checkbox" value="${m.v}" style="width:auto;" ${(k.modules||['dashboard','kassa','uploads']).includes(m.v)?'checked':''}>
