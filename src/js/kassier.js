@@ -457,9 +457,10 @@ async function maakUrenFactuur(opdrEnc){
 
   // Valideer verplichte factuurvelden
   const ontbrekend = [];
-  if(!p.adres)      ontbrekend.push('Bedrijfsadres (Instellingen → Bedrijfsprofiel)');
-  if(!p.btw)        ontbrekend.push('BTW-nummer (Instellingen → Bedrijfsprofiel)');
-  if(!p.kvk)        ontbrekend.push('KvK-nummer (Instellingen → Bedrijfsprofiel)');
+  if(!p.adres)       ontbrekend.push('Bedrijfsadres (Instellingen → Bedrijfsprofiel)');
+  if(!p.btw)         ontbrekend.push('BTW-nummer (Instellingen → Bedrijfsprofiel)');
+  if(!p.kvk)         ontbrekend.push('KvK-nummer (Instellingen → Bedrijfsprofiel)');
+  if(!p.iban)        ontbrekend.push('IBAN (Instellingen → Bedrijfsprofiel)');
   if(!opdrObj.adres) ontbrekend.push(`Adres van opdrachtgever "${opdr}" (Instellingen → Opdrachtgevers)`);
   if(ontbrekend.length){
     const ok = await bevestig(
