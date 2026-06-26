@@ -445,73 +445,139 @@ function maakUrenFactuur(opdrEnc){
 
   const p = DB.profiel || {};
   const bedrijf = p.naam || huidigBedrijf;
-  const totBedrag = items.reduce((a,u)=>a+(parseFloat(u.bedrag)||0),0);
+
+  // Opdrachtgever-object opzoeken uit centraal register
+  const opdrObj = (DB.profiel?.opdrachtgevers||[]).find(o=>o.naam===opdr) || {};
+
+  // Factuurnummer — uniek oplopend UF-YYYY-NNN
+  const factuurNr = nextFactuurNummer('uren');
+  const datumISO = new Date().toISOString().slice(0,10);
+  const vandaagFmt = new Date().toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
+  const betaaldatumISO = (()=>{ const d=new Date(); d.setDate(d.getDate()+30); return d.toISOString().slice(0,10); })();
+  const betaaldatumFmt = new Date(betaaldatumISO).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
+
   const maandLabel = (()=>{ const [j,m]=maand.split('-'); return new Date(j,parseInt(m)-1,1).toLocaleDateString('nl-NL',{month:'long',year:'numeric'}); })();
-  const factuurNr = 'U-' + maand + '-' + opdr.replace(/[^a-zA-Z0-9]/g,'').slice(0,6).toUpperCase();
-  const vandaag = new Date().toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
 
-  const rijen = items.map(u=>{
-    const dd = new Date(u.datum).toLocaleDateString('nl-NL',{day:'2-digit',month:'2-digit'});
-    return `<tr>
-      <td style="padding:6px 4px;border-bottom:1px solid #eee;">${dd}</td>
-      <td style="padding:6px 4px;border-bottom:1px solid #eee;">${esc(u.tariefLabel||'Uren')}${u.notitie?(' — '+esc(u.notitie)):''}</td>
-      <td style="padding:6px 4px;border-bottom:1px solid #eee;text-align:right;">${u.uren}</td>
-      <td style="padding:6px 4px;border-bottom:1px solid #eee;text-align:right;">€ ${(u.tariefBedrag||0).toFixed(2)}</td>
-      <td style="padding:6px 4px;border-bottom:1px solid #eee;text-align:right;">€ ${(u.bedrag||0).toFixed(2)}</td>
-    </tr>`;
-  }).join('');
+  // Groepeer per tarieftype
+  const groepen = {};
+  items.forEach(u=>{
+    const lbl = u.tariefLabel || 'Uren';
+    const tarief = parseFloat(u.tariefBedrag)||0;
+    const key = lbl + '|' + tarief;
+    if(!groepen[key]) groepen[key] = { label:lbl, tarief, uren:0, bedrag:0 };
+    groepen[key].uren += parseFloat(u.uren)||0;
+    groepen[key].bedrag += parseFloat(u.bedrag)||0;
+  });
+  const regelLijst = Object.values(groepen);
 
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Factuur ${factuurNr}</title>
-  <style>
-    body{font-family:Arial,Helvetica,sans-serif;color:#222;max-width:720px;margin:30px auto;padding:0 24px;font-size:13px;line-height:1.5;}
-    h1{font-size:22px;margin:0 0 4px;}
-    .head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:30px;}
-    .right{text-align:right;}
-    table{width:100%;border-collapse:collapse;margin:18px 0;}
-    th{text-align:left;border-bottom:2px solid #333;padding:6px 4px;font-size:12px;}
-    .tot{text-align:right;font-size:16px;font-weight:bold;margin-top:8px;}
-    .muted{color:#666;font-size:12px;}
-    @media print{button{display:none;}}
-  </style></head><body>
-  <div class="head">
-    <div>
-      <h1>${esc(bedrijf)}</h1>
-      <div class="muted">
-        ${p.adres?esc(p.adres)+'<br>':''}
-        ${p.email?esc(p.email)+'<br>':''}
-        ${p.tel?esc(p.tel)+'<br>':''}
-        ${p.kvk?'KvK: '+esc(p.kvk)+'<br>':''}
-        ${p.btw?'BTW: '+esc(p.btw)+'<br>':''}
-        ${p.iban?'IBAN: '+esc(p.iban):''}
-      </div>
-    </div>
-    <div class="right">
-      <strong>FACTUUR</strong><br>
-      <span class="muted">Nr: ${factuurNr}<br>Datum: ${vandaag}</span>
+  const btwPct = 21;
+  const subtotaalExcl = regelLijst.reduce((a,r)=>a+r.bedrag,0);
+  const btwBedrag = Math.round(subtotaalExcl * btwPct) / 100;
+  const totaalIncl = subtotaalExcl + btwBedrag;
+
+  const rijen = regelLijst.map(r=>`<tr>
+    <td style="padding:7px 6px;border-bottom:1px solid #e5e7eb;">Gewerkte uren (${esc(r.label)}) — ${maandLabel}</td>
+    <td style="padding:7px 6px;border-bottom:1px solid #e5e7eb;text-align:right;">${(Math.round(r.uren*100)/100).toString().replace('.',',')}</td>
+    <td style="padding:7px 6px;border-bottom:1px solid #e5e7eb;text-align:right;">€ ${r.tarief.toFixed(2)}</td>
+    <td style="padding:7px 6px;border-bottom:1px solid #e5e7eb;text-align:right;">€ ${r.bedrag.toFixed(2)}</td>
+  </tr>`).join('');
+
+  const html = `<!doctype html><html lang="nl"><head><meta charset="utf-8"><title>Factuur ${factuurNr}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:Arial,Helvetica,sans-serif;color:#111;max-width:760px;margin:40px auto;padding:0 32px;font-size:13px;line-height:1.6;}
+  h1{font-size:26px;font-weight:700;letter-spacing:-.5px;}
+  .head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:36px;gap:24px;}
+  .leverancier{flex:1;}
+  .factuurmeta{text-align:right;min-width:200px;}
+  .factuurmeta table{margin-left:auto;border-collapse:collapse;}
+  .factuurmeta td{padding:2px 0 2px 16px;font-size:12px;}
+  .factuurmeta td:first-child{color:#666;text-align:left;}
+  .klantblok{background:#f8f8f8;border-left:3px solid #1e3a8a;padding:12px 16px;margin-bottom:28px;font-size:13px;}
+  .klantblok .label{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;}
+  table.regels{width:100%;border-collapse:collapse;margin-bottom:0;}
+  table.regels th{text-align:left;border-bottom:2px solid #1e3a8a;padding:7px 6px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#444;}
+  table.regels th:not(:first-child){text-align:right;}
+  .totaalblok table{margin-left:auto;border-collapse:collapse;min-width:260px;}
+  .totaalblok td{padding:4px 6px;font-size:13px;}
+  .totaalblok td:last-child{text-align:right;font-family:monospace;}
+  .totaalblok tr.totaal td{font-weight:700;font-size:15px;border-top:2px solid #1e3a8a;padding-top:8px;}
+  .muted{color:#666;font-size:12px;}
+  .betaalinfo{margin-top:32px;padding:16px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;color:#444;line-height:1.8;}
+  .betaalinfo strong{color:#111;}
+  .print-btn{display:block;margin-top:32px;padding:10px 24px;font-size:14px;border:none;border-radius:6px;background:#1e3a8a;color:#fff;cursor:pointer;}
+  @media print{.print-btn{display:none;} body{margin:0;}}
+</style></head><body>
+
+<div class="head">
+  <div class="leverancier">
+    <h1>${esc(bedrijf)}</h1>
+    <div class="muted" style="margin-top:6px;line-height:1.8;">
+      ${p.adres?esc(p.adres)+'<br>':''}
+      ${p.kvk?'KvK-nummer: '+esc(p.kvk)+'<br>':''}
+      ${p.btw?'BTW-nummer: '+esc(p.btw)+'<br>':''}
+      ${p.iban?'IBAN: '+esc(p.iban):''}
     </div>
   </div>
-
-  <div style="margin-bottom:20px;">
-    <span class="muted">Aan:</span><br>
-    <strong>${esc(opdr)}</strong>
+  <div class="factuurmeta">
+    <div style="font-size:20px;font-weight:700;color:#1e3a8a;margin-bottom:10px;">FACTUUR</div>
+    <table>
+      <tr><td>Factuurnummer</td><td><strong>${factuurNr}</strong></td></tr>
+      <tr><td>Factuurdatum</td><td>${vandaagFmt}</td></tr>
+      <tr><td>Betalingstermijn</td><td>30 dagen</td></tr>
+      <tr><td>Uiterste betaaldatum</td><td><strong>${betaaldatumFmt}</strong></td></tr>
+    </table>
   </div>
+</div>
 
-  <div class="muted">Gewerkte uren — ${maandLabel}</div>
+<div class="klantblok">
+  <div class="label">Factuur aan</div>
+  <strong>${esc(opdr)}</strong><br>
+  ${opdrObj.adres?esc(opdrObj.adres)+'<br>':''}
+  ${opdrObj.btwNummer?'<span class="muted">BTW-nummer: '+esc(opdrObj.btwNummer)+'</span>':''}
+</div>
+
+<table class="regels">
+  <thead><tr>
+    <th>Omschrijving</th>
+    <th style="text-align:right;">Aantal uren</th>
+    <th style="text-align:right;">Uurtarief</th>
+    <th style="text-align:right;">Bedrag</th>
+  </tr></thead>
+  <tbody>${rijen}</tbody>
+</table>
+
+<div class="totaalblok" style="margin-top:12px;">
   <table>
-    <thead><tr>
-      <th>Datum</th><th>Omschrijving</th>
-      <th style="text-align:right;">Uren</th>
-      <th style="text-align:right;">Tarief</th>
-      <th style="text-align:right;">Bedrag</th>
-    </tr></thead>
-    <tbody>${rijen}</tbody>
+    <tr><td>Subtotaal excl. BTW</td><td>€ ${subtotaalExcl.toFixed(2)}</td></tr>
+    <tr><td>BTW ${btwPct}%</td><td>€ ${btwBedrag.toFixed(2)}</td></tr>
+    <tr class="totaal"><td>Totaal incl. BTW</td><td>€ ${totaalIncl.toFixed(2)}</td></tr>
   </table>
+</div>
 
-  <div class="tot">Totaal: € ${totBedrag.toFixed(2)}</div>
-  ${p.iban?`<p class="muted" style="margin-top:24px;">Gelieve het bedrag over te maken op ${esc(p.iban)} t.n.v. ${esc(bedrijf)} o.v.v. ${factuurNr}.</p>`:''}
+${p.iban?`<div class="betaalinfo">
+  Gelieve <strong>€ ${totaalIncl.toFixed(2)}</strong> over te maken vóór <strong>${betaaldatumFmt}</strong> op<br>
+  IBAN <strong>${esc(p.iban)}</strong> t.n.v. <strong>${esc(bedrijf)}</strong><br>
+  onder vermelding van factuurnummer <strong>${factuurNr}</strong>.
+</div>`:''}
 
-  <button onclick="window.print()" style="margin-top:30px;padding:10px 20px;font-size:14px;border:none;border-radius:6px;background:#1e3a8a;color:#fff;cursor:pointer;">Afdrukken / opslaan als PDF</button>
-  </body></html>`;
+<button class="print-btn" onclick="window.print()">Afdrukken / opslaan als PDF</button>
+</body></html>`;
+
+  // Sla op als verkoop-entry zodat factuurnummer-teller klopt en factuur in dashboard verschijnt
+  if(!DB.verkoop) DB.verkoop=[];
+  DB.verkoop.push({
+    id: uid(),
+    nummer: factuurNr,
+    datum: datumISO,
+    vervaldatum: betaaldatumISO,
+    klant: opdr,
+    totaalExcl: subtotaalExcl,
+    totaalIncl: totaalIncl,
+    status: 'verstuurd',
+    type: 'uren'
+  });
+  save();
 
   const w = window.open('','_blank');
   if(!w){ toast('Sta pop-ups toe om de factuur te openen.','warning'); return; }

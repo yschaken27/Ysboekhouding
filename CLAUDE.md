@@ -1,9 +1,54 @@
 # YS Boekhouding — Project Context
 
 ## Wat is dit project
-Single-file webapp (`index.html`, ~11.500 regels) met Firebase/Firestore als backend.
-Boekhoud- + kassa(POS)-app, gehost op GitHub Pages (`yschaken27.github.io/Ysboekhouding`) als PWA.
+Boekhoud- + kassa(POS)-webapp met Firebase/Firestore als backend.
+Gehost op GitHub Pages (`yschaken27.github.io/Ysboekhouding`) als PWA.
 Doelgroep: zzp-beveiligers en multi-user bedrijven.
+
+De app was oorspronkelijk één grote `index.html` (~11.500 regels) en is gesliced naar losse bestanden.
+`index.html` is nu een dunne shell (~150 regels) die alleen CSS/JS inlaadt en de vaste HTML-structuur (topbar, modals) bevat.
+**Werk altijd in de `src/`-bestanden, nooit in de backup of de root-`index.html` van de parent-map.**
+
+## Bestandskaart — wat staat waar
+
+### Voordeur
+| Bestand | Inhoud |
+|---|---|
+| `index.html` | HTML-shell: laadt CSS + JS in, bevat topbar, sidebar, navigatie en ALLE modals |
+
+### CSS — `src/css/`
+| Bestand | Inhoud |
+|---|---|
+| `base.css` | CSS-variabelen, reset, layout |
+| `components.css` | Knoppen, modals, tabellen, badges |
+| `pages.css` | Mobiel kassier-scherm, media queries |
+| `branding.css` | YS navy/blue kleurschema |
+
+### JavaScript — `src/js/`
+| Bestand | Inhoud |
+|---|---|
+| `state.js` | `DB`-object, `save()`, `load()`, helpers (`fmt`, `uid`, `esc`, `toast`, `badge`), factuurnummers, bedrijfsprofiel, opdrachtgever-register (centraal) |
+| `ui.js` | Navigatie (`navTo`, `showPage`), modals (`openModal`, `closeModal`), sidebar, PWA-installatie |
+| `auth.js` | Inloggen, rolbepaling, kassier-beheer (CRUD), gebruiker-detail modal, opdrachtgever-koppeling per kassier |
+| `facturen.js` | Dashboard, verkoop/inkoop CRUD, BTW-helpers, grootboek |
+| `bank.js` | Banktransacties, CSV-import, reconciliatie |
+| `btw-rapport.js` | BTW-aangifte, grootboek, balans, P&L |
+| `activa.js` | Vaste activa, afschrijvingsschema's, mobiele interface (uploads, facturen-tab) |
+| `kassier.js` | Desktop kassa, kassaoverzicht, urenoverzicht (eigenaar), `maakUrenFactuur()`, mobiele uren-invoer |
+| `firebase-config.js` | Firebase init, `fbAPI` (alle Firestore/Storage-aanroepen) |
+
+### Pagina-HTML — `src/pages/`
+| Bestand | Inhoud |
+|---|---|
+| `dashboard.html` | Dashboard-pagina (stats, charts, top klanten) |
+| `facturen.html` | Verkoop- en inkoopfacturen pagina |
+| `bank.html` | Banktransacties pagina |
+| `btw-rapport.html` | BTW-rapport pagina |
+| `activa-uren.html` | Vaste activa + urenoverzicht + jaaropgave pagina's |
+
+### Modals — zitten in `index.html`
+Alle modals staan in `index.html`. Zoek op `<!-- ... MODAL -->` commentaar.
+Bekende modals: `modal-bedrijf`, `modal-opdrachtgevers`, `modal-gebruiker-detail`, `modal-factuur`, `modal-inkoop`, `modal-depr-vraag`.
 
 ## Hoe we werken
 - Informeel Nederlands. Typfouten → gewoon doorwerken.
@@ -60,6 +105,12 @@ Er mag maar één `navigator.serviceWorker.register()` in de live HTML staan. Ch
 
 ### 5. Syntaxcheck na elke JS-wijziging
 Na elke edit altijd de code-check agent aanroepen (`Agent: code-check`) om syntax errors te vangen vóór push.
+De code-check agent delegeert verplicht naar `js-checker` (voor JS) en `css-checker` (voor CSS) — hij doet de checks nooit zelf inline.
+
+### 7. Sessie altijd starten vanuit de juiste map
+Open Claude Code altijd met `Ysboekhouding/` als werkmap, niet de bovenliggende map.
+De hooks in `.claude/settings.json` (automatische js-checker en css-checker na elke edit) zijn alleen actief als de CWD exact `Ysboekhouding/` is.
+Start je vanuit de parent-map, dan vuren de hooks niet en worden wijzigingen niet automatisch gecheckt.
 
 ### 6. Browser cache ≠ server cache
 `<meta http-equiv="Cache-Control">` tags werken niet als de browser al een gecachte versie heeft. De echte oplossing is `sw.js` (Service Worker). Nooit zeggen "hard refresh lost het op" voor klanten — zij weten dat niet.

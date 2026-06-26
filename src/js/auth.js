@@ -540,17 +540,24 @@ function updateOpdrachtgeverZichtbaarheid(){
 function renderOpdrachtgevers(){
   const el = document.getElementById('gd-opdrachtgevers-lijst');
   if(!el) return;
-  if(!_gdOpdrachtgevers.length){
-    el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);">Nog geen opdrachtgevers toegevoegd.</div>';
+  const centraal = DB.profiel?.opdrachtgevers || [];
+  if(!centraal.length){
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);">Voeg eerst opdrachtgevers toe via <strong>Instellingen → Opdrachtgevers</strong>.</div>';
     return;
   }
+  if(!_gdOpdrachtgevers.length){
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);">Nog geen opdrachtgevers gekoppeld aan deze persoon.</div>';
+    return;
+  }
+  const opties = centraal.map(o=>`<option value="${esc(o.naam)}">${esc(o.naam)}</option>`).join('');
   el.innerHTML = _gdOpdrachtgevers.map((o,oi)=>`
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;">
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
-        <input type="text" value="${esc(o.naam||'')}" placeholder="Naam opdrachtgever"
-          oninput="_gdOpdrachtgevers[${oi}].naam=this.value"
-          style="flex:1;font-size:13px;padding:7px 9px;">
-        <button type="button" onclick="verwijderOpdrachtgever(${oi})" title="Verwijderen"
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+        <select onchange="_gdOpdrachtgevers[${oi}].naam=this.value" style="flex:1;font-size:13px;font-weight:600;padding:7px 9px;">
+          <option value="">— Kies opdrachtgever —</option>
+          ${centraal.map(o2=>`<option value="${esc(o2.naam)}"${o2.naam===o.naam?' selected':''}>${esc(o2.naam)}</option>`).join('')}
+        </select>
+        <button type="button" onclick="verwijderOpdrachtgever(${oi})" title="Ontkoppelen"
           style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;">🗑</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;" id="gd-tarieven-${oi}">

@@ -105,13 +105,12 @@ document.addEventListener('keydown',e=>{
 
 // ===== AUTO FACTUURNUMMER =====
 function nextFactuurNummer(type){
-  const prefix=type==='verkoop'?'VK':'IK';
-  const arr=type==='verkoop'?DB.verkoop:DB.inkoop;
+  const prefix=type==='verkoop'?'VK':type==='uren'?'UF':'IK';
+  const arr=type==='inkoop'?DB.inkoop:DB.verkoop;
   if(!arr.length) return `${prefix}-${new Date().getFullYear()}-001`;
-  const nummers=arr.map(f=>{
-    const m=f.nummer?.match(/(\d+)$/);
-    return m?parseInt(m[1]):0;
-  });
+  const nummers=arr
+    .filter(f=>type==='uren'?f.nummer?.startsWith('UF-'):type==='verkoop'?f.nummer?.startsWith('VK-'):f.nummer?.startsWith('IK-'))
+    .map(f=>{ const m=f.nummer?.match(/(\d+)$/); return m?parseInt(m[1]):0; });
   const max=Math.max(...nummers,0);
   return `${prefix}-${new Date().getFullYear()}-${String(max+1).padStart(3,'0')}`;
 }
@@ -634,11 +633,14 @@ async function verwijderBedrijf(naam){
 }
 
 function switchBedrijfTab(tab){
-  ['lijst','profiel'].forEach(t=>{
-    document.getElementById('bedrijf-tab-'+t).classList.toggle('active',t===tab);
-    document.getElementById('bedrijf-wrap-'+t).style.display=t===tab?'':'none';
+  ['lijst','profiel','opdrachtgevers'].forEach(t=>{
+    const tabEl = document.getElementById('bedrijf-tab-'+t);
+    const wrapEl = document.getElementById('bedrijf-wrap-'+t);
+    if(tabEl) tabEl.classList.toggle('active',t===tab);
+    if(wrapEl) wrapEl.style.display=t===tab?'':'none';
   });
   if(tab==='profiel') laadBedrijfProfiel();
+  if(tab==='opdrachtgevers') renderCentraalOpdrachtgevers();
 }
 
 function laadBedrijfProfiel(){
@@ -675,6 +677,7 @@ function slaBedrijfProfielOp(){
     btwStelsel:document.getElementById('bp-btw-stelsel').value,
     urenAan:document.getElementById('bp-uren-aan').checked,
     notities:document.getElementById('bp-notities').value.trim(),
+    opdrachtgevers: DB.profiel?.opdrachtgevers || [],
   };
   // Sla weergavenaam op in profielnamen map zodat bedrijflijst het toont
   if(DB.profiel.naam){
@@ -711,8 +714,142 @@ function renderBedrijfList(){
 
 function openBedrijfModal(){
   renderBedrijfList();
+  // Opdrachtgevers-tab alleen tonen als uren-registratie actief is
+  const opdrTab = document.getElementById('bedrijf-tab-opdrachtgevers');
+  if(opdrTab) opdrTab.style.display = isUrenAan() ? '' : 'none';
   switchBedrijfTab('lijst');
   openModal('modal-bedrijf');
+}
+
+// ===== CENTRAAL OPDRACHTGEVER-REGISTER =====
+let _cpOpdrachtgevers = [];
+
+function renderCentraalOpdrachtgevers(){
+  _cpOpdrachtgevers = JSON.parse(JSON.stringify(DB.profiel?.opdrachtgevers || []));
+  _tekenCentraalOpdrachtgevers();
+}
+
+function _tekenCentraalOpdrachtgevers(){
+  const el = document.getElementById('bp-opdrachtgevers-lijst');
+  if(!el) return;
+  if(!_cpOpdrachtgevers.length){
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:8px 0;">Nog geen opdrachtgevers toegevoegd.</div>';
+    return;
+  }
+  el.innerHTML = _cpOpdrachtgevers.map((o,i)=>`
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+        <input type="text" value="${esc(o.naam||'')}" placeholder="Naam opdrachtgever"
+          oninput="_cpOpdrachtgevers[${i}].naam=this.value"
+          style="flex:1;font-size:13px;font-weight:600;padding:7px 9px;">
+        <button type="button" onclick="verwijderCentraalOpdrachtgever(${i})" title="Verwijderen"
+          style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;">🗑</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <input type="text" value="${esc(o.adres||'')}" placeholder="Adres (straat, postcode, stad)"
+          oninput="_cpOpdrachtgevers[${i}].adres=this.value"
+          style="font-size:12px;padding:6px 8px;">
+        <div style="display:flex;gap:6px;">
+          <input type="text" value="${esc(o.btwNummer||'')}" placeholder="BTW-nummer (optioneel)"
+            oninput="_cpOpdrachtgevers[${i}].btwNummer=this.value"
+            style="flex:1;font-size:12px;padding:6px 8px;">
+          <input type="email" value="${esc(o.email||'')}" placeholder="E-mailadres"
+            oninput="_cpOpdrachtgevers[${i}].email=this.value"
+            style="flex:1;font-size:12px;padding:6px 8px;">
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function voegCentraalOpdrachtgeverToe(){
+  _cpOpdrachtgevers.push({ naam:'', adres:'', btwNummer:'', email:'' });
+  _tekenCentraalOpdrachtgevers();
+}
+
+function verwijderCentraalOpdrachtgever(i){
+  _cpOpdrachtgevers.splice(i,1);
+  _tekenCentraalOpdrachtgevers();
+}
+
+function slaCentraalOpdrachtgeversOp(){
+  const schoon = _cpOpdrachtgevers
+    .map(o=>({
+      naam: (o.naam||'').trim(),
+      adres: (o.adres||'').trim(),
+      btwNummer: (o.btwNummer||'').trim(),
+      email: (o.email||'').trim(),
+    }))
+    .filter(o=>o.naam);
+  if(!DB.profiel) DB.profiel={};
+  DB.profiel.opdrachtgevers = schoon;
+  save();
+  closeModal('modal-bedrijf');
+  toast('Opdrachtgevers opgeslagen.');
+}
+
+// ===== OPDRACHTGEVERS MODAL (standalone) =====
+function openOpdrachtgeversModal(){
+  _cpOpdrachtgevers = JSON.parse(JSON.stringify(DB.profiel?.opdrachtgevers || []));
+  _tekenOpdrachtgeversModal();
+  openModal('modal-opdrachtgevers');
+}
+
+function _tekenOpdrachtgeversModal(){
+  const el = document.getElementById('opm-lijst');
+  if(!el) return;
+  if(!_cpOpdrachtgevers.length){
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:8px 0;">Nog geen opdrachtgevers toegevoegd.</div>';
+    return;
+  }
+  el.innerHTML = _cpOpdrachtgevers.map((o,i)=>`
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+        <input type="text" value="${esc(o.naam||'')}" placeholder="Naam opdrachtgever"
+          oninput="_cpOpdrachtgevers[${i}].naam=this.value"
+          style="flex:1;font-size:13px;font-weight:600;padding:7px 9px;">
+        <button type="button" onclick="verwijderOpdrachtgeverModal(${i})" title="Verwijderen"
+          style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;">🗑</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <input type="text" value="${esc(o.adres||'')}" placeholder="Adres (straat, postcode, stad)"
+          oninput="_cpOpdrachtgevers[${i}].adres=this.value"
+          style="font-size:12px;padding:6px 8px;">
+        <div style="display:flex;gap:6px;">
+          <input type="text" value="${esc(o.btwNummer||'')}" placeholder="BTW-nummer (optioneel)"
+            oninput="_cpOpdrachtgevers[${i}].btwNummer=this.value"
+            style="flex:1;font-size:12px;padding:6px 8px;">
+          <input type="email" value="${esc(o.email||'')}" placeholder="E-mailadres"
+            oninput="_cpOpdrachtgevers[${i}].email=this.value"
+            style="flex:1;font-size:12px;padding:6px 8px;">
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function voegOpdrachtgeverModalToe(){
+  _cpOpdrachtgevers.push({ naam:'', adres:'', btwNummer:'', email:'' });
+  _tekenOpdrachtgeversModal();
+}
+
+function verwijderOpdrachtgeverModal(i){
+  _cpOpdrachtgevers.splice(i,1);
+  _tekenOpdrachtgeversModal();
+}
+
+function slaOpdrachtgeversModalOp(){
+  const schoon = _cpOpdrachtgevers
+    .map(o=>({
+      naam: (o.naam||'').trim(),
+      adres: (o.adres||'').trim(),
+      btwNummer: (o.btwNummer||'').trim(),
+      email: (o.email||'').trim(),
+    }))
+    .filter(o=>o.naam);
+  if(!DB.profiel) DB.profiel={};
+  DB.profiel.opdrachtgevers = schoon;
+  save();
+  closeModal('modal-opdrachtgevers');
+  toast('Opdrachtgevers opgeslagen.');
 }
 
 function uid(){ return 'id_'+Date.now()+'_'+Math.random().toString(36).slice(2,6); }
