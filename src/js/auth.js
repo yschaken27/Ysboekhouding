@@ -229,15 +229,22 @@ async function kiesBedrijfNaLogin(bedrijf){
   // Laad bedrijfsdata en gebruik het resultaat meteen om DB te vullen —
   // zodat verrijkActieveKassier() direct modules + opdrachtgevers kan lezen,
   // ook al is de async Firestore listener (loadCloud) nog niet gevuurd.
+  // Laad verse bedrijfsdata en sla op NADAT load() klaar is.
+  // load() roept loadLokaal() aan die DB overschrijft vanuit localStorage —
+  // als we de verse Firebase-data er vóór zetten, verdwijnt die weer.
+  let _versKassiers = null, _versProfiel = null;
   try{
     const json = await fbAanroep(fb=>fb.laadAlles(bedrijf));
     const d = JSON.parse(json||'{}');
-    if(Array.isArray(d.kassiers)) DB.kassiers = d.kassiers;
-    if(d.profiel && Object.keys(d.profiel).length) DB.profiel = d.profiel;
+    if(Array.isArray(d.kassiers)) _versKassiers = d.kassiers;
+    if(d.profiel && Object.keys(d.profiel).length) _versProfiel = d.profiel;
   }catch(e){}
   load();
+  // Zet de verse Firebase-data ná load() zodat localStorage ze niet overschrijft
+  if(_versKassiers) DB.kassiers = _versKassiers;
+  if(_versProfiel)  DB.profiel  = _versProfiel;
 
-  // Vul de kassier-gegevens aan (modules + opdrachtgevers) uit de zojuist geladen data.
+  // Vul de kassier-gegevens aan (modules) uit de zojuist geladen data.
   verrijkActieveKassier();
 
   stopLoginSyncInterval();
