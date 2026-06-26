@@ -7,7 +7,7 @@ function initKassalijst(){
 
   // Kassier naam
   const badge = document.getElementById('kassier-naam-badge');
-  if(badge) badge.textContent = _loginRol==='gebruiker' ? '👤 Gebruiker' : '🔑 Eigenaar';
+  if(badge) badge.textContent = _loginRol==='kassier' ? '👤 ' + (_actieveKassier?.naam||'Kassier') : '🔑 Eigenaar';
 
   // Bouw categorieën op
   const catEl = document.getElementById('kassa-categorieen');
