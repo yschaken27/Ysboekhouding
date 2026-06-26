@@ -418,8 +418,8 @@ function openFactuurModal(type, id){
   document.getElementById('f-partij-label').textContent=isVK?'Klant naam':'Leverancier naam';
 
   const statusSel=document.getElementById('f-status');
-  if(isVK) statusSel.innerHTML='<option value="concept">Concept</option><option value="verstuurd">Verstuurd</option><option value="betaald">Betaald</option><option value="verlopen">Verlopen</option>';
-  else statusSel.innerHTML='<option value="ontvangen">Ontvangen</option><option value="te betalen">Te betalen</option><option value="betaald">Betaald</option>';
+  if(isVK) statusSel.innerHTML='<option value="concept">Concept</option><option value="verstuurd">Verstuurd</option><option value="betaald">Betaald (handmatig)</option><option value="verlopen">Verlopen</option>';
+  else statusSel.innerHTML='<option value="ontvangen">Ontvangen</option><option value="te betalen">Te betalen</option><option value="betaald">Betaald (handmatig)</option>';
   const arr=isVK?DB.verkoop:DB.inkoop;
   if(id){
     const f=arr.find(x=>x.id===id);

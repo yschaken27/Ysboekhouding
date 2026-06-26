@@ -855,6 +855,12 @@ async function trekKassaGBTerug(id){
   if(kasRek)   kasRek.saldo   = (parseFloat(kasRek.saldo)||0)   - _kasBoekbedrag + (parseFloat(k.totUitgaven)||0);
   if(omzetRek) omzetRek.saldo = (parseFloat(omzetRek.saldo)||0) - (parseFloat(k.totaalOmzet)||0);
 
+  // Verwijder ook de memoriaalboeking die bij goedkeuren werd aangemaakt,
+  // zodat grootboek en memoriaal in sync blijven na het terugdraaien.
+  if(DB.memoriaal){
+    const idx = DB.memoriaal.findIndex(m=>m.kassaId===k.id);
+    if(idx !== -1) DB.memoriaal.splice(idx, 1);
+  }
   k.status = 'ingediend';
   save();
   renderKassaoverzicht();
