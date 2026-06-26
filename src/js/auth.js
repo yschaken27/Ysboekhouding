@@ -519,19 +519,22 @@ function openGebruikerDetail(id){
       ${esc(getBedrijfWeergavenaam(b))}
     </label>`).join('');
 
-  // Modules checkboxes (uren is geen module meer — dat is een bedrijfsinstelling)
-  const modDefs = [{v:'dashboard',l:'📊 Dashboard'},{v:'kassa',l:'💰 Kassa'},{v:'facturen',l:'🧾 Facturen'},{v:'uploads',l:'📎 Bonnen'}];
-  document.getElementById('gd-modules').innerHTML = modDefs.map(m=>`
+  // Modules checkboxes — uren is nu een gewone module-checkbox
+  const modDefs = [
+    {v:'dashboard', l:'📊 Dashboard'},
+    {v:'kassa',     l:'💰 Kassa'},
+    {v:'uren',      l:'⏱ Uren', alleenAlsUrenAan: true},
+    {v:'facturen',  l:'🧾 Facturen'},
+    {v:'uploads',   l:'📎 Bonnen'},
+  ];
+  document.getElementById('gd-modules').innerHTML = modDefs
+    .filter(m => !m.alleenAlsUrenAan || isUrenAan())
+    .map(m=>`
     <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;
       background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;">
       <input type="checkbox" value="${m.v}" style="width:auto;" ${(k.modules||['dashboard','kassa','uploads']).includes(m.v)?'checked':''}>
       ${m.l}
     </label>`).join('');
-
-  // Opdrachtgevers: werkkopie maken zodat 'Annuleren' niets opslaat.
-  _gdOpdrachtgevers = JSON.parse(JSON.stringify(k.opdrachtgevers || []));
-  renderOpdrachtgevers();
-  updateOpdrachtgeverZichtbaarheid();
 
   openModal('modal-gebruiker-detail');
 }

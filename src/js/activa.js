@@ -480,9 +480,8 @@ function mobBouwNav(){
     { id:'uploads',     icon:'📎', label:'Bonnen' },
     { id:'overzichten', icon:'📋', label:'Lijsten' },
   ];
-  // Uren-tab: zichtbaar als uren-registratie aan staat voor dit bedrijf
-  // én deze persoon opdrachtgevers toegewezen heeft gekregen.
-  const urenZichtbaar = isUrenAan() && (_actieveKassier?.opdrachtgevers||[]).length > 0;
+  // Uren-tab: zichtbaar als uren-registratie aan staat voor dit bedrijf én module 'uren' is aangevinkt.
+  const urenZichtbaar = isUrenAan() && modules.includes('uren');
   // Overzichten altijd tonen als kassa actief is
   const zichtbaar = tabs.filter(t=>
     (t.id==='uren' ? urenZichtbaar : modules.includes(t.id)) ||

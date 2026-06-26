@@ -201,7 +201,7 @@ function slaKassiersOpCloud(){
 }
 // ============================================================
 function _mobUrenOpdrachtgevers(){
-  return (_actieveKassier?.opdrachtgevers || []);
+  return (DB.profiel?.opdrachtgevers || []);
 }
 
 function initMobUren(){
