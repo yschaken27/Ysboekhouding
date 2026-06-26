@@ -611,7 +611,6 @@ function startKassaPolling(){
 // ── Kassaoverzicht (eigenaar) ──
 function renderKassaoverzicht(){
   if(!DB.kassalijsten) DB.kassalijsten=[];
-  if(!DB.kassalijsten) DB.kassalijsten = [];
   const filter = document.getElementById('kassa-filter-status')?.value||'';
   let lijst = [...DB.kassalijsten].sort((a,b)=>b.datum.localeCompare(a.datum));
   if(filter) lijst = lijst.filter(k=>k.status===filter);
@@ -794,6 +793,7 @@ async function wijsKassaAf(id){
 }
 
 async function verwijderKassalijst(id){
+  if(!DB.kassalijsten) DB.kassalijsten = [];
   const k = DB.kassalijsten.find(k=>k.id===id);
   if(!k) return;
   const wasGoedgekeurd = k.status === 'goedgekeurd';
@@ -820,6 +820,8 @@ async function verwijderKassalijst(id){
 }
 
 async function trekKassaGBTerug(id){
+  if(!DB.kassalijsten) DB.kassalijsten = [];
+  if(!DB.grootboek) DB.grootboek = [];
   const k = DB.kassalijsten.find(k=>k.id===id);
   if(!k) return;
   const ok = await bevestig(`Boeking van kassalijst ${k.datum} terugdraaien?`, 'Terugdraaien', 'Terugdraaien');

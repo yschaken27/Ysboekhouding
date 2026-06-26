@@ -18,7 +18,6 @@ function verrijkActieveKassier(){
     email: k.email || email,
     bedrijven: k.bedrijven || _actieveKassier.bedrijven || [],
     modules: k.modules || ['dashboard','kassa','uploads'],
-    opdrachtgevers: k.opdrachtgevers || []
   };
   return true;
 }
