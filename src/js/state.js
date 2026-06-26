@@ -496,6 +496,10 @@ async function laadGebruikersInDB(){
     if(Array.isArray(lijst)){
       DB.kassiers = lijst;
       localStorage.setItem(storageKey(), JSON.stringify(DB));
+      // Herverrijk de actieve kassier — laadGebruikersInDB loopt asynchroon en
+      // kan DB.kassiers overschrijven nádat verrijkActieveKassier() al gedraaid had.
+      if(typeof verrijkActieveKassier === 'function') verrijkActieveKassier();
+      if(typeof mobBouwNav === 'function') mobBouwNav();
     }
   }catch(e){ /* offline: bestaande DB.kassiers bewaren */ }
 }
