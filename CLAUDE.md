@@ -112,6 +112,11 @@ Open Claude Code altijd met `Ysboekhouding/` als werkmap, niet de bovenliggende 
 De hooks in `.claude/settings.json` (automatische js-checker en css-checker na elke edit) zijn alleen actief als de CWD exact `Ysboekhouding/` is.
 Start je vanuit de parent-map, dan vuren de hooks niet en worden wijzigingen niet automatisch gecheckt.
 
+### 8. `verrijkActieveKassier()` — altijd `.email` als lookup-sleutel, nooit `.naam`
+Na de eerste aanroep van `verrijkActieveKassier()` is `_actieveKassier.naam` de weergavenaam (bijv. "Jan"), NIET het e-mailadres. Elke volgende lookup op `.naam` zoekt dan op "Jan" in `DB.kassiers`, vindt niets, en retourneert `false` → module-wijzigingen propageren nooit naar de ingelogde kassier op andere apparaten of browsers.
+Gebruik altijd: `const email = String(_actieveKassier.email || _actieveKassier.naam || '').toLowerCase();`
+en zoek op `x.email`, nooit op `x.naam`.
+
 ### 6. Browser cache ≠ server cache
 `<meta http-equiv="Cache-Control">` tags werken niet als de browser al een gecachte versie heeft. De echte oplossing is `sw.js` (Service Worker). Nooit zeggen "hard refresh lost het op" voor klanten — zij weten dat niet.
 

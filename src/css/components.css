@@ -137,6 +137,8 @@
 }
 .btn-danger:hover{background:rgba(255,82,82,.22);}
 .btn-sm{padding:5px 10px;font-size:12px;border-radius:6px;}
+.regel-btw-btn{padding:3px 8px;font-size:11px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);cursor:pointer;}
+.regel-btw-btn:hover{background:var(--accent);color:#fff;border-color:var(--accent);}
 .btn-icon{background:none;border:none;color:var(--text-dim);cursor:pointer;padding:4px;font-size:15px;border-radius:4px;transition:all .1s;}
 .btn-icon:hover{color:var(--danger);background:var(--danger-dim);}
 

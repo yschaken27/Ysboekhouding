@@ -204,9 +204,11 @@
 
     async setGastenlijst(bedrijf, emailsJson){
       const emails = JSON.parse(emailsJson || '[]');
-      await db.collection('bedrijven').doc(bedrijf)
-        .collection('toegang').doc('lijst')
-        .set({ emails: emails }, {merge:true});
+      try {
+        await db.collection('bedrijven').doc(bedrijf)
+          .collection('toegang').doc('lijst')
+          .set({ emails: emails }, {merge:true});
+      } catch(e){ console.error('[setGastenlijst]', e); throw e; }
       return true;
     },
 
@@ -258,7 +260,9 @@
         return JSON.stringify({ok:true, dubbel:true});
       }
       bestaand.push(nieuw);
-      await db.collection('bedrijven').doc(bedrijf).collection('data').doc('uren').set({items:bestaand});
+      try {
+        await db.collection('bedrijven').doc(bedrijf).collection('data').doc('uren').set({items:bestaand});
+      } catch(e){ console.error('[voegUrenToe]', e); throw e; }
       return JSON.stringify({ok:true});
     },
 
@@ -270,7 +274,9 @@
       const idx = bestaand.findIndex(u=>u.id===id);
       if(idx === -1) return JSON.stringify({ok:false, reden:'niet gevonden'});
       bestaand[idx].status = status;
-      await ref.set({items:bestaand});
+      try {
+        await ref.set({items:bestaand});
+      } catch(e){ console.error('[updateUrenStatus]', e); throw e; }
       return JSON.stringify({ok:true});
     },
 
@@ -323,7 +329,9 @@
     },
 
     async updateUploadStatus(bedrijf, uploadId, status){
-      await db.collection('bedrijven').doc(bedrijf).collection('uploads').doc(uploadId).update({status});
+      try {
+        await db.collection('bedrijven').doc(bedrijf).collection('uploads').doc(uploadId).update({status});
+      } catch(e){ console.error('[updateUploadStatus]', e); throw e; }
       return JSON.stringify({ok:true});
     },
 
@@ -345,7 +353,9 @@
       const adres = String(email||'').trim().toLowerCase();
       if(!adres) return;
       const bedrijven = JSON.parse(bedrijvenJson||'[]');
-      await db.collection('bedrijven_toegang').doc(adres).set({ bedrijven }, { merge: false });
+      try {
+        await db.collection('bedrijven_toegang').doc(adres).set({ bedrijven }, { merge: false });
+      } catch(e){ console.error('[setBedrijvenVoorKassier]', e); throw e; }
       return JSON.stringify({ok:true});
     },
   };
