@@ -186,14 +186,13 @@ function slaUrenOpCloud(ingave){
 function slaKassiersOpCloud(){
   if(!checkOnline()) return Promise.resolve();
   toonSyncStatus('opslaan');
-  return fbAanroep(fb=>fb.slaKassiersOp(huidigBedrijf, JSON.stringify(DB.kassiers||[])))
-    .then(result=>{
-      try{
-        const r = typeof result === 'string' ? JSON.parse(result) : result;
-        if(r?.ok) toonSyncStatus('opgeslagen');
-        else { toonSyncStatus('fout'); toast('Opslaan mislukt — probeer opnieuw.','error'); }
-      }catch(e){ toonSyncStatus('fout'); }
-    })
+  // Schrijf naar ALLE bekende bedrijven zodat module-wijzigingen overal zichtbaar zijn,
+  // ongeacht in welk bedrijf de eigenaar op dat moment werkt.
+  const bedrijven = typeof getBedrijven === 'function' ? getBedrijven() : [huidigBedrijf];
+  return Promise.all(bedrijven.map(b=>
+    fbAanroep(fb=>fb.slaKassiersOp(b, JSON.stringify(DB.kassiers||[])))
+  ))
+    .then(()=>{ toonSyncStatus('opgeslagen'); })
     .catch(()=>{
       toonSyncStatus('fout');
       toast('Geen verbinding. Verbind met internet en probeer opnieuw.','error');

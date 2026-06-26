@@ -467,6 +467,11 @@ function loadCloud(){
         verrijkActieveKassier();
         if(typeof mobBouwNav === 'function') mobBouwNav();
         if(typeof renderMobDashboard === 'function') renderMobDashboard();
+        // Herlaad actieve tab zodat opdrachtgever-dropdown en uren-lijst bijgewerkt worden
+        // als de eigenaar profiel-data (bijv. opdrachtgevers) heeft aangepast.
+        const actiefeMobTab = document.querySelector('.mob-page.active')?.id?.replace('mob-page-','');
+        if(actiefeMobTab === 'uren' && typeof initMobUren === 'function') initMobUren();
+        if(actiefeMobTab === 'kassa' && typeof initMobKassa === 'function') initMobKassa();
       } else {
         const urenNav = document.getElementById('nav-item-urenoverzicht');
         if(urenNav) urenNav.style.display = isUrenAan() ? '' : 'none';
