@@ -149,14 +149,21 @@ async function _bepaalToegankelijkeBedrijven(email){
   // is opgeslagen in een ander bedrijf dan 'Persoonlijk'.
   try{
     const json = await fbAanroep(fb=>fb.getBedrijvenVoorKassier(email));
-    const lijst = JSON.parse(json||'[]');
+    const result = JSON.parse(json||'{"exists":false,"bedrijven":[]}');
+    const lijst = Array.isArray(result.bedrijven) ? result.bedrijven : (Array.isArray(result) ? result : []);
+    const docBestaat = result.exists !== undefined ? result.exists : lijst.length > 0;
     if(lijst.length){
       console.log('[Login] Bedrijven uit bedrijven_toegang:', lijst.join(', '));
       return { rol:'kassier', bedrijven: lijst };
     }
+    if(docBestaat && !lijst.length){
+      // Doc bestaat maar bedrijven is leeg = kassier is verwijderd door eigenaar
+      console.warn('[Login] Kassier is gedeactiveerd (bedrijven_toegang leeg):', email);
+      return { rol:'kassier', bedrijven: [] };
+    }
   }catch(e){ console.warn('[Login] bedrijven_toegang ophalen mislukt:', e); }
 
-  // Fallback op DB.kassiers (werkt als bedrijven_toegang nog niet bestaat)
+  // Fallback op DB.kassiers (alleen als bedrijven_toegang nog niet bestaat = nieuw account)
   const kassierRecord = (DB.kassiers||[]).find(k=>
     String(k.email||'').trim().toLowerCase() === email
   );

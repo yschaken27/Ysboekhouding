@@ -527,6 +527,10 @@ async function wisselBedrijf(naam){
        csvRaw:[], csvHeaders:[], fVK:'', fsVK:'', fIK:'', fsIK:'', fT:'', fsT:'', huidigeBankId:null };
   closeModal('modal-bedrijf');
   showPage('dashboard');
+  // Reset _recentlySaved zodat de Firestore listener van het nieuwe bedrijf
+  // niet direct wordt genegeerd (was gezet door een recente save in het oude bedrijf).
+  _recentlySaved = false;
+  clearTimeout(window._recentSavedTimer);
   load(); // loadLokaal() kan DB.kassiers overschrijven met stale per-bedrijf data
   DB.kassiers = _bewaardeKassiers; // herstel globale kassiers (verwerkCloudData mergt er straks in)
   renderGB(); renderRegels();

@@ -340,11 +340,11 @@
     // Eigenaar schrijft dit document bij elke bedrijfstoewijzing.
     async getBedrijvenVoorKassier(email){
       const adres = String(email||'').trim().toLowerCase();
-      if(!adres) return JSON.stringify([]);
+      if(!adres) return JSON.stringify({exists:false, bedrijven:[]});
       const snap = await db.collection('bedrijven_toegang').doc(adres).get();
-      if(!snap.exists) return JSON.stringify([]);
+      if(!snap.exists) return JSON.stringify({exists:false, bedrijven:[]});
       const data = snap.data();
-      return JSON.stringify(Array.isArray(data.bedrijven) ? data.bedrijven : []);
+      return JSON.stringify({exists:true, bedrijven: Array.isArray(data.bedrijven) ? data.bedrijven : []});
     },
 
     // Schrijf de bedrijvenlijst van een kassier naar bedrijven_toegang/{email}.
