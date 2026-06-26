@@ -462,6 +462,8 @@ function loadCloud(){
           if(idx === -1) DB.kassiers.push(k);
           else DB.kassiers[idx] = k;
         });
+        // Update instellingen-UI als die open is
+        if(typeof renderGebruikersBeheer === 'function') renderGebruikersBeheer();
       }
       if(d.grootboek    !== undefined) DB.grootboek    = d.grootboek    || [];
 
@@ -514,6 +516,9 @@ async function laadGebruikersInDB(){
 async function wisselBedrijf(naam){
   _stopCloudListeners();
   _stopCloudListeners = ()=>{};
+  // Kassiers zijn globaal — bewaar ze zodat loadLokaal() (per-bedrijf cache) ze niet wist.
+  // verwerkCloudData() mergt straks de kassiers van het nieuwe bedrijf erin.
+  const _bewaardeKassiers = DB.kassiers ? [...DB.kassiers] : [];
   huidigBedrijf=naam;
   localStorage.setItem('ledger_actief_bedrijf', naam);
   DB={ verkoop:[], inkoop:[], transacties:[], grootboek:[], regels:[], imports:[],
@@ -522,7 +527,8 @@ async function wisselBedrijf(naam){
        csvRaw:[], csvHeaders:[], fVK:'', fsVK:'', fIK:'', fsIK:'', fT:'', fsT:'', huidigeBankId:null };
   closeModal('modal-bedrijf');
   showPage('dashboard');
-  load();
+  load(); // loadLokaal() kan DB.kassiers overschrijven met stale per-bedrijf data
+  DB.kassiers = _bewaardeKassiers; // herstel globale kassiers (verwerkCloudData mergt er straks in)
   renderGB(); renderRegels();
   const el=document.getElementById('sidebar-bedrijf-naam');
   if(el) el.textContent=getBedrijfWeergavenaam(naam);
