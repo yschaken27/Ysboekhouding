@@ -172,8 +172,9 @@ function slaUrenOpCloud(ingave){
         else { toonSyncStatus('fout'); toast('Opslaan mislukt — probeer opnieuw.','error'); }
       }catch(e){ toonSyncStatus('fout'); }
     })
-    .catch(()=>{
+    .catch((err)=>{
       toonSyncStatus('fout');
+      console.error('[Uren] Cloud-upload mislukt:', err);
       toast('Geen verbinding. Verbind met internet en probeer opnieuw.','error');
     });
 }
@@ -719,6 +720,7 @@ async function keurKassaGoed(id){
   const kasBoekbedrag = kasContant > 0 ? kasContant : kasOmzetIncl;
 
   // Boek naar grootboek
+  if(!DB.grootboek) DB.grootboek = [];
   // 1. Kas saldo omhoog met incl BTW bedrag — debet kas
   const kasRek = DB.grootboek.find(g=>g.nummer==='1000') || DB.grootboek.find(g=>g.naam.toLowerCase().includes('kas'));
   if(kasRek) kasRek.saldo = (parseFloat(kasRek.saldo)||0) + kasBoekbedrag - kasUitgaven;
