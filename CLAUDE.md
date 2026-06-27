@@ -117,6 +117,12 @@ Na de eerste aanroep van `verrijkActieveKassier()` is `_actieveKassier.naam` de 
 Gebruik altijd: `const email = String(_actieveKassier.email || _actieveKassier.naam || '').toLowerCase();`
 en zoek op `x.email`, nooit op `x.naam`.
 
+### 9. PWA blijft in geheugen — Firestore listener vuurt niet opnieuw
+iOS en Android houden een PWA in het geheugen wanneer de gebruiker wisselt van app. De pagina wordt NIET herladen, dus `onAuthStateChanged` en `kiesBedrijfNaLogin()` worden niet opnieuw aangeroepen. De Firestore realtime listener herstart WEL, maar vuurt niet opnieuw als er ondertussen niets veranderd is in Firebase — waardoor de kassier verouderde data ziet.
+Oplossing: gebruik altijd een `visibilitychange`-listener voor acties die vers moeten zijn bij foreground-switch (bijv. kassier-modules herladen). Nooit vertrouwen op de Firestore-listener alleen voor PWA-correctheid.
+Zie: `kassier.js` → `document.addEventListener('visibilitychange', ...)`.
+Bij elke nieuwe feature die data toont die een ander apparaat kan wijzigen: controleer of er een `visibilitychange` handler nodig is.
+
 ### 6. Browser cache ≠ server cache
 `<meta http-equiv="Cache-Control">` tags werken niet als de browser al een gecachte versie heeft. De echte oplossing is `sw.js` (Service Worker). Nooit zeggen "hard refresh lost het op" voor klanten — zij weten dat niet.
 
