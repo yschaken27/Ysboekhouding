@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ysboekhouding-v3';
+const CACHE_NAME = 'ysboekhouding-v4';
 
 // Bij installatie: meteen activeren zonder te wachten
 self.addEventListener('install', event => {

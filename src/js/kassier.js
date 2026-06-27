@@ -899,6 +899,31 @@ renderImports();
   }
 })();
 
+// Herlaad kassier-modules wanneer de PWA naar de voorgrond komt.
+// iOS/Android houdt een PWA in het geheugen als je wisselt van app. De Firestore-
+// listener herstart dan, maar vuurt niet opnieuw als er ondertussen niets veranderd is.
+// Resultaat: kassier ziet verouderde modules totdat hij opnieuw inlogt.
+// Oplossing: bij elke foreground-switch verse kassiers ophalen en modules hertoepassen.
+document.addEventListener('visibilitychange', async function(){
+  if(document.visibilityState !== 'visible') return;
+  if(typeof _loginRol === 'undefined' || _loginRol !== 'kassier') return;
+  if(!_actieveKassier || !huidigBedrijf) return;
+  try{
+    const json = await fbAanroep(fb=>fb.laadAlles(huidigBedrijf));
+    const d = JSON.parse(json||'{}');
+    if(Array.isArray(d.kassiers)){
+      if(!DB.kassiers) DB.kassiers = [];
+      d.kassiers.forEach(k=>{
+        const idx = DB.kassiers.findIndex(x=>x.id===k.id);
+        if(idx === -1) DB.kassiers.push(k);
+        else DB.kassiers[idx] = k;
+      });
+    }
+  }catch(e){ console.warn('[visibilitychange] kassiers laden mislukt:', e); }
+  verrijkActieveKassier();
+  if(typeof mobBouwNav === 'function') mobBouwNav();
+});
+
 // Bijlage input event listeners — wacht op DOM
 document.addEventListener('DOMContentLoaded', function(){
   const bi = document.getElementById('f-bijlage-input');
