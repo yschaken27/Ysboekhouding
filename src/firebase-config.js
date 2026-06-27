@@ -347,6 +347,20 @@
       return JSON.stringify({exists:true, bedrijven: Array.isArray(data.bedrijven) ? data.bedrijven : []});
     },
 
+    // Verwijder alle Firebase-data van een bedrijf: data-docs, uploads, toegang en het bedrijf-doc zelf.
+    async verwijderBedrijfCloud(naam){
+      const docs = ['main','verkoop','inkoop','transacties','kassalijsten'];
+      await Promise.all(docs.map(doc=>
+        db.collection('bedrijven').doc(naam).collection('data').doc(doc).delete().catch(()=>{})
+      ));
+      const upSnap = await db.collection('bedrijven').doc(naam).collection('uploads').get().catch(()=>null);
+      if(upSnap) await Promise.all(upSnap.docs.map(d=>d.ref.delete().catch(()=>{})));
+      const toeSnap = await db.collection('bedrijven').doc(naam).collection('toegang').get().catch(()=>null);
+      if(toeSnap) await Promise.all(toeSnap.docs.map(d=>d.ref.delete().catch(()=>{})));
+      await db.collection('bedrijven').doc(naam).delete().catch(()=>{});
+      return JSON.stringify({ok:true});
+    },
+
     // Schrijf de bedrijvenlijst van een kassier naar bedrijven_toegang/{email}.
     // Alleen de eigenaar mag schrijven (security rule: isHoofdeigenaar()).
     async setBedrijvenVoorKassier(email, bedrijvenJson){

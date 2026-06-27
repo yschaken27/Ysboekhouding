@@ -7,15 +7,15 @@ const DEFAULT_GB = [
   {id:'gb3',nummer:'1300',naam:'Debiteuren',type:'activa',saldo:0},
   {id:'gb4',nummer:'2000',naam:'Inventaris',type:'vlottende_activa',saldo:0},
   {id:'gb5',nummer:'3000',naam:'Eigen vermogen',type:'eigen_vermogen',saldo:0},
-  {id:'gb6',nummer:'4000',naam:'Crediteuren',type:'passiva',saldo:0},
-  {id:'gb7',nummer:'8000',naam:'Omzet diensten',type:'omzet',saldo:0},
-  {id:'gb8',nummer:'8100',naam:'Omzet producten',type:'omzet',saldo:0},
-  {id:'gb9',nummer:'4100',naam:'Personeelskosten',type:'kosten',saldo:0},
-  {id:'gb10',nummer:'4200',naam:'Huisvestingskosten',type:'kosten',saldo:0},
-  {id:'gb11',nummer:'4300',naam:'Overige kosten',type:'kosten',saldo:0},
+  {id:'gb6',nummer:'2100',naam:'Crediteuren',type:'passiva',saldo:0},
+  {id:'gb7',nummer:'4000',naam:'Omzet diensten',type:'omzet',saldo:0},
+  {id:'gb8',nummer:'4100',naam:'Omzet producten',type:'omzet',saldo:0},
+  {id:'gb9',nummer:'8100',naam:'Personeelskosten',type:'kosten',saldo:0},
+  {id:'gb10',nummer:'8200',naam:'Huisvestingskosten',type:'kosten',saldo:0},
+  {id:'gb11',nummer:'8300',naam:'Overige kosten',type:'kosten',saldo:0},
   {id:'gb12',nummer:'1500',naam:'BTW te vorderen (inkoop)',type:'activa',saldo:0},
   {id:'gb13',nummer:'1510',naam:'BTW te betalen (verkoop)',type:'passiva',saldo:0},
-  {id:'gb14',nummer:'4400',naam:'Afschrijvingskosten',type:'kosten',saldo:0},
+  {id:'gb14',nummer:'8400',naam:'Afschrijvingskosten',type:'kosten',saldo:0},
   {id:'gb15',nummer:'2900',naam:'Accumuleerde afschrijvingen',type:'passiva',saldo:0},
   {id:'gb16',nummer:'3000',naam:'Privé-opnames eigenaar',type:'eigen_vermogen',saldo:0},
   {id:'gb17',nummer:'3100',naam:'Privé-stortingen eigenaar',type:'eigen_vermogen',saldo:0},
@@ -167,21 +167,6 @@ function storageKey(){
 }
 
 // ============================================================
-// GOOGLE SHEETS BACKEND CONFIGURATIE
-// Plak hier je Apps Script Web App URL na het deployen
-// ============================================================
-// ============================================================
-// FIREBASE CONFIG — vul jouw config hier in
-// ============================================================
-window.FIREBASE_CONFIG = {
-  apiKey: "AIzaSyDCwgK-b4OEXAG7-gXqr6j5ilgTRAxuCTM",
-  authDomain: "boekhouding-6bcfe.firebaseapp.com",
-  projectId: "boekhouding-6bcfe",
-  storageBucket: "boekhouding-6bcfe.firebasestorage.app",
-  messagingSenderId: "412388229605",
-  appId: "1:412388229605:web:ea2b4fc84a68536706ef0c"
-};
-
 const USE_CLOUD = true;
 
 // Firebase wrapper — wacht tot FB beschikbaar is
@@ -623,26 +608,10 @@ async function verwijderBedrijf(naam){
   localStorage.removeItem('ledger_'+naam.replace(/\s+/g,'_').toLowerCase());
   const lijst=getBedrijven().filter(b=>b!==naam);
   saveBedrijven(lijst);
-  // Verwijder uit Firebase — alle subcollectie documenten
+  // Verwijder uit Firebase via fbAanroep
   try{
-    const db = window.FB?.db;
-    if(db){
-      const docs = ['main','verkoop','inkoop','transacties','kassalijsten'];
-      await Promise.all(docs.map(doc=>
-        db.collection('bedrijven').doc(naam).collection('data').doc(doc).delete().catch(()=>{})
-      ));
-      // Verwijder uploads subcollectie
-      const upSnap = await db.collection('bedrijven').doc(naam).collection('uploads').get().catch(()=>null);
-      if(upSnap) await Promise.all(upSnap.docs.map(d=>d.ref.delete().catch(()=>{})));
-      // Verwijder ook eventuele toegang/gastenlijst subcollectie
-      const toeSnap = await db.collection('bedrijven').doc(naam).collection('toegang').get().catch(()=>null);
-      if(toeSnap) await Promise.all(toeSnap.docs.map(d=>d.ref.delete().catch(()=>{})));
-      // BELANGRIJK: verwijder tot slot het bedrijf-document zelf. Zonder dit
-      // blijft bedrijven/{naam} bestaan (met zijn naam-veld) en blijft het
-      // bedrijf op andere apparaten in de lijst staan.
-      await db.collection('bedrijven').doc(naam).delete().catch(()=>{});
-      toast(`Bedrijf "${naam}" volledig verwijderd.`,'info');
-    }
+    await fbAanroep(fb=>fb.verwijderBedrijfCloud(naam));
+    toast(`Bedrijf "${naam}" volledig verwijderd.`,'info');
   }catch(e){
     toast(`Bedrijf lokaal verwijderd — cloud verwijdering mislukt.`,'warning');
     console.error('Firebase verwijder fout:', e);

@@ -880,8 +880,8 @@ function renderBTWAangifte(){
       const exclVolledig=(parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0);
       const excl = exclVolledig * ratio;
       const pct=parseInt(r.btw||f.btwTarief||21);
-      if(pct===21){ gs1a+=excl; btw1a+=excl*0.21; }
-      else if(pct===9){ gs1b+=excl; btw1b+=excl*0.09; }
+      if(pct===21){ gs1a+=excl; btw1a+=Math.round(excl*21)/100; }
+      else if(pct===9){ gs1b+=excl; btw1b+=Math.round(excl*9)/100; }
       else if(pct===0){ gs1d+=excl; }
     });
   });
@@ -900,7 +900,7 @@ function renderBTWAangifte(){
       const pct=parseInt(r.btw||f.btwTarief||21);
       if(pct>0){
         gs5b += exclBetaald;
-        btw5b += exclBetaald * pct / 100; // correct: ratio al verwerkt in exclBetaald
+        btw5b += Math.round(exclBetaald * pct) / 100; // correct: ratio al verwerkt in exclBetaald
       }
     });
   });
