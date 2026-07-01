@@ -426,6 +426,90 @@ function renderUrenoverzicht(){
   }).join('');
 }
 
+function openEigenaarUrenModal(){
+  // Kassier-dropdown: alleen kassiers die toegang hebben tot huidigBedrijf
+  const kasSelect = document.getElementById('eu-kassier');
+  if(!kasSelect) return;
+  const kassiers = (DB.kassiers||[]).filter(k=>(k.bedrijven||[]).includes(huidigBedrijf));
+  if(!kassiers.length){ toast('Geen medewerkers gevonden voor dit bedrijf.','warning'); return; }
+  kasSelect.innerHTML = kassiers.map(k=>`<option value="${esc(k.naam)}">${esc(k.naam)}</option>`).join('');
+
+  // Tarief-dropdown: opdrachtgevers + tarieven uit profiel
+  const tarSelect = document.getElementById('eu-tarief');
+  if(!tarSelect) return;
+  const opdrachtgevers = DB.profiel?.opdrachtgevers || [];
+  const opties = [];
+  opdrachtgevers.forEach(o=>{
+    (o.tarieven||[{label:'Standaard',bedrag:o.tarief||0}]).forEach(t=>{
+      opties.push({ opdrachtgever: o.naam, tariefLabel: t.label||'Standaard', tariefBedrag: parseFloat(t.bedrag||0) });
+    });
+  });
+  if(!opties.length){ toast('Geen opdrachtgevers ingesteld. Voeg ze toe via ⚙ Opdrachtgevers.','warning'); return; }
+  tarSelect.innerHTML = opties.map((o,i)=>
+    `<option value="${i}">${esc(o.opdrachtgever)} — ${esc(o.tariefLabel)} (€ ${(o.tariefBedrag).toFixed(2).replace('.',',')})</option>`
+  ).join('');
+  tarSelect._opties = opties;
+
+  // Datum default vandaag
+  const datumEl = document.getElementById('eu-datum');
+  if(datumEl && !datumEl.value) datumEl.value = new Date().toISOString().slice(0,10);
+
+  document.getElementById('eu-uren').value = '';
+  document.getElementById('eu-notitie').value = '';
+  document.getElementById('eu-bedrag-preview').textContent = '€ 0,00';
+  openModal('modal-eigenaar-uren');
+}
+
+function eigenaarUrenHerbereken(){
+  const tarSelect = document.getElementById('eu-tarief');
+  const opties = tarSelect?._opties || [];
+  const idx = parseInt(tarSelect?.value||'0');
+  const tarief = opties[idx] || {};
+  const uren = parseFloat(document.getElementById('eu-uren')?.value) || 0;
+  const bedrag = Math.round(uren * (tarief.tariefBedrag||0) * 100) / 100;
+  const el = document.getElementById('eu-bedrag-preview');
+  if(el) el.textContent = '€ ' + bedrag.toFixed(2).replace('.',',');
+}
+
+function eigenaarVoegUrenToe(){
+  const datum = document.getElementById('eu-datum')?.value;
+  const wie = document.getElementById('eu-kassier')?.value;
+  const uren = parseFloat(document.getElementById('eu-uren')?.value) || 0;
+  const notitie = document.getElementById('eu-notitie')?.value.trim() || '';
+  const tarSelect = document.getElementById('eu-tarief');
+  const opties = tarSelect?._opties || [];
+  const idx = parseInt(tarSelect?.value||'0');
+  const tarief = opties[idx];
+
+  if(!datum){ toast('Kies een datum.','error'); return; }
+  if(!wie){ toast('Kies een medewerker.','error'); return; }
+  if(uren <= 0){ toast('Vul het aantal uren in.','error'); return; }
+  if(!tarief){ toast('Kies een opdrachtgever en tarief.','error'); return; }
+
+  const bedrag = Math.round(uren * tarief.tariefBedrag * 100) / 100;
+  const ingave = {
+    id: uid(),
+    datum,
+    wie,
+    opdrachtgever: tarief.opdrachtgever,
+    tariefLabel: tarief.tariefLabel,
+    tariefBedrag: tarief.tariefBedrag,
+    uren,
+    bedrag,
+    notitie,
+    status: 'goedgekeurd',
+    aangemaakt: new Date().toISOString()
+  };
+
+  if(!DB.uren) DB.uren = [];
+  DB.uren.push(ingave);
+  localStorage.setItem(storageKey(), JSON.stringify(DB));
+  slaUrenOpCloud(ingave);
+  closeModal('modal-eigenaar-uren');
+  renderUrenoverzicht();
+  toast(`Uren toegevoegd voor ${wie}.`,'success');
+}
+
 function urenKeur(id, status){
   const u = (DB.uren||[]).find(x=>x.id===id);
   if(!u) return;
