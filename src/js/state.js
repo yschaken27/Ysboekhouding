@@ -1,4 +1,4 @@
-﻿// ===== STATE =====
+// ===== STATE =====
 let DB = { verkoop:[], inkoop:[], transacties:[], grootboek:[], regels:[], imports:[], profiel:{}, kassalijsten:[], kassiers:[], uren:[], editId:null, editType:null, koppelId:null, csvRaw:[], csvHeaders:[], fVK:'', fsVK:'', fIK:'', fsIK:'', fT:'', fsT:'', huidigeBankId:null };
 
 const DEFAULT_GB = [
