@@ -1,4 +1,29 @@
-﻿// ===== NAV =====
+﻿// ===== SERVICE WORKER =====
+// Registreer de SW en herlaad automatisch wanneer een nieuwe versie activeert,
+// zodat de telefoon nooit vastloopt op gecachte oude JS-bestanden.
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').then(reg=>{
+    reg.addEventListener('updatefound',()=>{
+      const sw = reg.installing;
+      if(sw){
+        sw.addEventListener('statechange',()=>{
+          // Nieuwe SW geïnstalleerd én er was al een actieve controller (niet eerste install)
+          if(sw.state==='installed' && navigator.serviceWorker.controller){
+            window.location.reload();
+          }
+        });
+      }
+    });
+  }).catch(e=>console.warn('[SW] registratie mislukt:',e));
+
+  // Fallback: herlaad als een nieuwe SW het overneemt (bijv. via skipWaiting)
+  let _swRefreshing=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(!_swRefreshing){ _swRefreshing=true; window.location.reload(); }
+  });
+}
+
+// ===== NAV =====
 // Pagina's die alleen eigenaar mag zien
 const EIGENAAR_PAGINAS = ['verkoop','inkoop','bank','grootboek','memoriaal','balans','pl',
   'mutaties','openposten','btwaangifte','jaaropgave','kassaoverzicht','vasteactiva','regels'];

@@ -101,7 +101,7 @@ Het bestand heeft gemengde CRLF/LF-regels. Verifieer altijd met `cat -A` of `For
 Bij een grote string-replace kan een omliggende functie per ongeluk meegenomen worden. Altijd na elke edit `grep -n "function naam"` draaien om te bevestigen dat de definitie nog bestaat.
 
 ### 4. Nooit dubbele Service Worker registraties
-Er mag maar één `navigator.serviceWorker.register()` in de live HTML staan. Check altijd met `grep -n "serviceWorker.register"` voor én na een SW-edit.
+Er mag maar één `navigator.serviceWorker.register()` in de codebase staan — staat in `src/js/ui.js` bovenaan. Check altijd met `grep -rn "serviceWorker.register"` voor én na een SW-edit. De registratie bevat ook een `controllerchange`-listener die de pagina automatisch herlaadt als een nieuwe SW activeert.
 
 ### 5. Syntaxcheck na elke JS-wijziging
 Na elke edit altijd de code-check agent aanroepen (`Agent: code-check`) om syntax errors te vangen vóór push.
