@@ -789,6 +789,16 @@ async function maakUrenFactuur(opdrEnc){
 
   // Grootboekboekingen (factuurstelsel): Debiteuren D / Omzet C / BTW te betalen C
   if(!DB.grootboek) DB.grootboek = [];
+  // Zorg dat benodigde rekeningen bestaan — voeg toe uit DEFAULT_GB als ze ontbreken
+  [
+    {nummer:'1300', naam:'Debiteuren',              type:'activa'},
+    {nummer:'4000', naam:'Omzet diensten',           type:'omzet'},
+    {nummer:'1510', naam:'BTW te betalen (verkoop)', type:'passiva'},
+  ].forEach(def => {
+    const bestaat = DB.grootboek.find(g=>g.nummer===def.nummer);
+    if(!bestaat) DB.grootboek.push({id:'gb_auto_'+def.nummer, ...def, saldo:0});
+  });
+
   const gbDebiteuren = DB.grootboek.find(g=>g.nummer==='1300')
                     || DB.grootboek.find(g=>(g.naam||'').toLowerCase().includes('debiteuren'));
   if(gbDebiteuren) gbDebiteuren.saldo = (parseFloat(gbDebiteuren.saldo)||0) + totaalIncl;
