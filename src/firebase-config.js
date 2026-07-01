@@ -280,6 +280,32 @@
       return JSON.stringify({ok:true});
     },
 
+    async updateUrenItem(bedrijf, id, updatesJson){
+      const updates = JSON.parse(updatesJson);
+      const ref = db.collection('bedrijven').doc(bedrijf).collection('data').doc('uren');
+      const snap = await ref.get();
+      const bestaand = snap.exists ? (snap.data().items||[]) : [];
+      const idx = bestaand.findIndex(u=>u.id===id);
+      if(idx === -1) return JSON.stringify({ok:false, reden:'niet gevonden'});
+      bestaand[idx] = { ...bestaand[idx], ...updates };
+      try {
+        await ref.set({items:bestaand});
+      } catch(e){ console.error('[updateUrenItem]', e); throw e; }
+      return JSON.stringify({ok:true});
+    },
+
+    async verwijderUrenItem(bedrijf, id){
+      const ref = db.collection('bedrijven').doc(bedrijf).collection('data').doc('uren');
+      const snap = await ref.get();
+      const bestaand = snap.exists ? (snap.data().items||[]) : [];
+      const gefilterd = bestaand.filter(u=>u.id!==id);
+      if(gefilterd.length === bestaand.length) return JSON.stringify({ok:false, reden:'niet gevonden'});
+      try {
+        await ref.set({items:gefilterd});
+      } catch(e){ console.error('[verwijderUrenItem]', e); throw e; }
+      return JSON.stringify({ok:true});
+    },
+
     async checkKassalijstBestaat(bedrijf, kassaId){
       const snap = await db.collection('bedrijven').doc(bedrijf).collection('data').doc('kassalijsten').get();
       if(!snap.exists) return false;

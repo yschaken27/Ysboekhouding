@@ -315,7 +315,10 @@ function renderMobUrenLijst(){
   }
   el.innerHTML = mijn.map(u=>{
     const dd = new Date(u.datum).toLocaleDateString('nl-NL',{day:'numeric',month:'short'});
-    const status = u.status==='goedgekeurd' ? '<span style="color:var(--accent);">✓ goedgekeurd</span>' : 'ingediend';
+    const status = u.status==='goedgekeurd' ? '<span style="color:var(--accent);">✓ goedgekeurd</span>' : u.status==='afgewezen' ? '<span style="color:#ef4444;">✗ afgewezen</span>' : 'ingediend';
+    const wijzigBtn = u.status==='ingediend'
+      ? `<button onclick="openEigenaarUrenModal('${u.id}')" style="font-size:11px;padding:2px 10px;border-radius:5px;border:1px solid var(--border);background:var(--surface);cursor:pointer;margin-top:6px;">Wijzigen</button>`
+      : '';
     return `<div style="background:var(--surface2);border-radius:10px;padding:12px 14px;margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <strong style="font-size:14px;">${esc(u.opdrachtgever)}</strong>
@@ -325,6 +328,7 @@ function renderMobUrenLijst(){
         ${dd} · ${u.uren} u${u.tariefLabel?(' · '+esc(u.tariefLabel)):''} · ${status}
       </div>
       ${u.notitie?`<div style="font-size:12px;color:var(--text-dim);margin-top:4px;">${esc(u.notitie)}</div>`:''}
+      ${wijzigBtn}
     </div>`;
   }).join('');
 }
@@ -380,12 +384,13 @@ function renderUrenoverzicht(){
 
     const rijen = items.map(u=>{
       const dd = new Date(u.datum).toLocaleDateString('nl-NL',{day:'2-digit',month:'short'});
-      const st = u.status==='goedgekeurd'
+      const keurBtns = u.status==='goedgekeurd'
         ? '<span style="color:#16a34a;">✓</span>'
         : `<span style="display:inline-flex;gap:6px;">
              <button onclick="urenKeur('${u.id}','goedgekeurd')" style="font-size:11px;padding:2px 8px;border-radius:5px;border:none;background:#16a34a;color:#fff;cursor:pointer;">Goedkeuren</button>
              <button onclick="urenKeur('${u.id}','afgewezen')" style="font-size:11px;padding:2px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text-mid);cursor:pointer;">×</button>
            </span>`;
+      const st = `<span style="display:inline-flex;gap:4px;align-items:center;">${keurBtns}<button onclick="openEigenaarUrenModal('${u.id}')" title="Bewerken" style="font-size:12px;padding:2px 6px;border-radius:5px;border:1px solid var(--border);background:var(--surface);cursor:pointer;">✏️</button><button onclick="verwijderUrenEigenaar('${u.id}')" title="Verwijderen" style="font-size:12px;padding:2px 6px;border-radius:5px;border:none;background:#ef4444;color:#fff;cursor:pointer;">🗑</button></span>`;
       const afgewezen = u.status==='afgewezen' ? 'opacity:0.45;text-decoration:line-through;' : '';
       return `<tr style="${afgewezen}">
         <td style="padding:6px 8px;font-size:12px;">${dd}</td>
@@ -426,15 +431,29 @@ function renderUrenoverzicht(){
   }).join('');
 }
 
-function openEigenaarUrenModal(){
-  // Kassier-dropdown: alleen kassiers die toegang hebben tot huidigBedrijf
-  const kasSelect = document.getElementById('eu-kassier');
-  if(!kasSelect) return;
-  const kassiers = (DB.kassiers||[]).filter(k=>(k.bedrijven||[]).includes(huidigBedrijf));
-  if(!kassiers.length){ toast('Geen medewerkers gevonden voor dit bedrijf.','warning'); return; }
-  kasSelect.innerHTML = kassiers.map(k=>`<option value="${esc(k.naam)}">${esc(k.naam)}</option>`).join('');
+function openEigenaarUrenModal(editId){
+  const isEdit = !!editId;
+  const bestaand = isEdit ? (DB.uren||[]).find(u=>u.id===editId) : null;
 
-  // Tarief-dropdown: opdrachtgevers + tarieven uit profiel
+  // Titel aanpassen
+  const titel = document.getElementById('eu-modal-titel');
+  if(titel) titel.textContent = isEdit ? 'Uren bewerken' : 'Uren toevoegen';
+  const editIdEl = document.getElementById('eu-edit-id');
+  if(editIdEl) editIdEl.value = editId || '';
+
+  // Kassier-dropdown: toon bij eigenaar (add én edit), verberg bij kassier-edit
+  const kasRij = document.getElementById('eu-kassier-rij');
+  const kasSelect = document.getElementById('eu-kassier');
+  const isEigenaarView = (typeof _loginRol !== 'undefined' && _loginRol === 'eigenaar');
+  if(kasRij) kasRij.style.display = isEigenaarView ? '' : 'none';
+  if(kasSelect){
+    const kassiers = (DB.kassiers||[]).filter(k=>(k.bedrijven||[]).includes(huidigBedrijf));
+    if(isEigenaarView && !kassiers.length){ toast('Geen medewerkers gevonden voor dit bedrijf.','warning'); return; }
+    kasSelect.innerHTML = kassiers.map(k=>`<option value="${esc(k.naam)}">${esc(k.naam)}</option>`).join('');
+    if(isEdit && bestaand) kasSelect.value = bestaand.wie;
+  }
+
+  // Tarief-dropdown
   const tarSelect = document.getElementById('eu-tarief');
   if(!tarSelect) return;
   const opdrachtgevers = DB.profiel?.opdrachtgevers || [];
@@ -450,13 +469,21 @@ function openEigenaarUrenModal(){
   ).join('');
   tarSelect._opties = opties;
 
-  // Datum default vandaag
+  // Pre-vullen bij bewerken
   const datumEl = document.getElementById('eu-datum');
-  if(datumEl && !datumEl.value) datumEl.value = new Date().toISOString().slice(0,10);
-
-  document.getElementById('eu-uren').value = '';
-  document.getElementById('eu-notitie').value = '';
-  document.getElementById('eu-bedrag-preview').textContent = '€ 0,00';
+  if(isEdit && bestaand){
+    if(datumEl) datumEl.value = bestaand.datum || '';
+    document.getElementById('eu-uren').value = bestaand.uren || '';
+    document.getElementById('eu-notitie').value = bestaand.notitie || '';
+    // Tarief-optie zoeken op opdrachtgever + label
+    const matchIdx = opties.findIndex(o=>o.opdrachtgever===bestaand.opdrachtgever && o.tariefLabel===bestaand.tariefLabel);
+    if(matchIdx >= 0) tarSelect.value = matchIdx;
+  } else {
+    if(datumEl && !datumEl.value) datumEl.value = new Date().toISOString().slice(0,10);
+    document.getElementById('eu-uren').value = '';
+    document.getElementById('eu-notitie').value = '';
+  }
+  eigenaarUrenHerbereken();
   openModal('modal-eigenaar-uren');
 }
 
@@ -472,8 +499,13 @@ function eigenaarUrenHerbereken(){
 }
 
 function eigenaarVoegUrenToe(){
+  const editId = document.getElementById('eu-edit-id')?.value || '';
   const datum = document.getElementById('eu-datum')?.value;
-  const wie = document.getElementById('eu-kassier')?.value;
+  const kasEl = document.getElementById('eu-kassier');
+  const isEigenaarView = (typeof _loginRol !== 'undefined' && _loginRol === 'eigenaar');
+  const wie = isEigenaarView
+    ? (kasEl?.value || '')
+    : (_actieveKassier?.naam || '');
   const uren = parseFloat(document.getElementById('eu-uren')?.value) || 0;
   const notitie = document.getElementById('eu-notitie')?.value.trim() || '';
   const tarSelect = document.getElementById('eu-tarief');
@@ -487,27 +519,58 @@ function eigenaarVoegUrenToe(){
   if(!tarief){ toast('Kies een opdrachtgever en tarief.','error'); return; }
 
   const bedrag = Math.round(uren * tarief.tariefBedrag * 100) / 100;
+
+  if(editId){
+    // Bewerken
+    const entry = (DB.uren||[]).find(u=>u.id===editId);
+    if(!entry){ toast('Uren-entry niet gevonden.','error'); return; }
+    Object.assign(entry, { datum, wie, opdrachtgever: tarief.opdrachtgever, tariefLabel: tarief.tariefLabel, tariefBedrag: tarief.tariefBedrag, uren, bedrag, notitie });
+    localStorage.setItem(storageKey(), JSON.stringify(DB));
+    if(checkOnline()){
+      toonSyncStatus('opslaan');
+      fbAanroep(fb=>fb.updateUrenItem(huidigBedrijf, editId, JSON.stringify({ datum, wie, opdrachtgever: tarief.opdrachtgever, tariefLabel: tarief.tariefLabel, tariefBedrag: tarief.tariefBedrag, uren, bedrag, notitie })))
+        .then(()=>toonSyncStatus('opgeslagen'))
+        .catch(()=>{ toonSyncStatus('fout'); toast('Opslaan mislukt — probeer opnieuw.','error'); });
+    }
+    closeModal('modal-eigenaar-uren');
+    if(isEigenaarView) renderUrenoverzicht(); else renderMobUrenLijst();
+    toast('Uren bijgewerkt.','success');
+    return;
+  }
+
+  // Nieuw toevoegen
   const ingave = {
-    id: uid(),
-    datum,
-    wie,
+    id: uid(), datum, wie,
     opdrachtgever: tarief.opdrachtgever,
     tariefLabel: tarief.tariefLabel,
     tariefBedrag: tarief.tariefBedrag,
-    uren,
-    bedrag,
-    notitie,
-    status: 'goedgekeurd',
+    uren, bedrag, notitie,
+    status: isEigenaarView ? 'goedgekeurd' : 'ingediend',
     aangemaakt: new Date().toISOString()
   };
-
   if(!DB.uren) DB.uren = [];
   DB.uren.push(ingave);
   localStorage.setItem(storageKey(), JSON.stringify(DB));
   slaUrenOpCloud(ingave);
   closeModal('modal-eigenaar-uren');
-  renderUrenoverzicht();
+  if(isEigenaarView) renderUrenoverzicht(); else renderMobUrenLijst();
   toast(`Uren toegevoegd voor ${wie}.`,'success');
+}
+
+function verwijderUrenEigenaar(id){
+  const u = (DB.uren||[]).find(x=>x.id===id);
+  if(!u) return;
+  if(!confirm(`Uren van ${u.wie} op ${u.datum} verwijderen?`)) return;
+  DB.uren = (DB.uren||[]).filter(x=>x.id!==id);
+  localStorage.setItem(storageKey(), JSON.stringify(DB));
+  if(checkOnline()){
+    toonSyncStatus('opslaan');
+    fbAanroep(fb=>fb.verwijderUrenItem(huidigBedrijf, id))
+      .then(()=>toonSyncStatus('opgeslagen'))
+      .catch(()=>{ toonSyncStatus('fout'); toast('Verwijderen mislukt — probeer opnieuw.','error'); });
+  }
+  renderUrenoverzicht();
+  toast('Uren verwijderd.','success');
 }
 
 function urenKeur(id, status){

@@ -948,18 +948,19 @@
   </div>
 </div>
 
-<!-- EIGENAAR UREN TOEVOEGEN MODAL -->
+<!-- EIGENAAR UREN TOEVOEGEN / BEWERKEN MODAL -->
 <div class="modal-overlay" id="modal-eigenaar-uren">
   <div class="modal" style="width:480px;">
     <div class="modal-header">
-      <h3>Uren toevoegen</h3>
+      <h3 id="eu-modal-titel">Uren toevoegen</h3>
       <button class="modal-close" onclick="closeModal('modal-eigenaar-uren')">✕</button>
     </div>
+    <input type="hidden" id="eu-edit-id">
+    <div id="eu-kassier-rij">
+      <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px;">Medewerker</label>
+      <select id="eu-kassier" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);font-size:14px;margin-bottom:14px;"></select>
+    </div>
     <div style="display:flex;flex-direction:column;gap:14px;">
-      <div>
-        <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px;">Medewerker</label>
-        <select id="eu-kassier" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);font-size:14px;"></select>
-      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
         <div>
           <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px;">Datum</label>
