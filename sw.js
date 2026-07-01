@@ -1,11 +1,9 @@
-const CACHE_NAME = 'ysboekhouding-v4';
+const CACHE_NAME = 'ysboekhouding-v5';
 
-// Bij installatie: meteen activeren zonder te wachten
 self.addEventListener('install', event => {
   self.skipWaiting();
 });
 
-// Bij activatie: verwijder ALLE oude caches
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
@@ -14,18 +12,18 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Alle eigen bestanden (HTML, JS, CSS): altijd vers van het netwerk
-// Fallback naar cache alleen als er geen internet is
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
-  const isEigenBestand = url.hostname === self.location.hostname && (
-    event.request.mode === 'navigate' ||
-    url.pathname.endsWith('.js') ||
-    url.pathname.endsWith('.css') ||
-    url.pathname.endsWith('.html')
-  );
+  const isEigenHostname = url.hostname === self.location.hostname;
 
-  if (isEigenBestand) {
+  // JS en CSS: NOOIT cachen — altijd vers van het netwerk, geen fallback
+  if (isEigenHostname && (url.pathname.endsWith('.js') || url.pathname.endsWith('.css'))) {
+    event.respondWith(fetch(event.request, { cache: 'no-store' }));
+    return;
+  }
+
+  // HTML (navigatie): network-first met cache-fallback voor offline
+  if (isEigenHostname && (event.request.mode === 'navigate' || url.pathname.endsWith('.html'))) {
     event.respondWith(
       fetch(event.request, { cache: 'no-store' })
         .then(response => {
