@@ -468,6 +468,7 @@ function loadCloud(){
         const actiefeMobTab = document.querySelector('.mob-page.active')?.id?.replace('mob-page-','');
         if(actiefeMobTab === 'uren' && typeof initMobUren === 'function') initMobUren();
         if(actiefeMobTab === 'kassa' && typeof initMobKassa === 'function') initMobKassa();
+        if(actiefeMobTab === 'facturen' && typeof renderMobFacturen === 'function') renderMobFacturen();
       } else {
         const urenNav = document.getElementById('nav-item-urenoverzicht');
         if(urenNav) urenNav.style.display = isUrenAan() ? '' : 'none';

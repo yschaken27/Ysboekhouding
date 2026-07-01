@@ -595,6 +595,25 @@ function renderMobDashboard(){
   const subEl = document.getElementById('mob-topbar-sub');
   if(subEl) subEl.textContent = _actieveKassier?.naam||'';
 
+  // Uren-sectie: toon als kassier uren-module heeft
+  const urenSectie = document.getElementById('mob-uren-dashboard-sectie');
+  if(urenSectie){
+    const heeftUren = (mobGetModules()||[]).includes('uren') && isUrenAan();
+    urenSectie.style.display = heeftUren ? '' : 'none';
+    if(heeftUren){
+      const kassierNaam = _actieveKassier?.naam || '';
+      const nu2 = new Date();
+      const huidigeMaandSleutel = nu2.toISOString().slice(0,7);
+      const mijnUren = (DB.uren||[]).filter(u=>u.wie===kassierNaam && (u.datum||'').slice(0,7)===huidigeMaandSleutel);
+      const urenOmzet = mijnUren.reduce((s,u)=>s+(parseFloat(u.bedrag)||0),0);
+      const urenGoedgekeurd = mijnUren.filter(u=>u.status==='goedgekeurd').length;
+      const set2 = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
+      set2('mob-uren-omzet', mobFmtEur(urenOmzet));
+      set2('mob-uren-ingediend', mijnUren.length);
+      set2('mob-uren-goedgekeurd', urenGoedgekeurd);
+    }
+  }
+
   // Recente lijsten (5 meest recent)
   const recentEl = document.getElementById('mob-recente-lijsten');
   if(!recentEl) return;

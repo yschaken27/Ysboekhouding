@@ -299,18 +299,33 @@ function mobSlaUrenOp(){
   renderMobUrenLijst();
 }
 
+function _vulMobUrenMaandFilter(){
+  const sel = document.getElementById('mob-uren-maand-filter');
+  if(!sel || sel.options.length > 1) return;
+  const nu = new Date();
+  const opties = [];
+  for(let i = 0; i < 6; i++){
+    const d = new Date(nu.getFullYear(), nu.getMonth() - i, 1);
+    const val = d.toISOString().slice(0,7); // 'YYYY-MM'
+    const label = d.toLocaleDateString('nl-NL',{month:'long',year:'numeric'});
+    opties.push(`<option value="${val}">${label}</option>`);
+  }
+  sel.innerHTML = opties.join('');
+}
+
 function renderMobUrenLijst(){
   const el = document.getElementById('mob-uren-lijst');
   if(!el) return;
+  _vulMobUrenMaandFilter();
   const naam = _actieveKassier?.naam || '';
-  const nu = new Date();
-  const maand = nu.getMonth(), jaar = nu.getFullYear();
+  const sel = document.getElementById('mob-uren-maand-filter');
+  const filterMaand = sel?.value || new Date().toISOString().slice(0,7);
   const mijn = (DB.uren||[])
-    .filter(u=> u.wie===naam && (()=>{ const d=new Date(u.datum); return d.getMonth()===maand && d.getFullYear()===jaar; })())
+    .filter(u=> u.wie===naam && (u.datum||'').slice(0,7)===filterMaand)
     .sort((a,b)=> (b.datum||'').localeCompare(a.datum||''));
 
   if(!mijn.length){
-    el.innerHTML = '<div style="font-size:13px;color:var(--text-dim);padding:8px 0;">Nog geen uren deze maand.</div>';
+    el.innerHTML = '<div style="font-size:13px;color:var(--text-dim);padding:8px 0;">Geen uren gevonden voor deze maand.</div>';
     return;
   }
   el.innerHTML = mijn.map(u=>{
@@ -766,9 +781,29 @@ async function maakUrenFactuur(opdrEnc){
     klant: opdr,
     totaalExcl: subtotaalExcl,
     totaalIncl: totaalIncl,
+    totaal: totaalIncl,
+    btwBedrag: btwBedrag,
     status: 'verstuurd',
     type: 'uren'
   });
+
+  // Grootboekboekingen (factuurstelsel): Debiteuren D / Omzet C / BTW te betalen C
+  if(!DB.grootboek) DB.grootboek = [];
+  const gbDebiteuren = DB.grootboek.find(g=>g.nummer==='1300')
+                    || DB.grootboek.find(g=>(g.naam||'').toLowerCase().includes('debiteuren'));
+  if(gbDebiteuren) gbDebiteuren.saldo = (parseFloat(gbDebiteuren.saldo)||0) + totaalIncl;
+
+  const gbOmzet = DB.grootboek.find(g=>g.type==='omzet')
+               || DB.grootboek.find(g=>(g.naam||'').toLowerCase().includes('omzet'));
+  if(gbOmzet) gbOmzet.saldo = (parseFloat(gbOmzet.saldo)||0) + subtotaalExcl;
+
+  if(!zonderBtw && btwBedrag > 0.01){
+    const gbBtw = DB.grootboek.find(g=>g.nummer==='1510')
+               || DB.grootboek.find(g=>g.nummer==='1530')
+               || DB.grootboek.find(g=>(g.naam||'').toLowerCase().includes('btw te betalen'));
+    if(gbBtw) gbBtw.saldo = (parseFloat(gbBtw.saldo)||0) + btwBedrag;
+  }
+
   save();
 
   const w = window.open('','_blank');

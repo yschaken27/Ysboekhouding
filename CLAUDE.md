@@ -126,7 +126,22 @@ Bij elke nieuwe feature die data toont die een ander apparaat kan wijzigen: cont
 ### 6. Browser cache ≠ server cache
 `<meta http-equiv="Cache-Control">` tags werken niet als de browser al een gecachte versie heeft. De echte oplossing is `sw.js` (Service Worker). Nooit zeggen "hard refresh lost het op" voor klanten — zij weten dat niet.
 
-### 10. Kassier kan bedrijvenlijst niet lezen — weergavenamen laden aparte stap
+### 10. Na elke boekhoudkundige actie altijd code-check + boekhoud-checker aanroepen
+Elke functie die een factuur aanmaakt, grootboeksaldi wijzigt, BTW berekent of verkoop/inkoop opslaat
+MOET gecontroleerd worden door zowel `js-checker` als `boekhoud-checker`.
+Dit geldt voor: `facturen.js`, `btw-rapport.js`, `bank.js`, `state.js` én **`kassier.js`**
+(want `maakUrenFactuur()` doet grootboekboekingen).
+De verplichte combinaties staan in `.claude/agents/code-check.md`.
+
+### 11. `maakUrenFactuur()` — factuurstelsel vereist drie grootboekboekingen
+Bij het aanmaken van een uren-factuur MOETEN de volgende boekingen plaatsvinden:
+- **Debet Debiteuren (1300)** += totaalIncl
+- **Credit Omzet** (type='omzet') += subtotaalExcl
+- **Credit BTW te betalen (1530)** += btwBedrag (alleen als `!zonderBtw && btwBedrag > 0.01`)
+Boekingen gaan via `DB.grootboek` saldo-updates, daarna `save()`.
+`btwBedrag` moet ook opgeslagen worden in de `DB.verkoop`-entry (voor terugdraaien bij verwijderen).
+
+### 13. Kassier kan bedrijvenlijst niet lezen — weergavenamen laden aparte stap
 `laadBedrijfNamenUitFirebase()` loopt over `getBedrijven()` (de eigenaar-lijst). Kassiers mogen de
 volledige `bedrijven`-collectie niet lezen in Firestore, dus `_bedrijfNamen[sleutel]` wordt nooit
 gevuld voor kassier-bedrijven → kassier ziet de interne aanmaak-sleutel i.p.v. de weergavenaam.
@@ -134,7 +149,7 @@ Fix: in `toonBedrijfsKiezer()` (auth.js) ontbrekende namen alsnog laden via `fbA
 voor elk bedrijf uit `res.bedrijven` dat nog niet in `getBedrijfProfielNamen()` staat.
 Pas `toonBedrijfsKiezer()` nooit aan zonder dit laadblok intact te houden.
 
-### 11. `DB.uren` is een platte array — gebruik nooit `.items`
+### 14. `DB.uren` is een platte array — gebruik nooit `.items`
 `laadAlles()` en `luisterAlles()` in `firebase-config.js` retourneren `uren` al als array
 (`urSnap.data().items||[]`). Lokaal wordt `DB.uren` ook als array bijgehouden (`DB.uren.push(ingave)`).
 Gebruik dus altijd `DB.uren||[]`, nooit `DB.uren?.items||[]` of `DB.uren.items` — `.items` is altijd `undefined`.
