@@ -685,12 +685,10 @@ async function maakUrenFactuur(opdrEnc){
   .totaal-tabel .scheidslijn td{border-top:2px solid #1e3a8a;padding-top:8px;}
   .totaal-tabel .eindtotaal td{font-size:16px;font-weight:800;color:#1e3a8a;}
   .kor-tekst{font-size:11px;color:#64748b;text-align:right;margin-top:6px;padding-right:12px;}
-  .betaal-sectie{margin-top:auto;padding-top:24px;border-top:1px solid #e2e8f0;}
+  .footer{margin-top:auto;padding:20px 40px 28px;border-top:2px solid #e2e8f0;}
   .betaalinfo{font-size:12px;color:#444;line-height:1.8;}
   .betaalinfo strong{color:#1a1a1a;}
-  .bottom-bar{background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 60%,#38bdf8 100%);height:44px;display:flex;align-items:center;padding:0 40px;}
-  .bottom-bar span{color:rgba(255,255,255,.6);font-size:11px;letter-spacing:.05em;}
-  .print-btn{display:inline-block;margin-top:14px;padding:10px 28px;font-size:13px;border:none;border-radius:6px;background:#1e3a8a;color:#fff;cursor:pointer;font-weight:600;}
+  .print-btn{display:inline-block;margin-top:16px;padding:10px 28px;font-size:13px;border:none;border-radius:6px;background:#1e3a8a;color:#fff;cursor:pointer;font-weight:600;}
   @media print{.print-btn{display:none;}body{width:100%;min-height:unset;}}
 </style></head><body>
 
@@ -744,17 +742,17 @@ async function maakUrenFactuur(opdrEnc){
   </div>
   ${zonderBtw?'<div class="kor-tekst">BTW niet van toepassing</div>':''}
 
-  <div class="betaal-sectie">
-    ${p.iban?`<div class="betaalinfo">
-      Gelieve <strong>€ ${totaalIncl.toFixed(2)}</strong> over te maken vóór <strong>${betaaldatumFmt}</strong><br>
-      op IBAN <strong>${esc(p.iban)}</strong> t.n.v. <strong>${esc(bedrijf)}</strong><br>
-      onder vermelding van factuurnummer <strong>${factuurNr}</strong>.
-    </div>`:''}
-    <button class="print-btn" onclick="window.print()">Afdrukken / opslaan als PDF</button>
-  </div>
+
 </div>
 
-<div class="bottom-bar"><span>${esc(bedrijf)}${p.kvk?' · KvK '+esc(p.kvk):''}</span></div>
+<div class="footer">
+  ${p.iban?`<div class="betaalinfo">
+    Gelieve <strong>€ ${totaalIncl.toFixed(2)}</strong> over te maken vóór <strong>${betaaldatumFmt}</strong><br>
+    op IBAN <strong>${esc(p.iban)}</strong> t.n.v. <strong>${esc(bedrijf)}</strong><br>
+    onder vermelding van factuurnummer <strong>${factuurNr}</strong>.
+  </div>`:''}
+  <button class="print-btn" onclick="window.print()">Afdrukken / opslaan als PDF</button>
+</div>
 
 </body></html>`;
 
