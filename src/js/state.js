@@ -638,7 +638,9 @@ function laadBedrijfProfiel(){
   document.getElementById('bp-iban').value=p.iban||'';
   document.getElementById('bp-tel').value=p.tel||'';
   document.getElementById('bp-email').value=p.email||'';
-  document.getElementById('bp-adres').value=p.adres||'';
+  document.getElementById('bp-straat').value=p.straat||'';
+  document.getElementById('bp-postcode').value=p.postcode||'';
+  document.getElementById('bp-stad').value=p.stad||'';
   document.getElementById('bp-website').value=p.website||'';
   document.getElementById('bp-rechtsvorm').value=p.rechtsvorm||'';
   document.getElementById('bp-boekjaar').value=p.boekjaar||'1';
@@ -657,7 +659,9 @@ function slaBedrijfProfielOp(){
     iban:document.getElementById('bp-iban').value.trim(),
     tel:document.getElementById('bp-tel').value.trim(),
     email:document.getElementById('bp-email').value.trim(),
-    adres:document.getElementById('bp-adres').value.trim(),
+    straat:document.getElementById('bp-straat').value.trim(),
+    postcode:document.getElementById('bp-postcode').value.trim(),
+    stad:document.getElementById('bp-stad').value.trim(),
     website:document.getElementById('bp-website').value.trim(),
     rechtsvorm:document.getElementById('bp-rechtsvorm').value,
     boekjaar:document.getElementById('bp-boekjaar').value,
@@ -741,9 +745,17 @@ function _tekenCentraalOpdrachtgevers(){
           style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;">🗑</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;">
-        <input type="text" value="${esc(o.adres||'')}" placeholder="Adres (straat, postcode, stad)"
-          oninput="_cpOpdrachtgevers[${i}].adres=this.value"
+        <input type="text" value="${esc(o.straat||'')}" placeholder="Straatnaam + huisnummer"
+          oninput="_cpOpdrachtgevers[${i}].straat=this.value"
           style="font-size:12px;padding:6px 8px;">
+        <div style="display:flex;gap:6px;">
+          <input type="text" value="${esc(o.postcode||'')}" placeholder="Postcode"
+            oninput="_cpOpdrachtgevers[${i}].postcode=this.value"
+            style="width:110px;font-size:12px;padding:6px 8px;">
+          <input type="text" value="${esc(o.stad||'')}" placeholder="Stad / Gemeente"
+            oninput="_cpOpdrachtgevers[${i}].stad=this.value"
+            style="flex:1;font-size:12px;padding:6px 8px;">
+        </div>
         <div style="display:flex;gap:6px;">
           <input type="text" value="${esc(o.btwNummer||'')}" placeholder="BTW-nummer (optioneel)"
             oninput="_cpOpdrachtgevers[${i}].btwNummer=this.value"
@@ -783,7 +795,7 @@ function _cpVerwijderTarief(i,ti){
 }
 
 function voegCentraalOpdrachtgeverToe(){
-  _cpOpdrachtgevers.push({ naam:'', adres:'', btwNummer:'', email:'', tarieven:[{naam:'', bedrag:null}] });
+  _cpOpdrachtgevers.push({ naam:'', straat:'', postcode:'', stad:'', btwNummer:'', email:'', tarieven:[{naam:'', bedrag:null}] });
   _tekenCentraalOpdrachtgevers();
 }
 
@@ -796,7 +808,9 @@ function slaCentraalOpdrachtgeversOp(){
   const schoon = _cpOpdrachtgevers
     .map(o=>({
       naam: (o.naam||'').trim(),
-      adres: (o.adres||'').trim(),
+      straat: (o.straat||'').trim(),
+      postcode: (o.postcode||'').trim(),
+      stad: (o.stad||'').trim(),
       btwNummer: (o.btwNummer||'').trim(),
       email: (o.email||'').trim(),
       tarieven: (o.tarieven||[]).map(t=>({naam:(t.naam||'').trim(), bedrag:parseFloat(t.bedrag)||0})).filter(t=>t.bedrag>0||t.naam),
@@ -839,9 +853,17 @@ function _tekenOpdrachtgeversModal(){
           style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;">🗑</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;">
-        <input type="text" value="${esc(o.adres||'')}" placeholder="Adres (straat, postcode, stad)"
-          oninput="_cpOpdrachtgevers[${i}].adres=this.value"
+        <input type="text" value="${esc(o.straat||'')}" placeholder="Straatnaam + huisnummer"
+          oninput="_cpOpdrachtgevers[${i}].straat=this.value"
           style="font-size:12px;padding:6px 8px;">
+        <div style="display:flex;gap:6px;">
+          <input type="text" value="${esc(o.postcode||'')}" placeholder="Postcode"
+            oninput="_cpOpdrachtgevers[${i}].postcode=this.value"
+            style="width:110px;font-size:12px;padding:6px 8px;">
+          <input type="text" value="${esc(o.stad||'')}" placeholder="Stad / Gemeente"
+            oninput="_cpOpdrachtgevers[${i}].stad=this.value"
+            style="flex:1;font-size:12px;padding:6px 8px;">
+        </div>
         <div style="display:flex;gap:6px;">
           <input type="text" value="${esc(o.btwNummer||'')}" placeholder="BTW-nummer (optioneel)"
             oninput="_cpOpdrachtgevers[${i}].btwNummer=this.value"
@@ -881,7 +903,7 @@ function _opmVerwijderTarief(i,ti){
 }
 
 function voegOpdrachtgeverModalToe(){
-  _cpOpdrachtgevers.push({ naam:'', adres:'', btwNummer:'', email:'', tarieven:[{naam:'', bedrag:null}] });
+  _cpOpdrachtgevers.push({ naam:'', straat:'', postcode:'', stad:'', btwNummer:'', email:'', tarieven:[{naam:'', bedrag:null}] });
   _tekenOpdrachtgeversModal();
 }
 
@@ -894,7 +916,9 @@ function slaOpdrachtgeversModalOp(){
   const schoon = _cpOpdrachtgevers
     .map(o=>({
       naam: (o.naam||'').trim(),
-      adres: (o.adres||'').trim(),
+      straat: (o.straat||'').trim(),
+      postcode: (o.postcode||'').trim(),
+      stad: (o.stad||'').trim(),
       btwNummer: (o.btwNummer||'').trim(),
       email: (o.email||'').trim(),
       tarieven: (o.tarieven||[]).map(t=>({naam:(t.naam||'').trim(), bedrag:parseFloat(t.bedrag)||0})).filter(t=>t.bedrag>0||t.naam),

@@ -604,11 +604,11 @@ async function maakUrenFactuur(opdrEnc){
 
   // Valideer verplichte factuurvelden
   const ontbrekend = [];
-  if(!p.adres)       ontbrekend.push('Bedrijfsadres (Instellingen → Bedrijfsprofiel)');
+  if(!p.straat)      ontbrekend.push('Bedrijfsadres (Instellingen → Bedrijfsprofiel)');
   if(!p.btw && !p.urenZonderBtw) ontbrekend.push('BTW-nummer (Instellingen → Bedrijfsprofiel)');
   if(!p.kvk)         ontbrekend.push('KvK-nummer (Instellingen → Bedrijfsprofiel)');
   if(!p.iban)        ontbrekend.push('IBAN (Instellingen → Bedrijfsprofiel)');
-  if(!opdrObj.adres) ontbrekend.push(`Adres van opdrachtgever "${opdr}" (Instellingen → Opdrachtgevers)`);
+  if(!opdrObj.straat && !opdrObj.adres) ontbrekend.push(`Adres van opdrachtgever "${opdr}" (Instellingen → Opdrachtgevers)`);
   if(ontbrekend.length){
     const ok = await bevestig(
       `Waarschuwing: de factuur is mogelijk ongeldig.\n\nOntbrekende verplichte velden:\n• ${ontbrekend.join('\n• ')}\n\nToch doorgaan?`,
@@ -682,7 +682,8 @@ async function maakUrenFactuur(opdrEnc){
   <div class="leverancier">
     <h1>${esc(bedrijf)}</h1>
     <div class="muted" style="margin-top:6px;line-height:1.8;">
-      ${p.adres?esc(p.adres)+'<br>':''}
+      ${p.straat?esc(p.straat)+'<br>':''}
+      ${(p.postcode||p.stad)?((esc(p.postcode||'')+' '+esc(p.stad||'')).trim())+'<br>':''}
       ${p.kvk?'KvK-nummer: '+esc(p.kvk)+'<br>':''}
       ${p.btw?'BTW-nummer: '+esc(p.btw)+'<br>':''}
       ${p.iban?'IBAN: '+esc(p.iban):''}
@@ -702,7 +703,8 @@ async function maakUrenFactuur(opdrEnc){
 <div class="klantblok">
   <div class="label">Factuur aan</div>
   <strong>${esc(opdr)}</strong><br>
-  ${opdrObj.adres?esc(opdrObj.adres)+'<br>':''}
+  ${opdrObj.straat?esc(opdrObj.straat)+'<br>':''}${opdrObj.adres&&!opdrObj.straat?esc(opdrObj.adres)+'<br>':''}
+  ${(opdrObj.postcode||opdrObj.stad)?((esc(opdrObj.postcode||'')+' '+esc(opdrObj.stad||'')).trim())+'<br>':''}
   ${opdrObj.btwNummer?'<span class="muted">BTW-nummer: '+esc(opdrObj.btwNummer)+'</span>':''}
 </div>
 
