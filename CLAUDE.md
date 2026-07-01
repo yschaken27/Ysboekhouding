@@ -126,6 +126,19 @@ Bij elke nieuwe feature die data toont die een ander apparaat kan wijzigen: cont
 ### 6. Browser cache ≠ server cache
 `<meta http-equiv="Cache-Control">` tags werken niet als de browser al een gecachte versie heeft. De echte oplossing is `sw.js` (Service Worker). Nooit zeggen "hard refresh lost het op" voor klanten — zij weten dat niet.
 
+### 10. Kassier kan bedrijvenlijst niet lezen — weergavenamen laden aparte stap
+`laadBedrijfNamenUitFirebase()` loopt over `getBedrijven()` (de eigenaar-lijst). Kassiers mogen de
+volledige `bedrijven`-collectie niet lezen in Firestore, dus `_bedrijfNamen[sleutel]` wordt nooit
+gevuld voor kassier-bedrijven → kassier ziet de interne aanmaak-sleutel i.p.v. de weergavenaam.
+Fix: in `toonBedrijfsKiezer()` (auth.js) ontbrekende namen alsnog laden via `fbAanroep(fb=>fb.laadAlles(b))`
+voor elk bedrijf uit `res.bedrijven` dat nog niet in `getBedrijfProfielNamen()` staat.
+Pas `toonBedrijfsKiezer()` nooit aan zonder dit laadblok intact te houden.
+
+### 11. `DB.uren` is een platte array — gebruik nooit `.items`
+`laadAlles()` en `luisterAlles()` in `firebase-config.js` retourneren `uren` al als array
+(`urSnap.data().items||[]`). Lokaal wordt `DB.uren` ook als array bijgehouden (`DB.uren.push(ingave)`).
+Gebruik dus altijd `DB.uren||[]`, nooit `DB.uren?.items||[]` of `DB.uren.items` — `.items` is altijd `undefined`.
+
 ## Losse eindjes (geen risico)
 - Regel ~3976: stuurt nog ongebruikt `kassiers: DB.kassiers` mee
 - Regel ~1751: maakt nog leeg `kassiers: []` bij nieuw bedrijf

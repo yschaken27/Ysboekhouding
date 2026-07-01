@@ -3,6 +3,7 @@
 // Rol en actieve gebruiker worden gezet bij login via email + wachtwoord.
 let _loginRol = null; // 'eigenaar' of 'kassier'
 let _actieveKassier = null;
+let _toegankelijkeRol = null;
 
 // Vul _actieveKassier aan met de volledige gegevens uit DB.kassiers
 // (modules én opdrachtgevers). Wordt herkend op e-mailadres.
@@ -188,7 +189,22 @@ async function toonBedrijfsKiezer(email){
 
   const res = await _bepaalToegankelijkeBedrijven(email);
   _toegankelijkeRol = res.rol;
+
+  // Laad profielnamen voor bedrijven die nog niet in de map staan
+  // (kassiers kunnen niet de volledige bedrijvenlijst ophalen, dus dit
+  // doet het alsnog voor hun specifieke bedrijven)
   const namen = getBedrijfProfielNamen();
+  const ontbrekende = res.bedrijven.filter(b => !namen[b]);
+  if(ontbrekende.length){
+    await Promise.all(ontbrekende.map(b=>
+      fbAanroep(fb=>fb.laadAlles(b)).then(json=>{
+        try{
+          const d = JSON.parse(json||'{}');
+          if(d.profiel?.naam) saveBedrijfProfielNaam(b, d.profiel.naam);
+        }catch(e){}
+      }).catch(()=>{})
+    ));
+  }
 
   if(sub){
     sub.textContent = res.rol === 'eigenaar'
@@ -278,7 +294,6 @@ async function kiesBedrijfNaLogin(bedrijf){
   }
 }
 
-let _toegankelijkeRol = null;
 
 async function inloggen(){
   const emailInp = document.getElementById('login-email');
