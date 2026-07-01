@@ -605,7 +605,7 @@ async function maakUrenFactuur(opdrEnc){
   // Valideer verplichte factuurvelden
   const ontbrekend = [];
   if(!p.adres)       ontbrekend.push('Bedrijfsadres (Instellingen → Bedrijfsprofiel)');
-  if(!p.btw)         ontbrekend.push('BTW-nummer (Instellingen → Bedrijfsprofiel)');
+  if(!p.btw && !p.urenZonderBtw) ontbrekend.push('BTW-nummer (Instellingen → Bedrijfsprofiel)');
   if(!p.kvk)         ontbrekend.push('KvK-nummer (Instellingen → Bedrijfsprofiel)');
   if(!p.iban)        ontbrekend.push('IBAN (Instellingen → Bedrijfsprofiel)');
   if(!opdrObj.adres) ontbrekend.push(`Adres van opdrachtgever "${opdr}" (Instellingen → Opdrachtgevers)`);
@@ -638,9 +638,10 @@ async function maakUrenFactuur(opdrEnc){
   });
   const regelLijst = Object.values(groepen);
 
+  const zonderBtw = !!p.urenZonderBtw;
   const btwPct = 21;
   const subtotaalExcl = regelLijst.reduce((a,r)=>a+r.bedrag,0);
-  const btwBedrag = Math.round(subtotaalExcl * btwPct) / 100;
+  const btwBedrag = zonderBtw ? 0 : Math.round(subtotaalExcl * btwPct) / 100;
   const totaalIncl = subtotaalExcl + btwBedrag;
 
   const rijen = regelLijst.map(r=>`<tr>
@@ -717,9 +718,14 @@ async function maakUrenFactuur(opdrEnc){
 
 <div class="totaalblok" style="margin-top:12px;">
   <table>
+    ${zonderBtw ? `
+    <tr><td colspan="2" style="font-size:11px;color:#666;padding-bottom:6px;">BTW niet van toepassing — Vrijgesteld o.b.v. KOR (art. 25 Wet OB 1968)</td></tr>
+    <tr class="totaal"><td>Totaal</td><td>€ ${totaalIncl.toFixed(2)}</td></tr>
+    ` : `
     <tr><td>Subtotaal excl. BTW</td><td>€ ${subtotaalExcl.toFixed(2)}</td></tr>
     <tr><td>BTW ${btwPct}%</td><td>€ ${btwBedrag.toFixed(2)}</td></tr>
     <tr class="totaal"><td>Totaal incl. BTW</td><td>€ ${totaalIncl.toFixed(2)}</td></tr>
+    `}
   </table>
 </div>
 

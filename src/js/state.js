@@ -645,6 +645,7 @@ function laadBedrijfProfiel(){
   document.getElementById('bp-btw-standaard').value=p.btwStandaard||'21';
   document.getElementById('bp-btw-stelsel').value=p.btwStelsel||'factuurstelsel';
   document.getElementById('bp-uren-aan').checked = !!p.urenAan;
+  document.getElementById('bp-uren-zonder-btw').checked = !!p.urenZonderBtw;
   document.getElementById('bp-notities').value=p.notities||'';
 }
 
@@ -663,6 +664,7 @@ function slaBedrijfProfielOp(){
     btwStandaard:document.getElementById('bp-btw-standaard').value,
     btwStelsel:document.getElementById('bp-btw-stelsel').value,
     urenAan:document.getElementById('bp-uren-aan').checked,
+    urenZonderBtw:document.getElementById('bp-uren-zonder-btw').checked,
     notities:document.getElementById('bp-notities').value.trim(),
     opdrachtgevers: DB.profiel?.opdrachtgevers || [],
   };
