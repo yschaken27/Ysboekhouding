@@ -721,7 +721,7 @@ async function maakUrenFactuur(opdrEnc){
 <div class="totaalblok" style="margin-top:12px;">
   <table>
     ${zonderBtw ? `
-    <tr><td colspan="2" style="font-size:11px;color:#666;padding-bottom:6px;">BTW niet van toepassing — Vrijgesteld o.b.v. KOR (art. 25 Wet OB 1968)</td></tr>
+    <tr><td colspan="2" style="font-size:11px;color:#666;padding-bottom:6px;">BTW niet van toepassing</td></tr>
     <tr class="totaal"><td>Totaal</td><td>€ ${totaalIncl.toFixed(2)}</td></tr>
     ` : `
     <tr><td>Subtotaal excl. BTW</td><td>€ ${subtotaalExcl.toFixed(2)}</td></tr>
