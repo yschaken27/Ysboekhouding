@@ -447,6 +447,8 @@ function loadCloud(){
           if(idx === -1) DB.kassiers.push(k);
           else DB.kassiers[idx] = k;
         });
+        // Dedup op e-mail na elke merge zodat race-conditions geen dubbelen laten staan
+        if(typeof _dedupKassiers === 'function') DB.kassiers = _dedupKassiers(DB.kassiers);
         // Update instellingen-UI als die open is
         if(typeof renderGebruikersBeheer === 'function') renderGebruikersBeheer();
       }

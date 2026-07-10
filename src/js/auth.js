@@ -5,6 +5,25 @@ let _loginRol = null; // 'eigenaar' of 'kassier'
 let _actieveKassier = null;
 let _toegankelijkeRol = null;
 
+// Dedupliceert een kassier-array op e-mailadres (laatste entry wint bij duplicaat-id).
+// Voorkomt dat dezelfde persoon met twee verschillende `id`s in de lijst belandt
+// als gevolg van een race-condition bij het parallel laden van meerdere bedrijven.
+function _dedupKassiers(lijst){
+  const map = {};
+  (lijst||[]).forEach(k=>{
+    const sleutel = String(k.email||k.id||'').toLowerCase();
+    if(!sleutel) return;
+    // Bewaar de entry met de meeste modules/bedrijven als er al één bestaat
+    if(!map[sleutel]) map[sleutel] = k;
+    else {
+      const bestaand = map[sleutel];
+      const nieuwer = (k.bedrijven||[]).length >= (bestaand.bedrijven||[]).length;
+      if(nieuwer) map[sleutel] = k;
+    }
+  });
+  return Object.values(map);
+}
+
 // Vul _actieveKassier aan met de volledige gegevens uit DB.kassiers
 // (modules én opdrachtgevers). Wordt herkend op e-mailadres.
 // DB.kassiers laadt async, dus deze functie wordt op meerdere momenten aangeroepen.
@@ -60,6 +79,8 @@ async function laadKassiersVoorLogin(){
     }).catch(()=>{})
   );
   await Promise.all(promises);
+  // Dedup op e-mail: verwijder entries met zelfde e-mail maar ander id
+  if(DB.kassiers) DB.kassiers = _dedupKassiers(DB.kassiers);
   // Cache bijwerken als Firebase gelukt is
   if(firebaseGelukt && DB.kassiers?.length){
     localStorage.setItem('ledger_kassiers_cache', JSON.stringify(DB.kassiers));
@@ -275,6 +296,7 @@ async function kiesBedrijfNaLogin(bedrijf){
       if(idx === -1) DB.kassiers.push(k);
       else DB.kassiers[idx] = k;
     });
+    DB.kassiers = _dedupKassiers(DB.kassiers);
   }
   if(_versProfiel)  DB.profiel  = _versProfiel;
 
