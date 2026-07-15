@@ -558,7 +558,7 @@ function renderGebruikersBeheer(){
         background:var(--surface);border:1px solid var(--border);border-radius:6px;
         padding:5px 10px;">
         <input type="checkbox" value="${b}" style="width:auto;" checked>
-        ${b}
+        ${esc(getBedrijfWeergavenaam(b))}
       </label>`).join('');
   }
 
@@ -593,7 +593,7 @@ function renderGebruikersBeheer(){
             <div style="flex:1;min-width:0;">
               <div style="font-size:14px;font-weight:600;color:var(--text);">${esc(k.naam)}</div>
               <div style="font-size:11px;color:var(--text-mid);margin-top:1px;font-family:var(--mono,monospace);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(k.email||'(geen e-mail)')}</div>
-              <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">${modLabels} · ${(k.bedrijven||[]).join(', ')}</div>
+              <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">${modLabels} · ${esc((k.bedrijven||[]).map(getBedrijfWeergavenaam).join(', '))}</div>
             </div>
             <div style="color:var(--text-dim);font-size:18px;">›</div>
           </div>`;
