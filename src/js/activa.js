@@ -532,26 +532,24 @@ function mobSetPeriodeDropdown(p){
   mobSetPeriode(p);
 }
 
-function mobGetPeriodeLijsten(){
-  const lijsten = DB.kassalijsten||[];
+function _inMobPeriode(datum){
+  if(!datum) return false;
   const nu = new Date();
-  const jaar = nu.getFullYear();
-  function inPeriode(datum){
-    if(!datum) return false;
-    const d = new Date(datum);
-    if(_mobPeriode==='vandaag') return datum.slice(0,10)===nu.toISOString().slice(0,10);
-    if(_mobPeriode==='week'){
-      const diff = (nu - d)/(1000*60*60*24);
-      return diff>=0 && diff<7;
-    }
-    // m01-m12
-    if(_mobPeriode.startsWith('m')){
-      const maand = parseInt(_mobPeriode.slice(1),10)-1;
-      return d.getMonth()===maand && d.getFullYear()===jaar;
-    }
-    return false;
+  const d = new Date(datum);
+  if(_mobPeriode==='vandaag') return datum.slice(0,10)===nu.toISOString().slice(0,10);
+  if(_mobPeriode==='week'){
+    const diff = (nu - d)/(1000*60*60*24);
+    return diff>=0 && diff<7;
   }
-  return lijsten.filter(l=>inPeriode(l.datum||''));
+  if(_mobPeriode.startsWith('m')){
+    const maand = parseInt(_mobPeriode.slice(1),10)-1;
+    return d.getMonth()===maand && d.getFullYear()===nu.getFullYear();
+  }
+  return false;
+}
+
+function mobGetPeriodeLijsten(){
+  return (DB.kassalijsten||[]).filter(l=>_inMobPeriode(l.datum||''));
 }
 
 function mobFmtEur(val){
@@ -572,10 +570,20 @@ function mobPeriodeLabel(){
 function renderMobDashboard(){
   const lijsten = mobGetPeriodeLijsten();
   // Toon incl BTW op dashboard — dat is wat kassier fysiek heeft ontvangen
-  const omzet = lijsten.reduce((s,l)=>s+(parseFloat(l.totaalOmzetIncl||l.totaalOmzet||0)),0);
+  const omzetLijsten = lijsten.reduce((s,l)=>s+(parseFloat(l.totaalOmzetIncl||l.totaalOmzet||0)),0);
   const kosten = lijsten.reduce((s,l)=>s+(parseFloat(l.totUitgaven||0)),0);
+
+  // Uren-facturen (type='uren') ook meenemen in omzet en openstaand
+  const urenFacturen = (DB.verkoop||[]).filter(f=>f.type==='uren');
+  const urenOmzetInPeriode = urenFacturen
+    .filter(f=>_inMobPeriode(f.datum||''))
+    .reduce((s,f)=>s+(parseFloat(f.totaalIncl||f.totaal||0)),0);
+  const omzet = omzetLijsten + urenOmzetInPeriode;
   const netto = omzet - kosten;
-  const openstaand = (DB.kassalijsten||[]).filter(l=>l.status==='ingediend'||l.status==='open').length;
+
+  const openstaandLijsten = (DB.kassalijsten||[]).filter(l=>l.status==='ingediend'||l.status==='open').length;
+  const openstaandFacturen = urenFacturen.filter(f=>f.status!=='betaald').length;
+  const openstaand = openstaandLijsten + openstaandFacturen;
 
   const set = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
   set('mob-omzet', mobFmtEur(omzet));
@@ -602,9 +610,7 @@ function renderMobDashboard(){
     urenSectie.style.display = heeftUren ? '' : 'none';
     if(heeftUren){
       const kassierNaam = _actieveKassier?.naam || '';
-      const nu2 = new Date();
-      const huidigeMaandSleutel = nu2.toISOString().slice(0,7);
-      const mijnUren = (DB.uren||[]).filter(u=>u.wie===kassierNaam && (u.datum||'').slice(0,7)===huidigeMaandSleutel);
+      const mijnUren = (DB.uren||[]).filter(u=>u.wie===kassierNaam && _inMobPeriode(u.datum||''));
       const urenOmzet = mijnUren.reduce((s,u)=>s+(parseFloat(u.bedrag)||0),0);
       const urenGoedgekeurd = mijnUren.filter(u=>u.status==='goedgekeurd').length;
       const set2 = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
