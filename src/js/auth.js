@@ -45,10 +45,14 @@ function verrijkActieveKassier(){
 }
 
 async function laadKassiersVoorLogin(){
-  // Laad kassiers van ALLE bekende bedrijven
-  // Fallback naar lokale cache als Firebase offline is
+  // Laad kassiers van ALLE bekende bedrijven — in een VERSE lijst, los van wat
+  // er nog in DB.kassiers zit (localStorage). Firebase is de waarheid: een
+  // gebruiker die op een ander apparaat verwijderd is staat in geen enkel
+  // bedrijfsdocument meer en mag hier dus niet uit oude lokale data herleven.
+  // Fallback naar lokale cache alleen als Firebase onbereikbaar is.
   const bedrijven = getBedrijven();
   let firebaseGelukt = false;
+  const versLijst = [];
   const promises = bedrijven.map(b=>
     fbAanroep(fb=>fb.laadAlles(b)).then(json=>{
       try{
@@ -57,14 +61,11 @@ async function laadKassiersVoorLogin(){
         // (Een lege lijst betekent: alle kassiers van dit bedrijf zijn verwijderd.)
         firebaseGelukt = true;
         if(Array.isArray(d.kassiers)){
-          if(!DB.kassiers) DB.kassiers = [];
-          // Firebase is de waarheid: bestaande kassier overschrijven met de
-          // cloud-versie, nieuwe toevoegen. (Kassiers van meerdere bedrijven
-          // worden hier samengevoegd, vandaar per id i.p.v. de hele lijst vervangen.)
+          // Kassiers van meerdere bedrijven samenvoegen, per id.
           d.kassiers.forEach(k=>{
-            const idx = DB.kassiers.findIndex(x=>x.id===k.id);
-            if(idx === -1) DB.kassiers.push(k);
-            else DB.kassiers[idx] = k;
+            const idx = versLijst.findIndex(x=>x.id===k.id);
+            if(idx === -1) versLijst.push(k);
+            else versLijst[idx] = k;
           });
         }
         if(Array.isArray(d.kassalijsten)){
@@ -79,11 +80,11 @@ async function laadKassiersVoorLogin(){
     }).catch(()=>{})
   );
   await Promise.all(promises);
-  // Dedup op e-mail: verwijder entries met zelfde e-mail maar ander id
-  if(DB.kassiers) DB.kassiers = _dedupKassiers(DB.kassiers);
-  // Cache bijwerken als Firebase gelukt is
-  if(firebaseGelukt && DB.kassiers?.length){
-    localStorage.setItem('ledger_kassiers_cache', JSON.stringify(DB.kassiers));
+  if(firebaseGelukt){
+    // Firebase wint: vervang de hele lijst (dedup op e-mail tegen dubbele ids).
+    // Cache ook bijwerken als de lijst leeg is — leeg is dan de waarheid.
+    DB.kassiers = _dedupKassiers(versLijst);
+    try{ localStorage.setItem('ledger_kassiers_cache', JSON.stringify(DB.kassiers)); }catch(e){}
   }
   // Fallback: lokale cache ALLEEN als Firebase onbereikbaar was.
   // Niet als Firebase met succes een lege lijst gaf — dan is leeg de waarheid.
@@ -286,17 +287,15 @@ async function kiesBedrijfNaLogin(bedrijf){
     if(d.profiel && Object.keys(d.profiel).length) _versProfiel = d.profiel;
   }catch(e){}
   load();
-  // Zet de verse Firebase-data ná load() zodat localStorage ze niet overschrijft.
-  // Kassier-instellingen zijn GLOBAAL: merge i.p.v. vervangen, anders wint het
-  // huidige bedrijf altijd over instellingen die in een ander bedrijf zijn bijgewerkt.
+  // Firebase wint: het bedrijfsdocument bevat per design de VOLLEDIGE
+  // gebruikerslijst (slaKassiersOpCloud schrijft naar alle bedrijven), dus
+  // die vervangt hier alles wat load() uit localStorage haalde. Mergen met
+  // lokale data liet elders verwijderde gebruikers herleven. Alleen als
+  // Firebase onbereikbaar was (_versKassiers null) blijft de lokale lijst
+  // staan als offline-fallback.
   if(_versKassiers){
-    if(!DB.kassiers) DB.kassiers = [];
-    _versKassiers.forEach(k=>{
-      const idx = DB.kassiers.findIndex(x=>x.id===k.id);
-      if(idx === -1) DB.kassiers.push(k);
-      else DB.kassiers[idx] = k;
-    });
-    DB.kassiers = _dedupKassiers(DB.kassiers);
+    DB.kassiers = _dedupKassiers(_versKassiers);
+    try{ localStorage.setItem('ledger_kassiers_cache', JSON.stringify(DB.kassiers)); }catch(e){}
   }
   if(_versProfiel)  DB.profiel  = _versProfiel;
 

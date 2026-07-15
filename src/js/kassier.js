@@ -1128,12 +1128,10 @@ document.addEventListener('visibilitychange', async function(){
     const json = await fbAanroep(fb=>fb.laadAlles(huidigBedrijf));
     const d = JSON.parse(json||'{}');
     if(Array.isArray(d.kassiers)){
-      if(!DB.kassiers) DB.kassiers = [];
-      d.kassiers.forEach(k=>{
-        const idx = DB.kassiers.findIndex(x=>x.id===k.id);
-        if(idx === -1) DB.kassiers.push(k);
-        else DB.kassiers[idx] = k;
-      });
+      // Cloud vervangt de lijst volledig — zelfde beleid als verwerkCloudData.
+      // Mergen zou een elders verwijderde gebruiker hier in leven houden.
+      DB.kassiers = typeof _dedupKassiers === 'function' ? _dedupKassiers(d.kassiers) : d.kassiers;
+      try{ localStorage.setItem('ledger_kassiers_cache', JSON.stringify(DB.kassiers)); }catch(e){}
     }
   }catch(e){ console.warn('[visibilitychange] kassiers laden mislukt:', e); }
   verrijkActieveKassier();

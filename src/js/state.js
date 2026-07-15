@@ -406,7 +406,17 @@ function loadLokaal(){
   // Bij USE_CLOUD=true is Firebase altijd leidend — localStorage is alleen cache
   if(USE_CLOUD) console.warn('[Data] loadLokaal aangeroepen terwijl USE_CLOUD=true — Firebase had prioriteit moeten hebben');
   const r=localStorage.getItem(storageKey());
-  if(r){ try{ const p=JSON.parse(r); DB={...DB,...p}; }catch(e){ console.error('localStorage data corrupt:',e); toast('Lokale data kon niet worden geladen — data mogelijk corrupt.','error'); } }
+  if(r){ try{
+    const p=JSON.parse(r);
+    // Kassiers: houd de in-memory lijst als die al gevuld is — die komt van de
+    // live Firestore-listener en is dus verser dan de localStorage-blob. Zo kan
+    // een save() in het herlaad-venster geen stale (bijv. elders verwijderde)
+    // gebruikers terugschrijven naar Firebase. Bij koude start is DB.kassiers
+    // leeg en laadt de blob gewoon als offline-fallback.
+    const _liveKassiers = (DB.kassiers||[]).length ? DB.kassiers : null;
+    DB={...DB,...p};
+    if(_liveKassiers) DB.kassiers = _liveKassiers;
+  }catch(e){ console.error('localStorage data corrupt:',e); toast('Lokale data kon niet worden geladen — data mogelijk corrupt.','error'); } }
   else {
     DB.verkoop=[]; DB.inkoop=[]; DB.transacties=[]; DB.regels=[]; DB.imports=[];
     DB.grootboek=JSON.parse(JSON.stringify(DEFAULT_GB));
@@ -438,17 +448,16 @@ function loadCloud(){
       if(d.vasteActiva  !== undefined) DB.vasteActiva  = d.vasteActiva  || [];
       if(d.kassalijsten !== undefined) DB.kassalijsten = d.kassalijsten || [];
       if(d.uren         !== undefined) DB.uren         = d.uren         || [];
-      // Kassiers zijn globaal: merge per id zodat instellingen van alle bedrijven
-      // altijd samenkomen in één lijst, ongeacht welk bedrijf de listener vuurt.
+      // Kassiers: cloud vervangt de lokale lijst VOLLEDIG — geen merge.
+      // Elke gebruikerswijziging schrijft de complete lijst naar alle bedrijven
+      // (slaKassiersOpCloud), dus dit document bevat altijd de hele waarheid.
+      // De oude merge (alleen toevoegen/bijwerken) hield een elders verwijderde
+      // gebruiker lokaal in leven, waarna een save() vanaf dit apparaat hem
+      // weer terugschreef naar Firebase — de "verwijderd account komt terug"-bug.
       if(d.kassiers !== undefined){
-        if(!DB.kassiers) DB.kassiers = [];
-        (d.kassiers||[]).forEach(k=>{
-          const idx = DB.kassiers.findIndex(x=>x.id===k.id);
-          if(idx === -1) DB.kassiers.push(k);
-          else DB.kassiers[idx] = k;
-        });
-        // Dedup op e-mail na elke merge zodat race-conditions geen dubbelen laten staan
+        DB.kassiers = d.kassiers || [];
         if(typeof _dedupKassiers === 'function') DB.kassiers = _dedupKassiers(DB.kassiers);
+        try{ localStorage.setItem('ledger_kassiers_cache', JSON.stringify(DB.kassiers)); }catch(e){}
         // Update instellingen-UI als die open is
         if(typeof renderGebruikersBeheer === 'function') renderGebruikersBeheer();
       }
@@ -495,7 +504,8 @@ function loadCloud(){
 }
 async function laadGebruikersInDB(){
   // fb.laadGebruikers() bestaat niet in firebase-config.js — deze functie is dode code.
-  // Kassiers worden geladen via laadKassiersVoorLogin() en verwerkCloudData().
+  // Kassiers worden geladen via kiesBedrijfNaLogin() (verse bedrijfsdata) en
+  // daarna live bijgehouden door verwerkCloudData() (cloud vervangt volledig).
 }
 
 // ============================================================
@@ -505,7 +515,7 @@ async function wisselBedrijf(naam){
   _stopCloudListeners();
   _stopCloudListeners = ()=>{};
   // Kassiers zijn globaal — bewaar ze zodat loadLokaal() (per-bedrijf cache) ze niet wist.
-  // verwerkCloudData() mergt straks de kassiers van het nieuwe bedrijf erin.
+  // verwerkCloudData() vervangt ze zodra de cloud-lijst van het nieuwe bedrijf binnen is.
   const _bewaardeKassiers = DB.kassiers ? [...DB.kassiers] : [];
   huidigBedrijf=naam;
   localStorage.setItem('ledger_actief_bedrijf', naam);
@@ -520,7 +530,7 @@ async function wisselBedrijf(naam){
   _recentlySaved = false;
   clearTimeout(window._recentSavedTimer);
   load(); // loadLokaal() kan DB.kassiers overschrijven met stale per-bedrijf data
-  DB.kassiers = _bewaardeKassiers; // herstel globale kassiers (verwerkCloudData mergt er straks in)
+  DB.kassiers = _bewaardeKassiers; // herstel globale kassiers (verwerkCloudData vervangt ze zodra de cloud vuurt)
   renderGB(); renderRegels();
   const el=document.getElementById('sidebar-bedrijf-naam');
   if(el) el.textContent=getBedrijfWeergavenaam(naam);
@@ -544,6 +554,12 @@ async function voegBedrijfToe(){
   // Cloud: maak bedrijf aan in Firebase — verwijder lokaal als dat mislukt
   try{
     await fbAanroep(fb=>fb.maakBedrijf(naam));
+    // Schrijf de huidige gebruikerslijst ook naar het nieuwe bedrijf. Sinds de
+    // cloud-lijst de lokale lijst volledig vervangt (geen merge) zou een leeg
+    // kassiers-veld hier anders de lijst wissen zodra iemand dit bedrijf opent.
+    if(typeof slaKassiersOpCloud === 'function' && (DB.kassiers||[]).length){
+      try{ await slaKassiersOpCloud(); }catch(e){}
+    }
     toast(`Bedrijf "${naam}" aangemaakt.`,'success');
   }catch(e){
     // Rollback: verwijder lokaal want Firebase aanmaken faalde
