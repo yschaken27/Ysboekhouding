@@ -77,23 +77,6 @@ function renderDashboard(){
   if(snps) snps.textContent = fmt(prive.stortingen);
   if(snpn){ snpn.textContent = fmt(Math.abs(prive.netto)); snpn.style.color=prive.netto>=0?'#059669':'#7c3aed'; }
 
-  // Uren stats — alleen zichtbaar als uren-registratie aan staat voor dit bedrijf.
-  // Volgt dezelfde periode-filter als de rest van het dashboard; afgewezen uren tellen niet mee.
-  const urenRow = document.getElementById('dash-uren-row');
-  if(urenRow){
-    const urenAan = typeof isUrenAan==='function' && isUrenAan();
-    urenRow.style.display = urenAan ? 'grid' : 'none';
-    if(urenAan){
-      const urenPeriode = (DB.uren||[]).filter(u=>u.status!=='afgewezen' && inPeriode(u.datum));
-      const totUren = urenPeriode.reduce((a,u)=>a+(parseFloat(u.uren)||0),0);
-      const wachtUren = urenPeriode.filter(u=>u.status==='ingediend').length;
-      const zU=(id,v)=>{ const e=document.getElementById(id); if(e) e.textContent=v; };
-      zU('s-uren-totaal', (Math.round(totUren*100)/100) + ' u');
-      zU('s-uren-totaal-sub', urenPeriode.length + ' ingaves');
-      zU('s-uren-ingediend', wachtUren);
-    }
-  }
-
   // Maandelijks chart — bij kasstelsel op betaaldatum, bij factuurstelsel op factuurdatum
   const maanden = ['Jan','Feb','Mrt','Apr','Mei','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
   const omzetPerMaand = Array(12).fill(0);
