@@ -611,17 +611,18 @@ function renderMobDashboard(){
     const heeftUren = (mobGetModules()||[]).includes('uren') && isUrenAan();
     urenSectie.style.display = heeftUren ? '' : 'none';
     if(heeftUren){
-      const kassierNaam = _actieveKassier?.naam || '';
-      const mijnUren = (DB.uren||[]).filter(u=>u.wie===kassierNaam && _inMobPeriode(u.datum||''));
-      const urenOmzetExcl = mijnUren.reduce((s,u)=>s+(parseFloat(u.bedrag)||0),0);
+      // Gezamenlijk dashboard: álle uren van het bedrijf, niet alleen die van
+      // de ingelogde kassier — iedereen met toegang ziet hetzelfde beeld.
+      const alleUren = (DB.uren||[]).filter(u=>_inMobPeriode(u.datum||''));
+      const urenOmzetExcl = alleUren.reduce((s,u)=>s+(parseFloat(u.bedrag)||0),0);
       const btwFactor = DB.profiel?.urenZonderBtw ? 0 : 0.21;
       const urenOmzetIncl = Math.round(urenOmzetExcl * (1 + btwFactor) * 100) / 100;
-      const urenGoedgekeurd = mijnUren.filter(u=>u.status==='goedgekeurd').length;
-      const totaalUren = mijnUren.reduce((s,u)=>s+(parseFloat(u.uren)||0),0);
+      const urenGoedgekeurd = alleUren.filter(u=>u.status==='goedgekeurd').length;
+      const totaalUren = alleUren.reduce((s,u)=>s+(parseFloat(u.uren)||0),0);
       const set2 = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
       set2('mob-uren-omzet', mobFmtEur(urenOmzetExcl));
       set2('mob-uren-omzet-incl', mobFmtEur(urenOmzetIncl));
-      set2('mob-uren-ingediend', mijnUren.length);
+      set2('mob-uren-ingediend', alleUren.length);
       set2('mob-uren-goedgekeurd', urenGoedgekeurd);
       set2('mob-uren-totaal', totaalUren % 1 === 0 ? totaalUren+'u' : totaalUren.toFixed(1)+'u');
     }

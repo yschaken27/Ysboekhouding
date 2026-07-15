@@ -317,18 +317,18 @@ function renderMobUrenLijst(){
   const el = document.getElementById('mob-uren-lijst');
   if(!el) return;
   _vulMobUrenMaandFilter();
-  const naam = _actieveKassier?.naam || '';
   const sel = document.getElementById('mob-uren-maand-filter');
   const filterMaand = sel?.value || new Date().toISOString().slice(0,7);
-  const mijn = (DB.uren||[])
-    .filter(u=> u.wie===naam && (u.datum||'').slice(0,7)===filterMaand)
+  // Gezamenlijke lijst: alle uren van het bedrijf, niet alleen eigen ingaves.
+  const lijst = (DB.uren||[])
+    .filter(u=> (u.datum||'').slice(0,7)===filterMaand)
     .sort((a,b)=> (b.datum||'').localeCompare(a.datum||''));
 
-  if(!mijn.length){
+  if(!lijst.length){
     el.innerHTML = '<div style="font-size:13px;color:var(--text-dim);padding:8px 0;">Geen uren gevonden voor deze maand.</div>';
     return;
   }
-  el.innerHTML = mijn.map(u=>{
+  el.innerHTML = lijst.map(u=>{
     const dd = new Date(u.datum).toLocaleDateString('nl-NL',{day:'numeric',month:'short'});
     const status = u.status==='goedgekeurd' ? '<span style="color:var(--accent);">✓ goedgekeurd</span>' : u.status==='afgewezen' ? '<span style="color:#ef4444;">✗ afgewezen</span>' : 'ingediend';
     const wijzigBtn = u.status==='ingediend'
@@ -340,7 +340,7 @@ function renderMobUrenLijst(){
         <span style="font-family:var(--mono);font-weight:700;">€ ${(u.bedrag||0).toFixed(2)}</span>
       </div>
       <div style="font-size:12px;color:var(--text-mid);margin-top:3px;">
-        ${dd} · ${u.uren} u${u.tariefLabel?(' · '+esc(u.tariefLabel)):''} · ${status}
+        ${dd} · ${u.uren} u${u.tariefLabel?(' · '+esc(u.tariefLabel)):''}${u.wie?(' · '+esc(u.wie)):''} · ${status}
       </div>
       ${u.notitie?`<div style="font-size:12px;color:var(--text-dim);margin-top:4px;">${esc(u.notitie)}</div>`:''}
       ${wijzigBtn}
