@@ -108,7 +108,10 @@
     <div class="mob-main-card">
       <div class="mob-main-card-label">Omzet <span style="font-size:10px;opacity:0.5;font-weight:400;">excl. BTW</span></div>
       <div class="mob-main-card-val" id="mob-omzet">€ 0,00</div>
-      <div class="mob-main-card-sub" id="mob-periode-label">Vandaag</div>
+      <div class="mob-main-card-sub" style="display:flex;justify-content:space-between;align-items:center;">
+        <span id="mob-periode-label">Vandaag</span>
+        <span style="font-size:11px;opacity:0.65;">incl. BTW: <span id="mob-omzet-incl">€ 0,00</span></span>
+      </div>
     </div>
 
     <!-- Kosten + netto rij -->
@@ -138,8 +141,9 @@
     <!-- Uren sectie (alleen zichtbaar als uren-module actief) -->
     <div id="mob-uren-dashboard-sectie" style="display:none;">
       <div class="mob-main-card" style="margin-top:12px;">
-        <div class="mob-main-card-label">Uren omzet <span style="font-size:10px;opacity:0.5;font-weight:400;">deze maand</span></div>
+        <div class="mob-main-card-label">Uren omzet <span style="font-size:10px;opacity:0.5;font-weight:400;">excl. BTW</span></div>
         <div class="mob-main-card-val" id="mob-uren-omzet">€ 0,00</div>
+        <div class="mob-main-card-sub" style="text-align:right;font-size:11px;opacity:0.65;">incl. BTW: <span id="mob-uren-omzet-incl">€ 0,00</span></div>
       </div>
       <div class="mob-stat-row">
         <div class="mob-stat">
@@ -149,6 +153,12 @@
         <div class="mob-stat">
           <div class="mob-stat-label">Goedgekeurd</div>
           <div class="mob-stat-val green" id="mob-uren-goedgekeurd">0</div>
+        </div>
+      </div>
+      <div class="mob-stat-row">
+        <div class="mob-stat">
+          <div class="mob-stat-label">Totaal uren</div>
+          <div class="mob-stat-val" id="mob-uren-totaal">0u</div>
         </div>
       </div>
     </div>

@@ -575,10 +575,11 @@ function renderMobDashboard(){
 
   // Uren-facturen (type='uren') ook meenemen in omzet en openstaand
   const urenFacturen = (DB.verkoop||[]).filter(f=>f.type==='uren');
-  const urenOmzetInPeriode = urenFacturen
-    .filter(f=>_inMobPeriode(f.datum||''))
-    .reduce((s,f)=>s+(parseFloat(f.totaalIncl||f.totaal||0)),0);
-  const omzet = omzetLijsten + urenOmzetInPeriode;
+  const urenFacturenInPeriode = urenFacturen.filter(f=>_inMobPeriode(f.datum||''));
+  const urenExclInPeriode = urenFacturenInPeriode.reduce((s,f)=>s+(parseFloat(f.totaalExcl||0)),0);
+  const urenInclInPeriode = urenFacturenInPeriode.reduce((s,f)=>s+(parseFloat(f.totaalIncl||f.totaal||0)),0);
+  const omzet = omzetLijsten + urenExclInPeriode;
+  const omzetIncl = omzetLijsten + urenInclInPeriode;
   const netto = omzet - kosten;
 
   const openstaandLijsten = (DB.kassalijsten||[]).filter(l=>l.status==='ingediend'||l.status==='open').length;
@@ -587,6 +588,7 @@ function renderMobDashboard(){
 
   const set = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
   set('mob-omzet', mobFmtEur(omzet));
+  set('mob-omzet-incl', mobFmtEur(omzetIncl));
   set('mob-kosten', mobFmtEur(kosten));
   set('mob-netto', mobFmtEur(netto));
   set('mob-aantal-lijsten', lijsten.length);
@@ -611,12 +613,17 @@ function renderMobDashboard(){
     if(heeftUren){
       const kassierNaam = _actieveKassier?.naam || '';
       const mijnUren = (DB.uren||[]).filter(u=>u.wie===kassierNaam && _inMobPeriode(u.datum||''));
-      const urenOmzet = mijnUren.reduce((s,u)=>s+(parseFloat(u.bedrag)||0),0);
+      const urenOmzetExcl = mijnUren.reduce((s,u)=>s+(parseFloat(u.bedrag)||0),0);
+      const btwFactor = DB.profiel?.urenZonderBtw ? 0 : 0.21;
+      const urenOmzetIncl = Math.round(urenOmzetExcl * (1 + btwFactor) * 100) / 100;
       const urenGoedgekeurd = mijnUren.filter(u=>u.status==='goedgekeurd').length;
+      const totaalUren = mijnUren.reduce((s,u)=>s+(parseFloat(u.uren)||0),0);
       const set2 = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
-      set2('mob-uren-omzet', mobFmtEur(urenOmzet));
+      set2('mob-uren-omzet', mobFmtEur(urenOmzetExcl));
+      set2('mob-uren-omzet-incl', mobFmtEur(urenOmzetIncl));
       set2('mob-uren-ingediend', mijnUren.length);
       set2('mob-uren-goedgekeurd', urenGoedgekeurd);
+      set2('mob-uren-totaal', totaalUren % 1 === 0 ? totaalUren+'u' : totaalUren.toFixed(1)+'u');
     }
   }
 
