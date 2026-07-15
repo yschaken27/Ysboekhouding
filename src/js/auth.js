@@ -379,6 +379,50 @@ function wachtwoordVergeten(){
     });
 }
 
+// Registreren voor kassiers die door de eigenaar zijn toegevoegd maar nog
+// geen Firebase Auth-account hebben. Ze kiezen zelf een wachtwoord met de
+// gewone e-mail/wachtwoord-velden. Na registratie zijn ze direct ingelogd
+// en checkt toonBedrijfsKiezer() of hun e-mail op een toegangslijst staat —
+// zo niet, dan zien ze daar de melding om de eigenaar te vragen.
+async function registreren(){
+  const emailInp = document.getElementById('login-email');
+  const wachtwoordInp = document.getElementById('login-wachtwoord');
+  const status = document.getElementById('login-status');
+  const email = (emailInp && emailInp.value || '').trim().toLowerCase();
+  const wachtwoord = wachtwoordInp && wachtwoordInp.value || '';
+  function toon(tekst, kleur){
+    if(!status) return;
+    status.style.display = 'block';
+    status.style.color = kleur;
+    status.textContent = tekst;
+  }
+  if(!email || email.indexOf('@') < 0){
+    toon('Vul een geldig e-mailadres in.', '#dc2626');
+    return;
+  }
+  if(!wachtwoord || wachtwoord.length < 6){
+    toon('Kies een wachtwoord van minimaal 6 tekens.', '#dc2626');
+    return;
+  }
+  toon('Account aanmaken…', 'var(--text-mid)');
+  try{
+    const ingelogdAls = await FBAuth.registrerenMetWachtwoord(email, wachtwoord);
+    toon('', '');
+    status.style.display = 'none';
+    if(typeof toast === 'function') toast('Account aangemaakt 🎉','success');
+    toonBedrijfsKiezer(ingelogdAls);
+  }catch(err){
+    console.warn('Registreren mislukt:', err);
+    const code = err && err.code;
+    let msg = 'Registreren mislukt: ' + (err && err.message ? err.message : 'onbekende fout');
+    if(code === 'auth/email-already-in-use') msg = 'Er bestaat al een account met dit e-mailadres. Log gewoon in, of gebruik "Wachtwoord vergeten?".';
+    if(code === 'auth/weak-password') msg = 'Wachtwoord is te zwak. Kies minimaal 6 tekens.';
+    if(code === 'auth/invalid-email') msg = 'Dit e-mailadres is ongeldig.';
+    if(code === 'auth/too-many-requests') msg = 'Te veel pogingen. Probeer het later opnieuw.';
+    toon(msg, '#dc2626');
+  }
+}
+
 async function initLogin(){
   // Sync bedrijvenlijst vanuit Firebase zodat alle devices alle bedrijven kennen
   await syncBedrijvenVanuitFirebase();

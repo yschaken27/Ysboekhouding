@@ -392,8 +392,9 @@
         style="width:100%;padding:14px;font-size:16px;border-radius:10px;border:2px solid var(--border);margin-bottom:10px;box-sizing:border-box;"
         onkeydown="if(event.key==='Enter') inloggen()">
       <button onclick="inloggen()" class="btn btn-primary" style="width:100%;padding:14px;font-size:16px;border-radius:10px;">Inloggen</button>
-      <div style="margin-top:10px;text-align:center;">
+      <div style="margin-top:10px;text-align:center;display:flex;justify-content:center;gap:16px;">
         <a href="#" onclick="wachtwoordVergeten();return false;" style="font-size:12px;color:var(--text-mid);text-decoration:underline;">Wachtwoord vergeten?</a>
+        <a href="#" onclick="registreren();return false;" style="font-size:12px;color:var(--text-mid);text-decoration:underline;">Nieuw? Account aanmaken</a>
       </div>
       <div id="login-status" style="font-size:13px;margin-top:10px;display:none;"></div>
     </div>

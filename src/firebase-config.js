@@ -43,6 +43,18 @@
       return result.user && result.user.email ? result.user.email.toLowerCase() : adres;
     },
 
+    // Registreer een nieuw account met e-mailadres en wachtwoord.
+    // Voor kassiers die door de eigenaar op de toegangslijst zijn gezet maar
+    // nog geen Firebase Auth-account hebben (reset-mail werkt dan niet).
+    // Na registratie is de gebruiker direct ingelogd.
+    async registrerenMetWachtwoord(email, wachtwoord){
+      const adres = (email||'').trim().toLowerCase();
+      if(!adres || adres.indexOf('@') < 0) throw new Error('Ongeldig e-mailadres');
+      if(!wachtwoord || wachtwoord.length < 6) throw new Error('Wachtwoord moet minimaal 6 tekens zijn');
+      const result = await firebase.auth().createUserWithEmailAndPassword(adres, wachtwoord);
+      return result.user && result.user.email ? result.user.email.toLowerCase() : adres;
+    },
+
     // Stuur een wachtwoord-reset mail (voor nieuwe of vergeten wachtwoorden).
     async wachtwoordResetten(email){
       const adres = (email||'').trim().toLowerCase();
