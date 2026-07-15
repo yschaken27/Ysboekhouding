@@ -978,7 +978,10 @@ function _getBetaaldRatio(factuur){
   if(!isKasstelsel()) return 1;
   const totaalIncl = parseFloat(factuur.totaalIncl||0);
   if(totaalIncl <= 0) return 0;
-  const betaald = _getBetalingen(factuur).reduce((a,t)=>a+Math.abs(parseFloat(t.bedrag)||0),0);
+  const betalingen = _getBetalingen(factuur);
+  // Handmatig op betaald gezet zonder bankkoppeling: telt volledig mee
+  if(!betalingen.length) return factuur.status==='betaald' ? 1 : 0;
+  const betaald = betalingen.reduce((a,t)=>a+Math.abs(parseFloat(t.bedrag)||0),0);
   return Math.min(betaald / totaalIncl, 1);
 }
 
@@ -997,8 +1000,9 @@ function getBtwDatum(factuur){
       .filter(Boolean)
       .sort()[0] || null;
   }
-  // Fallback: factuur handmatig op betaald gezet zonder bankkoppeling
-  if(factuur.status === 'betaald') return factuur.datum;
+  // Fallback: factuur handmatig op betaald gezet zonder bankkoppeling —
+  // gebruik de vastgelegde betaaldatum, met factuurdatum als laatste redmiddel
+  if(factuur.status === 'betaald') return factuur.betaaldOp || factuur.datum;
   return null; // onbetaald, telt niet mee
 }
 

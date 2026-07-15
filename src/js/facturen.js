@@ -611,6 +611,20 @@ async function slaFactuurOp(){
     }
   }
 
+  // Handmatige betaling consistent houden met de statuskeuze in de modal.
+  // De aanmaak-boekingen hierboven raken de betaling (bank ↔ deb/cred) niet,
+  // dus die wordt hier apart teruggedraaid en zo nodig opnieuw geboekt —
+  // ook bij een bedragwijziging van een al betaalde factuur.
+  if(isNieuw || oudeFactuur){
+    const wasHandmatigBetaald = !!(oudeFactuur && oudeFactuur.handmatigBetaald);
+    if(wasHandmatigBetaald) boekHandmatigeBetaling(oudeFactuur, DB.editType, -1);
+    if(f.status==='betaald' && !_getBetalingen(f).length){
+      boekHandmatigeBetaling(f, DB.editType, 1);
+      f.betaaldOp = (wasHandmatigBetaald && oudeFactuur.betaaldOp) || today();
+      f.handmatigBetaald = true;
+    }
+  }
+
   // Sla direct op zodat factuur altijd bewaard wordt
   const savedType = DB.editType; // bewaar type vóór closeModal
   save();
@@ -709,6 +723,63 @@ function draaiFactuurGBTerug(f, type){
   }
 }
 
+// ===== HANDMATIG BETAALD MARKEREN =====
+// Boekt de betaling in het grootboek zoals een bankkoppeling dat zou doen:
+// verkoop betaald → Debet Bank, Credit Debiteuren
+// inkoop betaald  → Debet Crediteuren, Credit Bank
+// De P&L verandert bewust niet: omzet/kosten zijn al geboekt bij het aanmaken
+// van de factuur (factuurstelsel). richting 1 = boeken, -1 = terugdraaien.
+function boekHandmatigeBetaling(f, type, richting){
+  const incl = (parseFloat(f.totaalIncl)||0) * richting;
+  if(!incl) return;
+  const bank = getBankRekening();
+  if(type==='verkoop'){
+    if(bank) bank.saldo = rond((parseFloat(bank.saldo)||0) + incl);
+    const debRek = DB.grootboek.find(g=>g.nummer==='1300')
+                || DB.grootboek.find(g=>g.naam.toLowerCase().includes('debiteuren'));
+    if(debRek) debRek.saldo = rond((parseFloat(debRek.saldo)||0) - incl);
+  } else {
+    if(bank) bank.saldo = rond((parseFloat(bank.saldo)||0) - incl);
+    const credRek = DB.grootboek.find(g=>g.nummer==='4000')
+                 || DB.grootboek.find(g=>g.naam.toLowerCase().includes('crediteur'));
+    if(credRek) credRek.saldo = rond((parseFloat(credRek.saldo)||0) - incl);
+  }
+}
+
+function zetFactuurBetaald(type, id){
+  const f = (type==='verkoop'?DB.verkoop:DB.inkoop).find(x=>x.id===id);
+  if(!f || f.status==='betaald') return;
+  if(_getBetalingen(f).length){
+    toast('Deze factuur heeft al een gekoppelde bankbetaling — de status volgt de bank.','warning');
+    return;
+  }
+  boekHandmatigeBetaling(f, type, 1);
+  f.status = 'betaald';
+  f.betaaldOp = today();
+  f.handmatigBetaald = true;
+  save();
+  renderFacturen(type); renderDashboard(); updateBankStats();
+  toast('Factuur gemarkeerd als betaald per '+f.betaaldOp+'.','success');
+}
+
+async function zetFactuurOnbetaald(type, id){
+  const f = (type==='verkoop'?DB.verkoop:DB.inkoop).find(x=>x.id===id);
+  if(!f || f.status!=='betaald') return;
+  if(!f.handmatigBetaald){
+    toast('Deze betaling loopt via een bankkoppeling — ontkoppel de banktransactie om dit terug te draaien.','warning');
+    return;
+  }
+  const ok = await bevestig('Betaling terugdraaien? De factuur komt weer open te staan.','Betaling terugdraaien','Terugdraaien');
+  if(!ok) return;
+  boekHandmatigeBetaling(f, type, -1);
+  f.status = type==='verkoop' ? 'verstuurd' : 'te betalen';
+  delete f.betaaldOp;
+  delete f.handmatigBetaald;
+  save();
+  renderFacturen(type); renderDashboard(); updateBankStats();
+  toast('Betaling teruggedraaid — factuur staat weer open.','info');
+}
+
 async function verwijderFactuur(type,id){
   const arr = type==='verkoop' ? DB.verkoop : DB.inkoop;
   const f = arr.find(f=>f.id===id);
@@ -743,6 +814,10 @@ Let op: deze factuur is gekoppeld aan een bankbetaling van ${fmt(gekoppeldeT.bed
 
   // Draai factuur grootboekboeking terug
   draaiFactuurGBTerug(f, type);
+
+  // Handmatig geboekte betaling ook terugdraaien (bank ↔ deb/cred);
+  // een eventuele bankkoppeling is hierboven al ontkoppeld.
+  if(f.handmatigBetaald) boekHandmatigeBetaling(f, type, -1);
 
   if(type==='verkoop') DB.verkoop=DB.verkoop.filter(f=>f.id!==id);
   else DB.inkoop=DB.inkoop.filter(f=>f.id!==id);
@@ -801,6 +876,8 @@ function renderFacturen(type){
     <td style="white-space:nowrap;">
       ${f.bijlagenMeta&&f.bijlagenMeta.length?`<span title="${f.bijlagenMeta.length} bijlage(n)" style="cursor:pointer;margin-right:6px;" onclick="openBijlagenModal('${type}','${f.id}')">📎<span style="font-size:10px;font-family:var(--mono);color:var(--accent);">${f.bijlagenMeta?.length||0}</span></span>`:''}
       ${!isVK&&f.status!=='betaald'?`<button class="btn btn-secondary btn-sm" onclick="openKoppelVanafFactuur('${f.id}')" style="background:rgba(96,165,250,.1);border-color:rgba(96,165,250,.3);color:#60a5fa;">⇄ Koppel betaling</button>`:''}
+      ${f.status!=='betaald'&&!_getBetalingen(f).length?`<button class="btn btn-secondary btn-sm" onclick="zetFactuurBetaald('${type}','${f.id}')" style="background:rgba(22,163,74,.1);border-color:rgba(22,163,74,.35);color:#16a34a;" title="Markeer als betaald — boekt bank ↔ ${isVK?'debiteuren':'crediteuren'}">✓ Betaald</button>`:''}
+      ${f.status==='betaald'&&f.handmatigBetaald?`<button class="btn btn-secondary btn-sm" onclick="zetFactuurOnbetaald('${type}','${f.id}')" title="Betaling terugdraaien — factuur komt weer open te staan">↩</button>`:''}
       <button class="btn btn-secondary btn-sm" onclick="openFactuurModal('${type}','${f.id}')">Bewerk</button>
       <button class="btn btn-danger btn-sm" onclick="verwijderFactuur('${type}','${f.id}')">✕</button>
     </td>

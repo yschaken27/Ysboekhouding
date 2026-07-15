@@ -497,11 +497,14 @@ function boekFactuurTegenboeking(t, factuurType, actie){
     if(deb) deb.saldo = (parseFloat(deb.saldo)||0) - (bedrag * mult);
   } else {
     // Credit Bank (al gedaan via boekBank — negatief bedrag)
-    // Debet Crediteuren (4000) — openstaande post wegboeken
+    // Debet Crediteuren (4000) — openstaande post wegboeken.
+    // Aanmaak van een inkoopfactuur doet saldo += incl (schuld ontstaat),
+    // betaling moet dus -= doen. Stond hier eerst op +=, waardoor de
+    // crediteurenschuld verdubbelde bij elke gekoppelde inkoopbetaling.
     const cred = DB.grootboek.find(g=>g.nummer==='2100')
               || DB.grootboek.find(g=>g.nummer==='4000')
               || DB.grootboek.find(g=>g.naam.toLowerCase().includes('crediteur'));
-    if(cred) cred.saldo = (parseFloat(cred.saldo)||0) + (bedrag * mult);
+    if(cred) cred.saldo = (parseFloat(cred.saldo)||0) - (bedrag * mult);
   }
 }
 
