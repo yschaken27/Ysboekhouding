@@ -398,6 +398,13 @@ function renderBalans(){
   const totActiva = totVasteActiva + vlottendTotaal + overigeActivaTotaal;
   const totPassiva = passiva.reduce((a,g)=>a+parseFloat(g.saldo||0),0);
   const totEV = eigenVermogen.reduce((a,g)=>a+parseFloat(g.saldo||0),0);
+  // Resultaat boekjaar (winst/verlies) hoort bij het eigen vermogen op de
+  // passiva-kant. Omzet- en kostenrekeningen staan niet los op de balans, maar
+  // hun saldo (omzet − kosten) moet wél meetellen — anders lijkt de balans
+  // scheef ter grootte van de nog niet naar EV verwerkte winst.
+  const totOmzet = DB.grootboek.filter(g=>g.type==='omzet').reduce((a,g)=>a+parseFloat(g.saldo||0),0);
+  const totKosten = DB.grootboek.filter(g=>g.type==='kosten').reduce((a,g)=>a+parseFloat(g.saldo||0),0);
+  const resultaat = totOmzet - totKosten;
 
   // ── ACTIVA HTML ──
   let activaHTML = '';
@@ -483,13 +490,14 @@ function renderBalans(){
       passivaHTML += `<div class="report-row"><span class="indent">${g.nummer} — ${g.naam}</span><span class="mono">${fmt(parseFloat(g.saldo||0))}</span></div>`;
     });
   }
-  if(eigenVermogen.length){
+  if(eigenVermogen.length || Math.abs(resultaat) > 0.005){
     passivaHTML += `<div class="report-row subtotal" style="margin-top:12px;"><span>Eigen vermogen</span><span></span></div>`;
     eigenVermogen.forEach(g=>{
       passivaHTML += `<div class="report-row"><span class="indent">${g.nummer} — ${g.naam}</span><span class="mono">${fmt(parseFloat(g.saldo||0))}</span></div>`;
     });
+    passivaHTML += `<div class="report-row"><span class="indent">Resultaat boekjaar (winst/verlies)</span><span class="mono">${fmt(resultaat)}</span></div>`;
   }
-  passivaHTML += `<div class="report-row total"><span>Totaal passiva</span><span class="mono">${fmt(totPassiva+totEV)}</span></div>`;
+  passivaHTML += `<div class="report-row total"><span>Totaal passiva</span><span class="mono">${fmt(totPassiva+totEV+resultaat)}</span></div>`;
 
   document.getElementById('balans-activa').innerHTML = activaHTML;
   document.getElementById('balans-passiva').innerHTML = passivaHTML;
