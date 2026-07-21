@@ -1,26 +1,62 @@
 // ===== STATE =====
 let DB = { verkoop:[], inkoop:[], transacties:[], grootboek:[], regels:[], imports:[], profiel:{}, kassalijsten:[], kassiers:[], uren:[], editId:null, editType:null, koppelId:null, csvRaw:[], csvHeaders:[], fVK:'', fsVK:'', fIK:'', fsIK:'', fT:'', fsT:'', huidigeBankId:null };
 
+// Standaard rekeningschema (zzp). Bestaande nummers zijn bewust ongewijzigd
+// zodat lopende boekingen kloppen. 'Accumuleerde afschrijvingen' staat als
+// type 'passiva' maar wordt door renderBalans (via de naam 'accum'/'afschr')
+// aan de ACTIVA-kant als contra-activa (min) getoond — dat is de bedoeling.
 const DEFAULT_GB = [
+  // --- Liquide middelen ---
   {id:'gb1',nummer:'1000',naam:'Kas',type:'activa',saldo:0},
-  {id:'gb2',nummer:'1100',naam:'Hoofdrekening',type:'activa',subtype:'bank',iban:'',saldo:0},
+  {id:'gb2',nummer:'1100',naam:'Bank – hoofdrekening',type:'activa',subtype:'bank',iban:'',saldo:0},
+  {id:'gb19',nummer:'1200',naam:'Spaarrekening',type:'activa',saldo:0},
+  // --- Vorderingen & BTW ---
   {id:'gb3',nummer:'1300',naam:'Debiteuren',type:'activa',saldo:0},
+  {id:'gb12',nummer:'1500',naam:'BTW te vorderen (inkoop)',type:'activa',saldo:0},
+  {id:'gb13',nummer:'1510',naam:'BTW te betalen (verkoop)',type:'passiva',saldo:0},
+  // --- Vlottende / vaste activa ---
   {id:'gb4',nummer:'2000',naam:'Inventaris',type:'vlottende_activa',saldo:0},
-  {id:'gb5',nummer:'3000',naam:'Eigen vermogen',type:'eigen_vermogen',saldo:0},
+  {id:'gb15',nummer:'2900',naam:'Accumuleerde afschrijvingen',type:'passiva',saldo:0},
+  // --- Passiva (schulden) ---
   {id:'gb6',nummer:'2100',naam:'Crediteuren',type:'passiva',saldo:0},
+  {id:'gb20',nummer:'2200',naam:'Te betalen belastingen',type:'passiva',saldo:0},
+  // --- Eigen vermogen & privé ---
+  {id:'gb5',nummer:'3000',naam:'Eigen vermogen',type:'eigen_vermogen',saldo:0},
+  {id:'gb17',nummer:'3100',naam:'Privé-stortingen eigenaar',type:'eigen_vermogen',saldo:0},
+  {id:'gb16',nummer:'3200',naam:'Privé-opnames eigenaar',type:'eigen_vermogen',saldo:0},
+  // --- Omzet ---
   {id:'gb7',nummer:'4000',naam:'Omzet diensten',type:'omzet',saldo:0},
   {id:'gb8',nummer:'4100',naam:'Omzet producten',type:'omzet',saldo:0},
+  {id:'gb21',nummer:'4200',naam:'Omzet uren/dagtarief',type:'omzet',saldo:0},
+  // --- Kosten ---
+  {id:'gb22',nummer:'8000',naam:'Inkoopwaarde omzet',type:'kosten',saldo:0},
   {id:'gb9',nummer:'8100',naam:'Personeelskosten',type:'kosten',saldo:0},
   {id:'gb10',nummer:'8200',naam:'Huisvestingskosten',type:'kosten',saldo:0},
   {id:'gb11',nummer:'8300',naam:'Overige kosten',type:'kosten',saldo:0},
-  {id:'gb12',nummer:'1500',naam:'BTW te vorderen (inkoop)',type:'activa',saldo:0},
-  {id:'gb13',nummer:'1510',naam:'BTW te betalen (verkoop)',type:'passiva',saldo:0},
   {id:'gb14',nummer:'8400',naam:'Afschrijvingskosten',type:'kosten',saldo:0},
-  {id:'gb15',nummer:'2900',naam:'Accumuleerde afschrijvingen',type:'passiva',saldo:0},
-  {id:'gb16',nummer:'3000',naam:'Privé-opnames eigenaar',type:'eigen_vermogen',saldo:0},
-  {id:'gb17',nummer:'3100',naam:'Privé-stortingen eigenaar',type:'eigen_vermogen',saldo:0},
+  {id:'gb24',nummer:'8500',naam:'Verkoop- en marketingkosten',type:'kosten',saldo:0},
+  {id:'gb25',nummer:'8600',naam:'Kantoor- en administratiekosten',type:'kosten',saldo:0},
+  {id:'gb26',nummer:'8700',naam:'Verzekeringen',type:'kosten',saldo:0},
+  {id:'gb27',nummer:'8800',naam:'Autokosten',type:'kosten',saldo:0},
   {id:'gb18',nummer:'8900',naam:'Betalingsverschillen',type:'kosten',saldo:0},
 ];
+
+// Vult ontbrekende standaardrekeningen aan bij een bestaand bedrijf: voegt
+// alleen toe wat qua nummer nog niet bestaat, bestaande rekeningen en saldi
+// blijven ongemoeid. Geeft het aantal toegevoegde rekeningen terug.
+function vulStandaardRekeningenAan(){
+  if(!Array.isArray(DB.grootboek)) DB.grootboek = [];
+  const bestaand = new Set(DB.grootboek.map(g=>String(g.nummer)));
+  let toegevoegd = 0;
+  DEFAULT_GB.forEach(std=>{
+    if(!bestaand.has(String(std.nummer))){
+      DB.grootboek.push({...std, id:'gb_std_'+std.nummer});
+      bestaand.add(String(std.nummer));
+      toegevoegd++;
+    }
+  });
+  return toegevoegd;
+}
 
 // ===== TOAST =====
 function toast(msg, type='success', duur=3000){
@@ -421,6 +457,8 @@ function loadLokaal(){
     DB.verkoop=[]; DB.inkoop=[]; DB.transacties=[]; DB.regels=[]; DB.imports=[];
     DB.grootboek=JSON.parse(JSON.stringify(DEFAULT_GB));
   }
+  // Ontbrekende standaardrekeningen aanvullen (bestaande, incomplete lokale set).
+  if(typeof vulStandaardRekeningenAan==='function') vulStandaardRekeningenAan();
   toonSyncStatus('lokaal');
 }
 
@@ -462,6 +500,14 @@ function loadCloud(){
         if(typeof renderGebruikersBeheer === 'function') renderGebruikersBeheer();
       }
       if(d.grootboek    !== undefined) DB.grootboek    = d.grootboek    || [];
+      // Vul ontbrekende standaardrekeningen aan zodat bestaande bedrijven het
+      // volledige schema krijgen zonder handmatig toevoegen. Bestaande saldi
+      // blijven ongemoeid. Alleen in-memory: NIET zelf save() aanroepen, want
+      // save() blokkeert (met alert) bij een balansverschil — een bestaand
+      // bedrijf mag daar niet op vastlopen. De rekeningen worden elke load
+      // opnieuw aangevuld (idempotent) en persisteren vanzelf bij de eerstvolgende
+      // reguliere, kloppende save() van de gebruiker.
+      if(typeof vulStandaardRekeningenAan==='function') vulStandaardRekeningenAan();
 
       // Profiel: cloud wint altijd (eigenaar beheert dit)
       if(d.profiel && Object.keys(d.profiel).length) DB.profiel=d.profiel;

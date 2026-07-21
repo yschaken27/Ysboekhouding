@@ -57,28 +57,77 @@ Controleer in `btw-rapport.js` en `facturen.js`:
 ❌ js/btw-rapport.js regel 88: gebruikt altijd f.datum — moet getBtwDatum(f) zijn zodat kasstelsel werkt
 ```
 
-## Check 4 — Grootboekrekeningen
+## Check 4 — Grootboekrekeningen (rekeningschema)
 
-Nederlandse standaard grootboekindeling (RGS-basis):
+Het canonieke standaard rekeningschema staat in `state.js` → `DEFAULT_GB`.
+Dit is de bron van waarheid. Elke hardcoded `nummer==='...'`-lookup elders in
+de code MOET matchen met een rekening die hier bestaat (of met de naam-fallback).
 
-```
-0xxx  — Vaste activa (machines, inventaris)
-1xxx  — Vlottende activa (bank, kas, debiteuren)
-  1100 — Bank
-  1300 — Debiteuren
-2xxx  — Schulden (crediteuren, BTW schuld)
-  2100 — Crediteuren
-  2300 — BTW schuld/vordering
-3xxx  — Eigen vermogen
-4xxx  — Omzet / opbrengsten
-8xxx  — Kosten (inkoop, lonen, afschrijvingen)
-```
-
-Zoek in `state.js` en `facturen.js` naar hardcoded rekeningnummers.
-Controleer of ze binnen de juiste range vallen voor hun type.
+### Canoniek schema (DEFAULT_GB) — nummer · naam · type
 
 ```
-❌ js/facturen.js regel 201: rekening 5100 gebruikt als omzetrekening — omzet hoort in 4xxx
+1000 · Kas                              · activa
+1100 · Bank – hoofdrekening             · activa (subtype:'bank')
+1200 · Spaarrekening                    · activa
+1300 · Debiteuren                       · activa
+1500 · BTW te vorderen (inkoop)         · activa      ← voorbelasting (debet)
+1510 · BTW te betalen (verkoop)         · passiva     ← af te dragen BTW (credit)
+2000 · Inventaris                       · vlottende_activa
+2900 · Accumuleerde afschrijvingen      · passiva     ← wordt als CONTRA-ACTIVA getoond (zie Check 10)
+2100 · Crediteuren                      · passiva
+2200 · Te betalen belastingen          · passiva
+3000 · Eigen vermogen                   · eigen_vermogen
+3100 · Privé-stortingen eigenaar        · eigen_vermogen
+3200 · Privé-opnames eigenaar           · eigen_vermogen
+4000 · Omzet diensten                   · omzet
+4100 · Omzet producten                  · omzet
+4200 · Omzet uren/dagtarief             · omzet
+8000 · Inkoopwaarde omzet               · kosten
+8100 · Personeelskosten                 · kosten
+8200 · Huisvestingskosten               · kosten
+8300 · Overige kosten                   · kosten
+8400 · Afschrijvingskosten              · kosten
+8500 · Verkoop- en marketingkosten      · kosten
+8600 · Kantoor- en administratiekosten  · kosten
+8700 · Verzekeringen                    · kosten
+8800 · Autokosten                       · kosten
+8900 · Betalingsverschillen             · kosten
+```
+
+Geldige `type`-waarden (renderBalans/renderPL groeperen hierop, NIET op nummer):
+`activa`, `vlottende_activa`, `vaste_activa`, `passiva`, `eigen_vermogen`, `omzet`, `kosten`.
+
+### Verplichte nummer-lookups — code moet naar deze rekening boeken
+
+| Boeking | Rekening | Waar in code |
+|---|---|---|
+| Debiteuren | **1300** (of naam 'debiteuren') | facturen.js verkoop, kassier.js maakUrenFactuur |
+| Crediteuren | **2100** (of naam 'crediteur') — NOOIT 4000 (=Omzet!) | facturen.js inkoop, bank.js |
+| BTW te vorderen (inkoop/voorbelasting) | **1500** (of naam 'btw te vorderen') | facturen.js inkoop-tak |
+| BTW te betalen (verkoop) | **1510** (of naam 'btw te betalen') | facturen.js verkoop-tak, kassier.js |
+| Omzet | via `type==='omzet'` (4000/4100/4200) | facturen.js, kassier.js |
+| Kosten | via `type==='kosten'` of regel-`gbId` | facturen.js inkoop |
+| Afschrijvingskosten | **8400** (of `gbKostenId` per activum) | activa.js |
+| Accumuleerde afschrijving | **2900** (of `gbAccumId` per activum) | activa.js |
+| Privé-opname/storting | 3xxx (eigen_vermogen) | bank.js, btw-rapport.js |
+
+### Controleer
+
+1. Elke `find(g=>g.nummer==='XXXX')` in `facturen.js`, `kassier.js`, `bank.js`,
+   `btw-rapport.js`, `activa.js` → bestaat 'XXXX' in DEFAULT_GB én is het het
+   juiste type voor die boeking? (Klassieke fout: crediteuren zoeken op 4000,
+   maar 4000 = Omzet diensten → schuld belandt op omzet.)
+2. Als een lookup een nummer gebruikt dat NIET in DEFAULT_GB staat, moet de
+   naam-fallback (`naam.toLowerCase().includes(...)`) matchen met een bestaande
+   rekeningnaam — anders wordt er op GEEN rekening geboekt (stille onbalans).
+3. `DEFAULT_GB` zelf: geen dubbele `nummer`-waarden, alle `id`-waarden uniek,
+   elk type geldig.
+4. `vulStandaardRekeningenAan()` mag alleen ONTBREKENDE nummers toevoegen en
+   bestaande saldi nooit overschrijven.
+
+```
+❌ facturen.js regel 595: crediteuren gezocht op nummer 4000 — dat is Omzet diensten; moet 2100 zijn
+❌ facturen.js regel 607: inkoop-BTW gezocht op 1520 + naam 'btw te ontvangen' — geen van beide bestaat; voorbelasting wordt nergens geboekt
 ```
 
 ## Check 5 — Debet/credit balans
@@ -133,8 +182,9 @@ Bij factuurstelsel MOET deze functie drie grootboekboekingen doen:
 ```
 Debet:  Debiteuren (1300)      += totaalIncl          (klant is geld schuldig)
 Credit: Omzet (type='omzet')   += subtotaalExcl       (omzet gerealiseerd)
-Credit: BTW te betalen (1530)  += btwBedrag           (alleen als !zonderBtw && btwBedrag > 0)
+Credit: BTW te betalen (1510)  += btwBedrag           (alleen als !zonderBtw && btwBedrag > 0)
 ```
+(Let op: kassier.js maakt 1510 zo nodig zelf aan; de lookup mag `1510 || 1530 || naam 'btw te betalen'` zijn.)
 
 Controleer in `kassier.js`:
 1. Zoekt de code naar `gbDebiteuren` via nummer '1300' of naam-match op 'debiteuren'?
@@ -148,6 +198,47 @@ Controleer in `kassier.js`:
 ❌ kassier.js maakUrenFactuur: geen grootboekboeking na aanmaken uren-factuur
 ❌ kassier.js maakUrenFactuur: btwBedrag ontbreekt in DB.verkoop.push() — terugdraaien werkt niet
 ❌ kassier.js maakUrenFactuur: omzetrekening wordt ook geboekt bij zonderBtw=true maar BTW-rekening niet overgeslagen
+```
+
+## Check 10 — Afschrijvingen (activa.js)
+
+Vaste activa worden afgeschreven via `berekenSchema(a)` (schema) en
+`verwerkAfschrijving(activumId, maandKey, afschrBedrag)` (boeking).
+
+### Afschrijvingsschema — `berekenSchema()`
+
+- **Lineair**: `(aanschafwaarde − restwaarde) / duurMaanden` per maand; de laatste
+  maand vult aan tot exact de restwaarde (nooit eronder).
+- **Degressief**: vast jaarpercentage / 12 over de dalende boekwaarde, met de
+  restwaarde als bodem.
+- Boekwaarde daalt nooit onder `restwaarde`. Bedragen afgerond op 2 decimalen.
+- Controleer: som van alle `afschr` == `aanschafwaarde − restwaarde` (geen cent te veel/te weinig).
+
+### Afschrijvingsboeking — `verwerkAfschrijving()`
+
+Correcte dubbele boeking per verwerkte maand:
+
+```
+Debet:  Afschrijvingskosten (8400 / gbKostenId)          += afschrBedrag   (kosten, P&L)
+Credit: Accumuleerde afschrijvingen (2900 / gbAccumId)   += afschrBedrag   (contra-activa)
+```
+
+Controleer:
+1. Wordt `kostenRek.saldo` (type `kosten`) én `accumRek.saldo` met hetzelfde
+   bedrag verhoogd (debet=credit)?
+2. Wordt een maand maar ÉÉN keer verwerkt? (`verwerkteMaanden` bevat `maandKey`-guard.)
+3. Staat de accumulatierekening als **contra-activa** aan de ACTIVA-kant van de
+   balans? `renderBalans` herkent accum via de naam ('accum'/'afschr') en trekt
+   het saldo af van de vaste activa (toont "(contra-activa)"), ook al is het
+   type `passiva`. De boekwaarde = aanschafwaarde − accumulatie.
+4. Wordt bij het VERWIJDEREN van een activum de reeds verwerkte afschrijving
+   teruggedraaid (`kostenRek.saldo -= ...`, `accumRek.saldo -= ...` per memoriaalregel)?
+5. Wordt `save()` na de boeking aangeroepen?
+
+```
+❌ activa.js verwerkAfschrijving: accumRek verhoogd maar kostenRek niet — debet≠credit
+❌ activa.js: maand kan dubbel verwerkt worden — verwerkteMaanden-guard ontbreekt
+⚠️  activa.js: accumulatierekening naam bevat geen 'accum'/'afschr' — verschijnt dan als gewone passiva i.p.v. contra-activa op de balans
 ```
 
 ## Uitvoer formaat

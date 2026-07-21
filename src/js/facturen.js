@@ -586,7 +586,8 @@ async function slaFactuurOp(){
       });
 
       if(Math.abs(btwBedrag) > 0.01){
-        const btwRek = DB.grootboek.find(g=>g.nummer==='1530')
+        const btwRek = DB.grootboek.find(g=>g.nummer==='1510')
+                    || DB.grootboek.find(g=>g.nummer==='1530')
                     || DB.grootboek.find(g=>g.naam.toLowerCase().includes('btw te betalen'));
         if(btwRek) btwRek.saldo = (parseFloat(btwRek.saldo)||0) + btwBedrag;
       }
@@ -604,7 +605,9 @@ async function slaFactuurOp(){
       });
 
       if(Math.abs(btwBedrag) > 0.01){
-        const btwRek = DB.grootboek.find(g=>g.nummer==='1520')
+        const btwRek = DB.grootboek.find(g=>g.nummer==='1500')
+                    || DB.grootboek.find(g=>g.nummer==='1520')
+                    || DB.grootboek.find(g=>g.naam.toLowerCase().includes('btw te vorderen'))
                     || DB.grootboek.find(g=>g.naam.toLowerCase().includes('btw te ontvangen'));
         if(btwRek) btwRek.saldo = (parseFloat(btwRek.saldo)||0) + btwBedrag;
       }
@@ -706,7 +709,8 @@ function draaiFactuurGBTerug(f, type){
 
     // Draai BTW te betalen terug
     if(btwBedrag > 0.01){
-      const btwRek = DB.grootboek.find(g=>g.nummer==='1530')
+      const btwRek = DB.grootboek.find(g=>g.nummer==='1510')
+                  || DB.grootboek.find(g=>g.nummer==='1530')
                   || DB.grootboek.find(g=>g.naam.toLowerCase().includes('btw te betalen'));
       if(btwRek) btwRek.saldo = (parseFloat(btwRek.saldo)||0) - btwBedrag;
     }
@@ -727,7 +731,9 @@ function draaiFactuurGBTerug(f, type){
 
     // Draai BTW te ontvangen terug
     if(btwBedrag > 0.01){
-      const btwRek = DB.grootboek.find(g=>g.nummer==='1520')
+      const btwRek = DB.grootboek.find(g=>g.nummer==='1500')
+                  || DB.grootboek.find(g=>g.nummer==='1520')
+                  || DB.grootboek.find(g=>g.naam.toLowerCase().includes('btw te vorderen'))
                   || DB.grootboek.find(g=>g.naam.toLowerCase().includes('btw te ontvangen'));
       if(btwRek) btwRek.saldo = (parseFloat(btwRek.saldo)||0) - btwBedrag;
     }
