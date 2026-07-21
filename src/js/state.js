@@ -783,6 +783,14 @@ function _tekenCentraalOpdrachtgevers(){
             oninput="_cpOpdrachtgevers[${i}].email=this.value"
             style="flex:1;font-size:12px;padding:6px 8px;">
         </div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <span style="font-size:11px;color:var(--text-dim);">Factureren per</span>
+          <select onchange="_cpOpdrachtgevers[${i}].eenheid=this.value;_tekenCentraalOpdrachtgevers()"
+            style="font-size:12px;padding:5px 7px;">
+            <option value="uur" ${o.eenheid!=='dag'?'selected':''}>uur</option>
+            <option value="dag" ${o.eenheid==='dag'?'selected':''}>dag</option>
+          </select>
+        </div>
         <div style="margin-top:6px;">
           <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">Tarieven</div>
           ${(o.tarieven||[]).map((t,ti)=>`
@@ -790,7 +798,7 @@ function _tekenCentraalOpdrachtgevers(){
               <input type="text" value="${esc(t.naam||'')}" placeholder="Omschrijving (bijv. Dag)"
                 oninput="_cpOpdrachtgevers[${i}].tarieven[${ti}].naam=this.value"
                 style="flex:1;font-size:12px;padding:5px 7px;">
-              <input type="number" min="0" step="0.01" value="${t.bedrag!=null?t.bedrag:''}" placeholder="€/u"
+              <input type="number" min="0" step="0.01" value="${t.bedrag!=null?t.bedrag:''}" placeholder="${eenheidInfo(o.eenheid).perInput}"
                 oninput="_cpOpdrachtgevers[${i}].tarieven[${ti}].bedrag=parseFloat(this.value)||null"
                 style="width:80px;font-size:12px;padding:5px 7px;">
               <button type="button" onclick="_cpVerwijderTarief(${i},${ti})"
@@ -814,7 +822,7 @@ function _cpVerwijderTarief(i,ti){
 }
 
 function voegCentraalOpdrachtgeverToe(){
-  _cpOpdrachtgevers.push({ naam:'', straat:'', postcode:'', stad:'', btwNummer:'', email:'', tarieven:[{naam:'', bedrag:null}] });
+  _cpOpdrachtgevers.push({ naam:'', straat:'', postcode:'', stad:'', btwNummer:'', email:'', eenheid:'uur', tarieven:[{naam:'', bedrag:null}] });
   _tekenCentraalOpdrachtgevers();
 }
 
@@ -832,6 +840,7 @@ function slaCentraalOpdrachtgeversOp(){
       stad: (o.stad||'').trim(),
       btwNummer: (o.btwNummer||'').trim(),
       email: (o.email||'').trim(),
+      eenheid: o.eenheid === 'dag' ? 'dag' : 'uur',
       tarieven: (o.tarieven||[]).map(t=>({naam:(t.naam||'').trim(), bedrag:parseFloat(t.bedrag)||0})).filter(t=>t.bedrag>0||t.naam),
     }))
     .filter(o=>o.naam);
@@ -891,6 +900,14 @@ function _tekenOpdrachtgeversModal(){
             oninput="_cpOpdrachtgevers[${i}].email=this.value"
             style="flex:1;font-size:12px;padding:6px 8px;">
         </div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <span style="font-size:11px;color:var(--text-dim);">Factureren per</span>
+          <select onchange="_cpOpdrachtgevers[${i}].eenheid=this.value;_tekenOpdrachtgeversModal()"
+            style="font-size:12px;padding:5px 7px;">
+            <option value="uur" ${o.eenheid!=='dag'?'selected':''}>uur</option>
+            <option value="dag" ${o.eenheid==='dag'?'selected':''}>dag</option>
+          </select>
+        </div>
         <div style="margin-top:6px;">
           <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">Tarieven</div>
           ${(o.tarieven||[]).map((t,ti)=>`
@@ -898,7 +915,7 @@ function _tekenOpdrachtgeversModal(){
               <input type="text" value="${esc(t.naam||'')}" placeholder="Omschrijving (bijv. Dag)"
                 oninput="_cpOpdrachtgevers[${i}].tarieven[${ti}].naam=this.value"
                 style="flex:1;font-size:12px;padding:5px 7px;">
-              <input type="number" min="0" step="0.01" value="${t.bedrag!=null?t.bedrag:''}" placeholder="€/u"
+              <input type="number" min="0" step="0.01" value="${t.bedrag!=null?t.bedrag:''}" placeholder="${eenheidInfo(o.eenheid).perInput}"
                 oninput="_cpOpdrachtgevers[${i}].tarieven[${ti}].bedrag=parseFloat(this.value)||null"
                 style="width:80px;font-size:12px;padding:5px 7px;">
               <button type="button" onclick="_opmVerwijderTarief(${i},${ti})"
@@ -922,7 +939,7 @@ function _opmVerwijderTarief(i,ti){
 }
 
 function voegOpdrachtgeverModalToe(){
-  _cpOpdrachtgevers.push({ naam:'', straat:'', postcode:'', stad:'', btwNummer:'', email:'', tarieven:[{naam:'', bedrag:null}] });
+  _cpOpdrachtgevers.push({ naam:'', straat:'', postcode:'', stad:'', btwNummer:'', email:'', eenheid:'uur', tarieven:[{naam:'', bedrag:null}] });
   _tekenOpdrachtgeversModal();
 }
 
@@ -940,6 +957,7 @@ function slaOpdrachtgeversModalOp(){
       stad: (o.stad||'').trim(),
       btwNummer: (o.btwNummer||'').trim(),
       email: (o.email||'').trim(),
+      eenheid: o.eenheid === 'dag' ? 'dag' : 'uur',
       tarieven: (o.tarieven||[]).map(t=>({naam:(t.naam||'').trim(), bedrag:parseFloat(t.bedrag)||0})).filter(t=>t.bedrag>0||t.naam),
     }))
     .filter(o=>o.naam);
@@ -961,6 +979,20 @@ function isKasstelsel(){
 // Staat uren-registratie aan voor het huidige bedrijf?
 function isUrenAan(){
   return !!(DB.profiel?.urenAan);
+}
+
+// Facturatie-eenheid per opdrachtgever: 'uur' (standaard) of 'dag'.
+// Geeft de labels terug die overal in de UI en op de factuur gebruikt worden,
+// zodat "uren" en "dagen" consistent door de hele app lopen.
+function eenheidInfo(eenheid){
+  return eenheid === 'dag'
+    ? { eenheid:'dag', kort:'dag', meervoud:'dagen', per:'/dag', perInput:'€/dag', tariefLabel:'Dagtarief', gewerkt:'Gewerkte dagen' }
+    : { eenheid:'uur', kort:'u',   meervoud:'uren',  per:'/u',   perInput:'€/u',   tariefLabel:'Uurtarief', gewerkt:'Gewerkte uren' };
+}
+// Zoekt de eenheid van een opdrachtgever op naam op (fallback 'uur').
+function eenheidVanOpdrachtgever(naam){
+  const o = (DB.profiel?.opdrachtgevers||[]).find(x=>x.naam===naam);
+  return (o && o.eenheid === 'dag') ? 'dag' : 'uur';
 }
 
 // Zoek alle gekoppelde banktransacties voor een factuur

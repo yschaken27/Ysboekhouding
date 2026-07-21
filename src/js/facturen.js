@@ -685,13 +685,24 @@ function draaiFactuurGBTerug(f, type){
                 || DB.grootboek.find(g=>g.naam.toLowerCase().includes('debiteuren'));
     if(debRek) debRek.saldo = (parseFloat(debRek.saldo)||0) - inclBedrag;
 
-    // Draai omzet per regel terug
-    (f.regels||[]).forEach(r=>{
-      const excl = (parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0);
-      const omzetRek = (r.gbId ? DB.grootboek.find(g=>g.id===r.gbId) : null)
-                    || DB.grootboek.find(g=>g.type==='omzet');
-      if(omzetRek) omzetRek.saldo = (parseFloat(omzetRek.saldo)||0) - excl;
-    });
+    // Draai omzet terug. Normale facturen hebben regels (per regel terugboeken).
+    // Uren-/dagfacturen (type='uren') hebben GEEN regels-array — die boekten bij
+    // aanmaak de volledige subtotaalExcl op de omzetrekening (type 'omzet'), dus
+    // draai die hier in één keer terug. Zonder deze fallback bleef de omzet
+    // (en daarmee balans + P&L) na verwijdering van een uren-/dagfactuur te hoog.
+    const regels = f.regels||[];
+    if(regels.length){
+      regels.forEach(r=>{
+        const excl = (parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0);
+        const omzetRek = (r.gbId ? DB.grootboek.find(g=>g.id===r.gbId) : null)
+                      || DB.grootboek.find(g=>g.type==='omzet');
+        if(omzetRek) omzetRek.saldo = (parseFloat(omzetRek.saldo)||0) - excl;
+      });
+    } else {
+      const omzetRek = DB.grootboek.find(g=>g.type==='omzet')
+                    || DB.grootboek.find(g=>(g.naam||'').toLowerCase().includes('omzet'));
+      if(omzetRek) omzetRek.saldo = (parseFloat(omzetRek.saldo)||0) - (parseFloat(f.totaalExcl)||0);
+    }
 
     // Draai BTW te betalen terug
     if(btwBedrag > 0.01){

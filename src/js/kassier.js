@@ -231,12 +231,16 @@ function mobUrenVulTarieven(){
   const wrap = document.getElementById('mob-uren-tarief-wrap');
   const sel  = document.getElementById('mob-uren-tarief');
   const tarieven = opdr?.tarieven || [];
+  const info = eenheidInfo(opdr?.eenheid);
   if(sel){
     sel.innerHTML = tarieven.map((t,i)=>
-      `<option value="${i}">${esc(t.naam||'Tarief')} — €${(t.bedrag||0).toFixed(2)}/u</option>`
+      `<option value="${i}">${esc(t.naam||'Tarief')} — €${(t.bedrag||0).toFixed(2)}${info.per}</option>`
     ).join('');
   }
   if(wrap) wrap.style.display = tarieven.length > 1 ? 'block' : 'none';
+  // Label van het aantal-veld volgt de eenheid (uren/dagen).
+  const lbl = document.getElementById('mob-uren-aantal-label');
+  if(lbl) lbl.textContent = 'Aantal ' + info.meervoud;
   mobUrenHerbereken();
 }
 
@@ -247,7 +251,8 @@ function _mobUrenGekozenTarief(){
   if(!tarieven.length) return null;
   const ti = tarieven.length > 1 ? parseInt(document.getElementById('mob-uren-tarief')?.value||'0') : 0;
   const t = tarieven[ti] || tarieven[0];
-  return { opdrachtgever: opdr.naam, tarief: { label: t.naam || 'Uren', bedrag: t.bedrag || 0 } };
+  const eenheid = opdr?.eenheid === 'dag' ? 'dag' : 'uur';
+  return { opdrachtgever: opdr.naam, eenheid, tarief: { label: t.naam || eenheidInfo(eenheid).gewerkt, bedrag: t.bedrag || 0 } };
 }
 
 function mobUrenHerbereken(){
@@ -268,7 +273,7 @@ function mobSlaUrenOp(){
 
   if(!datum){ toast('Kies een datum.','error'); return; }
   if(!g){ toast('Kies een opdrachtgever.','error'); return; }
-  if(aantal <= 0){ toast('Vul het aantal uren in.','error'); return; }
+  if(aantal <= 0){ toast('Vul het aantal '+eenheidInfo(g.eenheid).meervoud+' in.','error'); return; }
 
   const bedrag = aantal * (g.tarief.bedrag || 0);
   const ingave = {
@@ -276,6 +281,7 @@ function mobSlaUrenOp(){
     datum,
     wie: _actieveKassier?.naam || '',
     opdrachtgever: g.opdrachtgever,
+    eenheid: g.eenheid || 'uur',
     tariefLabel: g.tarief.label || '',
     tariefBedrag: g.tarief.bedrag || 0,
     uren: aantal,
@@ -340,7 +346,7 @@ function renderMobUrenLijst(){
         <span style="font-family:var(--mono);font-weight:700;">€ ${(u.bedrag||0).toFixed(2)}</span>
       </div>
       <div style="font-size:12px;color:var(--text-mid);margin-top:3px;">
-        ${dd} · ${u.uren} u${u.tariefLabel?(' · '+esc(u.tariefLabel)):''}${u.wie?(' · '+esc(u.wie)):''} · ${status}
+        ${dd} · ${u.uren} ${eenheidInfo(u.eenheid).kort}${u.tariefLabel?(' · '+esc(u.tariefLabel)):''}${u.wie?(' · '+esc(u.wie)):''} · ${status}
       </div>
       ${u.notitie?`<div style="font-size:12px;color:var(--text-dim);margin-top:4px;">${esc(u.notitie)}</div>`:''}
       ${wijzigBtn}
@@ -396,6 +402,8 @@ function renderUrenoverzicht(){
     const uSom = items.reduce((a,u)=>a+(parseFloat(u.uren)||0),0);
     const bSom = items.reduce((a,u)=>a+(parseFloat(u.bedrag)||0),0);
     const allGoed = items.every(u=>u.status==='goedgekeurd');
+    // Eenheid van deze opdrachtgever (uur/dag) — bepaalt het label in het totaal
+    const grpInfo = eenheidInfo(items[0]?.eenheid || eenheidVanOpdrachtgever(opdr));
 
     const rijen = items.map(u=>{
       const dd = new Date(u.datum).toLocaleDateString('nl-NL',{day:'2-digit',month:'short'});
@@ -422,7 +430,7 @@ function renderUrenoverzicht(){
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
         <div>
           <strong style="font-size:15px;">${esc(opdr)}</strong>
-          <span style="font-size:12px;color:var(--text-mid);margin-left:10px;">${(Math.round(uSom*100)/100)} u · € ${bSom.toFixed(2)}</span>
+          <span style="font-size:12px;color:var(--text-mid);margin-left:10px;">${(Math.round(uSom*100)/100)} ${grpInfo.kort} · € ${bSom.toFixed(2)}</span>
         </div>
         <button onclick="maakUrenFactuur('${encodeURIComponent(opdr)}')"
           style="font-size:12px;padding:6px 14px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:pointer;"
@@ -435,7 +443,7 @@ function renderUrenoverzicht(){
           <th style="padding:4px 8px;text-align:left;font-size:11px;color:var(--text-dim);font-weight:600;">Datum</th>
           <th style="padding:4px 8px;text-align:left;font-size:11px;color:var(--text-dim);font-weight:600;">Wie</th>
           <th style="padding:4px 8px;text-align:left;font-size:11px;color:var(--text-dim);font-weight:600;">Tarief</th>
-          <th style="padding:4px 8px;text-align:right;font-size:11px;color:var(--text-dim);font-weight:600;">Uren</th>
+          <th style="padding:4px 8px;text-align:right;font-size:11px;color:var(--text-dim);font-weight:600;">Aantal</th>
           <th style="padding:4px 8px;text-align:right;font-size:11px;color:var(--text-dim);font-weight:600;">Bedrag</th>
           <th style="padding:4px 8px;text-align:left;font-size:11px;color:var(--text-dim);font-weight:600;">Notitie</th>
           <th style="padding:4px 8px;text-align:right;font-size:11px;color:var(--text-dim);font-weight:600;">Status</th>
@@ -474,13 +482,14 @@ function openEigenaarUrenModal(editId){
   const opdrachtgevers = DB.profiel?.opdrachtgevers || [];
   const opties = [];
   opdrachtgevers.forEach(o=>{
-    (o.tarieven||[{label:'Standaard',bedrag:o.tarief||0}]).forEach(t=>{
-      opties.push({ opdrachtgever: o.naam, tariefLabel: t.label||'Standaard', tariefBedrag: parseFloat(t.bedrag||0) });
+    const eenheid = o.eenheid === 'dag' ? 'dag' : 'uur';
+    (o.tarieven||[{naam:'Standaard',bedrag:o.tarief||0}]).forEach(t=>{
+      opties.push({ opdrachtgever: o.naam, eenheid, tariefLabel: t.naam||t.label||'Standaard', tariefBedrag: parseFloat(t.bedrag||0) });
     });
   });
   if(!opties.length){ toast('Geen opdrachtgevers ingesteld. Voeg ze toe via ⚙ Opdrachtgevers.','warning'); return; }
   tarSelect.innerHTML = opties.map((o,i)=>
-    `<option value="${i}">${esc(o.opdrachtgever)} — ${esc(o.tariefLabel)} (€ ${(o.tariefBedrag).toFixed(2).replace('.',',')})</option>`
+    `<option value="${i}">${esc(o.opdrachtgever)} — ${esc(o.tariefLabel)} (€ ${(o.tariefBedrag).toFixed(2).replace('.',',')}${eenheidInfo(o.eenheid).per})</option>`
   ).join('');
   tarSelect._opties = opties;
 
@@ -511,6 +520,9 @@ function eigenaarUrenHerbereken(){
   const bedrag = Math.round(uren * (tarief.tariefBedrag||0) * 100) / 100;
   const el = document.getElementById('eu-bedrag-preview');
   if(el) el.textContent = '€ ' + bedrag.toFixed(2).replace('.',',');
+  // Aantal-label volgt de eenheid van de gekozen opdrachtgever
+  const lbl = document.getElementById('eu-uren-label');
+  if(lbl) lbl.textContent = 'Aantal ' + eenheidInfo(tarief.eenheid).meervoud;
 }
 
 function eigenaarVoegUrenToe(){
@@ -530,20 +542,21 @@ function eigenaarVoegUrenToe(){
 
   if(!datum){ toast('Kies een datum.','error'); return; }
   if(!wie){ toast('Kies een medewerker.','error'); return; }
-  if(uren <= 0){ toast('Vul het aantal uren in.','error'); return; }
   if(!tarief){ toast('Kies een opdrachtgever en tarief.','error'); return; }
+  if(uren <= 0){ toast('Vul het aantal '+eenheidInfo(tarief.eenheid).meervoud+' in.','error'); return; }
 
   const bedrag = Math.round(uren * tarief.tariefBedrag * 100) / 100;
+  const eenheid = tarief.eenheid === 'dag' ? 'dag' : 'uur';
 
   if(editId){
     // Bewerken
     const entry = (DB.uren||[]).find(u=>u.id===editId);
     if(!entry){ toast('Uren-entry niet gevonden.','error'); return; }
-    Object.assign(entry, { datum, wie, opdrachtgever: tarief.opdrachtgever, tariefLabel: tarief.tariefLabel, tariefBedrag: tarief.tariefBedrag, uren, bedrag, notitie });
+    Object.assign(entry, { datum, wie, opdrachtgever: tarief.opdrachtgever, eenheid, tariefLabel: tarief.tariefLabel, tariefBedrag: tarief.tariefBedrag, uren, bedrag, notitie });
     localStorage.setItem(storageKey(), JSON.stringify(DB));
     if(checkOnline()){
       toonSyncStatus('opslaan');
-      fbAanroep(fb=>fb.updateUrenItem(huidigBedrijf, editId, JSON.stringify({ datum, wie, opdrachtgever: tarief.opdrachtgever, tariefLabel: tarief.tariefLabel, tariefBedrag: tarief.tariefBedrag, uren, bedrag, notitie })))
+      fbAanroep(fb=>fb.updateUrenItem(huidigBedrijf, editId, JSON.stringify({ datum, wie, opdrachtgever: tarief.opdrachtgever, eenheid, tariefLabel: tarief.tariefLabel, tariefBedrag: tarief.tariefBedrag, uren, bedrag, notitie })))
         .then(()=>toonSyncStatus('opgeslagen'))
         .catch(()=>{ toonSyncStatus('fout'); toast('Opslaan mislukt — probeer opnieuw.','error'); });
     }
@@ -557,6 +570,7 @@ function eigenaarVoegUrenToe(){
   const ingave = {
     id: uid(), datum, wie,
     opdrachtgever: tarief.opdrachtgever,
+    eenheid,
     tariefLabel: tarief.tariefLabel,
     tariefBedrag: tarief.tariefBedrag,
     uren, bedrag, notitie,
@@ -641,10 +655,15 @@ async function maakUrenFactuur(opdrEnc){
 
   const maandLabel = (()=>{ const [j,m]=maand.split('-'); return new Date(j,parseInt(m)-1,1).toLocaleDateString('nl-NL',{month:'long',year:'numeric'}); })();
 
-  // Groepeer per tarieftype
+  // Eenheid van deze opdrachtgever (uur/dag) — bepaalt de factuurregels.
+  // Uit de ingaves zelf, met het opdrachtgever-register als fallback.
+  const opdrEenheid = items.find(u=>u.eenheid)?.eenheid || eenheidVanOpdrachtgever(opdr);
+  const eInfo = eenheidInfo(opdrEenheid);
+
+  // Groepeer per tarieftype (aantal = uren óf dagen, afhankelijk van eenheid)
   const groepen = {};
   items.forEach(u=>{
-    const lbl = u.tariefLabel || 'Uren';
+    const lbl = u.tariefLabel || eInfo.gewerkt;
     const tarief = parseFloat(u.tariefBedrag)||0;
     const key = lbl + '|' + tarief;
     if(!groepen[key]) groepen[key] = { label:lbl, tarief, uren:0, bedrag:0 };
@@ -660,10 +679,10 @@ async function maakUrenFactuur(opdrEnc){
   const totaalIncl = subtotaalExcl + btwBedrag;
 
   const rijen = regelLijst.map(r=>`<tr>
-    <td>Gewerkte uren — ${esc(r.label)}</td>
+    <td>${eInfo.gewerkt} — ${esc(r.label)}</td>
     <td>${maandLabel}</td>
     <td>${(Math.round(r.uren*100)/100).toString().replace('.',',')}</td>
-    <td>€ ${r.tarief.toFixed(2)}</td>
+    <td>€ ${r.tarief.toFixed(2)}${eInfo.per}</td>
     <td>€ ${r.bedrag.toFixed(2)}</td>
   </tr>`).join('');
 
@@ -737,8 +756,8 @@ async function maakUrenFactuur(opdrEnc){
     <thead><tr>
       <th>Omschrijving</th>
       <th>Periode</th>
-      <th>Uren</th>
-      <th>Uurtarief</th>
+      <th>Aantal</th>
+      <th>${eInfo.tariefLabel}</th>
       <th>Bedrag</th>
     </tr></thead>
     <tbody>${rijen}</tbody>
