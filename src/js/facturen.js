@@ -592,7 +592,7 @@ async function slaFactuurOp(){
       }
 
     } else {
-      const credRek = DB.grootboek.find(g=>g.nummer==='4000')
+      const credRek = DB.grootboek.find(g=>g.nummer==='2100')
                    || DB.grootboek.find(g=>g.naam.toLowerCase().includes('crediteur'));
       if(credRek) credRek.saldo = (parseFloat(credRek.saldo)||0) + inclBedrag;
 
@@ -713,7 +713,7 @@ function draaiFactuurGBTerug(f, type){
 
   } else {
     // Draai crediteuren terug
-    const credRek = DB.grootboek.find(g=>g.nummer==='4000')
+    const credRek = DB.grootboek.find(g=>g.nummer==='2100')
                  || DB.grootboek.find(g=>g.naam.toLowerCase().includes('crediteur'));
     if(credRek) credRek.saldo = (parseFloat(credRek.saldo)||0) - inclBedrag;
 
@@ -751,7 +751,7 @@ function boekHandmatigeBetaling(f, type, richting){
     if(debRek) debRek.saldo = rond((parseFloat(debRek.saldo)||0) - incl);
   } else {
     if(bank) bank.saldo = rond((parseFloat(bank.saldo)||0) - incl);
-    const credRek = DB.grootboek.find(g=>g.nummer==='4000')
+    const credRek = DB.grootboek.find(g=>g.nummer==='2100')
                  || DB.grootboek.find(g=>g.naam.toLowerCase().includes('crediteur'));
     if(credRek) credRek.saldo = rond((parseFloat(credRek.saldo)||0) - incl);
   }
