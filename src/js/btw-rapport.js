@@ -748,6 +748,17 @@ function memHerbereken(){
   }
 }
 
+// Bepaalt hoe een debet/credit-regel het grootboeksaldo muteert. Debet-normale
+// rekeningen (activa, kosten) stijgen bij DEBET; credit-normale rekeningen
+// (passiva, eigen vermogen, omzet) worden in deze app POSITIEF bewaard en stijgen
+// dus bij CREDIT. Zonder dit onderscheid werd een credit op bv. eigen vermogen als
+// negatief bedrag opgeslagen — dan toont de balans een minbedrag en klopt hij niet.
+function _memSaldoEffect(g, dc, bedrag){
+  const creditNormaal = ['passiva','eigen_vermogen','omzet'].includes(g.type);
+  if(creditNormaal) return dc==='credit' ? bedrag : -bedrag;
+  return dc==='debet' ? bedrag : -bedrag;
+}
+
 function slaMemoriaalOp(){
   const datum=document.getElementById('mem-datum').value;
   const oms=document.getElementById('mem-oms').value.trim();
@@ -773,8 +784,8 @@ function slaMemoriaalOp(){
   // Verwerk boekingen op grootboekrekeningen
   regels.forEach(r=>{
     const g=DB.grootboek.find(g=>g.id===r.gbId); if(!g) return;
-    // Debet verhoogt activa/kosten, verlaagt passiva/omzet
-    const effect=r.dc==='debet'?r.bedrag:-r.bedrag;
+    const effect=_memSaldoEffect(g, r.dc, r.bedrag);
+    r.effect=effect; // bewaar de exact toegepaste mutatie zodat verwijderen altijd correct terugdraait
     g.saldo=(parseFloat(g.saldo)||0)+effect;
   });
 
@@ -839,10 +850,13 @@ async function verwijderMemoriaal(id){
   const ok=await bevestig('Memoriaalboeking verwijderen? De grootboeksaldi worden teruggedraaid.','Verwijderen','Verwijderen');
   if(!ok) return;
   const m=mem;
-  // Draai boekingen terug
+  // Draai boekingen terug. Gebruik de exact opgeslagen mutatie (`r.effect`); oudere
+  // boekingen van vóór de tekenfix hebben dat veld niet en vallen terug op de
+  // oorspronkelijke formule waarmee ze destijds geboekt zijn — zo klopt het
+  // terugdraaien altijd, ook voor bestaande boekingen.
   m.regels.forEach(r=>{
     const g=DB.grootboek.find(g=>g.id===r.gbId); if(!g) return;
-    const effect=r.dc==='debet'?r.bedrag:-r.bedrag;
+    const effect=(r.effect!==undefined)?r.effect:(r.dc==='debet'?r.bedrag:-r.bedrag);
     g.saldo=(parseFloat(g.saldo)||0)-effect;
   });
   DB.memoriaal=DB.memoriaal.filter(m=>m.id!==id);

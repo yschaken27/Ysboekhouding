@@ -103,7 +103,17 @@ document.addEventListener('visibilitychange', ()=>{
     _visibilityTimer = setTimeout(()=>{
       volledigeSyncVanuitFirebase();
     }, 1000);
+  } else {
+    // Naar de achtergrond (tab wissel / app naar achtergrond): schrijf openstaande
+    // wijzigingen meteen weg i.p.v. de 800ms-debounce af te wachten, zodat een net
+    // gemaakte bewerking niet verdampt als de PWA bevroren of afgesloten wordt.
+    if(typeof flushSave === 'function') flushSave();
   }
+});
+// Laatste redmiddel bij het sluiten van het tabblad: probeer de wachtende save nog
+// te starten (best-effort — kan niet garanderen dat de upload de sluiting overleeft).
+window.addEventListener('beforeunload', ()=>{
+  if(_pendingSaveData){ clearTimeout(_saveTimer); _kickSave(); }
 });
 
 // Automatisch herladen na 5 minuten inactiviteit
@@ -274,9 +284,15 @@ if(typeof document !== 'undefined'){
 // ============================================================
 // SYNC STATUS
 // ============================================================
-let _syncBezig = false;
-let _pendingSave = false;
-let _recentlySaved = false;
+// Cloud-save state — één bron van waarheid voor wat er nog weg moet en wat er loopt:
+//   _pendingSaveData = de nieuwste, nog niet verzonden momentopname {bedrijf, data}.
+//   _saveInFlight    = Promise van de lopende schrijfactie naar Firebase (of null).
+// Zolang één van beide gezet is, bestaat er een onbevestigde eigen wijziging en mag
+// de Firestore-listener de lokale data NIET overschrijven — anders kan een oude
+// cloud-stand over verse invoer heen vallen ("data verdwijnt / komt terug").
+let _pendingSaveData = null;
+let _saveInFlight = null;
+function _heeftOnbevestigdeSave(){ return !!(_pendingSaveData || _saveInFlight); }
 
 function toonSyncStatus(status){
   let el = document.getElementById('sync-status');
@@ -356,14 +372,16 @@ function checkBalansEvenwicht(){
     .reduce((a,g)=>a+parseFloat(g.saldo||0),0);
   const passivaPlusEV = totPassiva + totEV + totOmzet - totKosten;
   const verschil = Math.abs(totActiva - passivaPlusEV);
-  if(verschil > 0){
-    const msg = `Boekhoudkundige fout — balans is niet in evenwicht.
+  // Halve cent marge tegen afrondingsruis van kommagetallen — alleen een ÉCHTE
+  // afwijking (≥ 1 cent) blokkeert, zodat er geen valse balansfouten ontstaan.
+  if(verschil > 0.005){
+    const msg = `Boekhoudkundige fout — deze handeling brengt de balans uit evenwicht.
 
 Activa: ${fmt(totActiva)}
 Passiva + EV + Resultaat: ${fmt(passivaPlusEV)}
 Verschil: ${fmt(verschil)}
 
-De boeking is niet opgeslagen. Controleer de laatste handeling.`;
+Een balans moet altijd kloppen (Activa = Passiva + Eigen vermogen + Resultaat). Daarom is de laatste handeling automatisch teruggedraaid en NIET opgeslagen — de balans blijft in evenwicht.`;
     alert(msg);
     console.error('BALANS FOUT:', {totActiva, passivaPlusEV, verschil});
     return false;
@@ -371,58 +389,104 @@ De boeking is niet opgeslagen. Controleer de laatste handeling.`;
   return true;
 }
 
+// Draait de laatste (balansverstorende) handeling volledig terug naar de laatst
+// opgeslagen, kloppende stand uit localStorage. Zo kan een scheve balans nooit
+// blijven staan of bewaard worden — de stap gaat gewoon niet door.
+function herstelNaLaatsteGoedeStand(){
+  const r = localStorage.getItem(storageKey());
+  if(r){
+    try{
+      const p = JSON.parse(r);
+      // Houd de live/globale kassiers vast (zelfde reden als in loadLokaal).
+      const _liveKassiers = (DB.kassiers||[]).length ? DB.kassiers : null;
+      DB = {...DB, ...p};
+      if(_liveKassiers) DB.kassiers = _liveKassiers;
+    }catch(e){ console.error('Herstel na balansfout mislukt:', e); }
+  }
+  // Herteken het huidige scherm zodat de herstelde, kloppende stand direct zichtbaar is.
+  const actievePagina = document.querySelector('.page.active')?.id?.replace('page-','');
+  if(actievePagina && typeof showPage==='function') showPage(actievePagina);
+  else if(typeof renderDashboard==='function') renderDashboard();
+}
+
 function save(){
-  // Blokkeer opslaan als balans niet klopt
-  if(!checkBalansEvenwicht()) return;
+  // Balans moet kloppen. Zo niet: draai de laatste handeling volledig terug en sla
+  // niets op — een scheve balans mag nooit blijven staan of bewaard worden.
+  if(!checkBalansEvenwicht()){ herstelNaLaatsteGoedeStand(); return; }
   localStorage.setItem(storageKey(), JSON.stringify(DB));
-  _recentlySaved = true;
-  clearTimeout(window._recentSavedTimer);
-  // Kort venster: lang genoeg om de eigen Firebase-echo van deze opslag op te
-  // vangen (komt doorgaans binnen 1-2s terug), kort genoeg dat een ECHTE wijziging
-  // van een ander apparaat niet lang geblokkeerd wordt. 30s was te lang en kon
-  // updates van het andere apparaat laten verdwijnen.
-  window._recentSavedTimer = setTimeout(()=>{ _recentlySaved=false; }, 3000);
   if(USE_CLOUD) saveCloud();
   else toonSyncStatus('lokaal');
 }
 
 let _saveTimer = null;
-function saveCloud(){
-  clearTimeout(_saveTimer);
-  _saveTimer = setTimeout(()=>_doSaveCloud(), 800);
-}
 
-function _doSaveCloud(){
-  // Zonder internet niets naar de cloud schrijven. Firebase is de enige
-  // bron van waarheid; er wordt bewust GEEN offline kopie bewaard die later
-  // gemerged moet worden (dat veroorzaakte teruggekeerde/verwijderde data).
-  if(!checkOnline()){ _syncBezig=false; return; }
-  if(_syncBezig){ _pendingSave=true; return; }
-  _syncBezig=true;
-  toonSyncStatus('opslaan');
-  const data = JSON.stringify({
+// Bouw de momentopname die naar de cloud gaat. imports MOET mee: slaAllesOp()
+// overschrijft het hele document, dus zonder imports zou de afschriftgeschiedenis
+// bij elke save gewist worden.
+function _bouwSaveData(){
+  return JSON.stringify({
     verkoop:DB.verkoop, inkoop:DB.inkoop, transacties:DB.transacties,
     grootboek:DB.grootboek, regels:DB.regels, memoriaal:DB.memoriaal||[],
     vasteActiva:DB.vasteActiva||[], profiel:DB.profiel||{},
     kassalijsten:DB.kassalijsten||[], kassiers:DB.kassiers||[],
-    uren:DB.uren||[],
+    uren:DB.uren||[], imports:DB.imports||[],
   });
+}
 
-  function onSuccess(){
-    toonSyncStatus('opgeslagen');
-    _syncBezig=false;
-    if(_pendingSave){ _pendingSave=false; _doSaveCloud(); }
-  }
-  function onFail(err){
-    toonSyncStatus('fout');
-    toast('Opslaan mislukt — controleer je internetverbinding en probeer opnieuw.','error');
-    console.error('Save fout:', err);
-    _syncBezig=false;
-    if(_pendingSave){ _pendingSave=false; _doSaveCloud(); }
-  }
+function saveCloud(){
+  // Pin bedrijf én data NU vast (niet pas bij het afvuren over 800ms). Zo schrijft
+  // een vertraagde save altijd de juiste data naar het juiste bedrijf — ook als je
+  // ondertussen van bedrijf wisselt.
+  _pendingSaveData = { bedrijf: huidigBedrijf, data: _bouwSaveData() };
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(()=>{ _kickSave(); }, 800);
+}
 
-  fbAanroep(fb=>fb.slaAllesOp(huidigBedrijf, data))
-    .then(onSuccess).catch(onFail);
+// Verstuurt de wachtende momentopname naar Firebase. Serieel: zolang er een
+// schrijfactie loopt wordt er niet parallel geschreven; een nieuwere wachtende
+// versie gaat er direct achteraan. Geeft de lopende Promise terug (of resolved).
+function _kickSave(){
+  if(_saveInFlight) return _saveInFlight;
+  if(!_pendingSaveData) return Promise.resolve();
+  // Zonder internet: laat de wachtende data staan (blijft ook in localStorage) en
+  // probeer later opnieuw. Niets wordt weggegooid.
+  if(!checkOnline()){ toonSyncStatus('fout'); return Promise.resolve(); }
+  const { bedrijf, data } = _pendingSaveData;
+  _pendingSaveData = null;
+  toonSyncStatus('opslaan');
+  _saveInFlight = fbAanroep(fb=>fb.slaAllesOp(bedrijf, data))
+    .then(()=>{
+      toonSyncStatus('opgeslagen');
+      _saveInFlight = null;
+      // Kwam er tijdens het schrijven een nieuwere wijziging binnen? Direct wegschrijven.
+      if(_pendingSaveData && navigator.onLine) _kickSave();
+    })
+    .catch(err=>{
+      _saveInFlight = null;
+      // Schrijven mislukt: zet de data terug in de wachtrij zodat niets verloren gaat
+      // (tenzij er intussen al een nieuwere versie klaarstaat). GEEN automatische retry
+      // hier — dat zou bij een aanhoudende fout gaan rondtollen. De volgende save() of
+      // flushSave() (bij wisselen) pikt de wachtende data weer op.
+      if(!_pendingSaveData) _pendingSaveData = { bedrijf, data };
+      toonSyncStatus('fout');
+      toast('Opslaan mislukt — controleer je internetverbinding en probeer opnieuw.','error');
+      console.error('Save fout:', err);
+    });
+  return _saveInFlight;
+}
+
+// Schrijf alles wat nog openstaat weg en WACHT tot het klaar is. Wordt aangeroepen
+// vóór het wisselen van bedrijf en bij het naar de achtergrond gaan, zodat een net
+// gemaakte bewerking gegarandeerd in de cloud staat voordat er iets herladen of
+// gewisseld wordt. Zonder deze garantie kon een oude cloud-stand verse invoer
+// overschrijven ("data verdwijnt / komt later terug").
+async function flushSave(){
+  clearTimeout(_saveTimer);
+  let pogingen = 0;
+  while(_heeftOnbevestigdeSave() && navigator.onLine && pogingen++ < 3){
+    if(_saveInFlight){ try{ await _saveInFlight; }catch(e){} }
+    if(_pendingSaveData){ try{ await _kickSave(); }catch(e){} }
+  }
 }
 
 // ============================================================
@@ -471,13 +535,16 @@ function loadCloud(){
   function verwerkCloudData(jsonStr){
     try {
       const d = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
-      if(_recentlySaved){ toonSyncStatus('opgeslagen'); return; }
+      // Zolang onze eigen wijziging nog niet bevestigd naar Firebase is geschreven,
+      // NEGEREN we inkomende snapshots. Anders kan een oudere cloud-stand (van vóór
+      // onze nog-lopende schrijfactie) verse invoer overschrijven — dat is precies
+      // de "data verdwijnt / komt later terug"-bug. Zodra de save bevestigd is
+      // (_pendingSaveData én _saveInFlight beide leeg) laten we de cloud weer leidend zijn.
+      if(_heeftOnbevestigdeSave()){ toonSyncStatus('opslaan'); return; }
 
       // Firebase is de enige bron van waarheid. Geen merge: de cloud overschrijft
       // altijd de lokale data. Eigen invoer (kassalijsten, uren) wordt los van save()
       // direct naar Firebase geschreven, dus die zit hier al in de clouddata.
-      // De _recentlySaved-check hierboven beschermt een net-gedane eigen wijziging
-      // tegen een vertraagde echo, tot Firebase die bevestigt.
       if(d.verkoop      !== undefined) DB.verkoop      = d.verkoop      || [];
       if(d.inkoop       !== undefined) DB.inkoop       = d.inkoop       || [];
       if(d.transacties  !== undefined) DB.transacties  = d.transacties  || [];
@@ -558,6 +625,10 @@ async function laadGebruikersInDB(){
 // BEDRIJVEN — cloud + lokaal
 // ============================================================
 async function wisselBedrijf(naam){
+  // Schrijf eerst alle nog niet verzonden wijzigingen van het HUIDIGE bedrijf weg en
+  // wacht daarop. Pas daarna legen we DB en wisselen we. Zonder dit kon een net
+  // gemaakte bewerking (bijv. verwerkte bankregels) verloren gaan bij het wisselen.
+  await flushSave();
   _stopCloudListeners();
   _stopCloudListeners = ()=>{};
   // Kassiers zijn globaal — bewaar ze zodat loadLokaal() (per-bedrijf cache) ze niet wist.
@@ -571,10 +642,6 @@ async function wisselBedrijf(naam){
        csvRaw:[], csvHeaders:[], fVK:'', fsVK:'', fIK:'', fsIK:'', fT:'', fsT:'', huidigeBankId:null };
   closeModal('modal-bedrijf');
   showPage('dashboard');
-  // Reset _recentlySaved zodat de Firestore listener van het nieuwe bedrijf
-  // niet direct wordt genegeerd (was gezet door een recente save in het oude bedrijf).
-  _recentlySaved = false;
-  clearTimeout(window._recentSavedTimer);
   load(); // loadLokaal() kan DB.kassiers overschrijven met stale per-bedrijf data
   DB.kassiers = _bewaardeKassiers; // herstel globale kassiers (verwerkCloudData vervangt ze zodra de cloud vuurt)
   renderGB(); renderRegels();

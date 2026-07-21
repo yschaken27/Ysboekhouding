@@ -189,16 +189,30 @@ function bevestigImport(){
   const importDatum=today();
   let count=0;
   let dubbel=0;
+  // Duplicaat-detectie als MULTISET, niet als "bestaat er één identieke?".
+  // Reden: twee ECHTE betalingen van hetzelfde bedrag op dezelfde dag met dezelfde
+  // omschrijving zijn geen dubbelen — die moeten allebei geïmporteerd worden. We
+  // slaan een rij alleen over als er nog een BESTAANDE identieke transactie "over"
+  // is die nog niet door deze import geclaimd is (= je importeert hetzelfde bestand
+  // of een overlappende periode opnieuw). Rijen binnen één en dezelfde CSV worden
+  // NOOIT als duplicaat van elkaar gezien.
+  const dupSleutel=(datum,bedrag,oms)=>`${datum}|${parseFloat(bedrag)}|${oms}`;
+  const bestaandTeller={};
+  DB.transacties.forEach(t=>{
+    const k=dupSleutel(t.datum,t.bedrag,t.omschrijving);
+    bestaandTeller[k]=(bestaandTeller[k]||0)+1;
+  });
   csvParsed.forEach(row=>{
     const m=getMappedRow(row);
     if(isNaN(m.bedrag)){return;}
-    // Duplicate check: zelfde datum + bedrag + omschrijving al aanwezig?
-    const isDuplicaat = DB.transacties.some(t=>
-      t.datum===m.datum &&
-      parseFloat(t.bedrag)===parseFloat(m.bedrag) &&
-      t.omschrijving===m.oms
-    );
-    if(isDuplicaat){ dubbel++; return; }
+    const k=dupSleutel(m.datum,m.bedrag,m.oms);
+    if(bestaandTeller[k]>0){
+      // Er staat nog een ongeclaimde identieke transactie in de administratie →
+      // deze rij is een her-import van een al bestaande transactie.
+      bestaandTeller[k]--;
+      dubbel++;
+      return;
+    }
     DB.transacties.push({id:uid(),datum:m.datum,omschrijving:m.oms,bedrag:m.bedrag,status:'ongekoppeld',gekoppeldAan:null,gekoppeldType:null,bankGbId:null,importId});
     count++;
   });

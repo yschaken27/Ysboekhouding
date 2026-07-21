@@ -154,6 +154,23 @@ Pas `toonBedrijfsKiezer()` nooit aan zonder dit laadblok intact te houden.
 (`urSnap.data().items||[]`). Lokaal wordt `DB.uren` ook als array bijgehouden (`DB.uren.push(ingave)`).
 Gebruik dus altijd `DB.uren||[]`, nooit `DB.uren?.items||[]` of `DB.uren.items` — `.items` is altijd `undefined`.
 
+### 15. Opslaan mag NOOIT verdwijnen bij bedrijf wisselen (bevestigde seriële cloud-save)
+De cloud-save in `state.js` is bewust bevestigd en serieel. Deze garanties mogen nooit teruggedraaid worden (bug juli 2026: "verwerk bankregels → wissel bedrijf → wijziging weg, en later dook een oudere versie weer op"):
+- `saveCloud()` pint bedrijf + data VAST bij het inplannen (`_pendingSaveData = { bedrijf: huidigBedrijf, data: _bouwSaveData() }`) — nooit pas bij het afvuren van de timer.
+- `_kickSave()` schrijft serieel via `_saveInFlight` (één write tegelijk; nieuwere versie erachteraan; bij faal terug in de wachtrij, geen auto-retry-lus).
+- `wisselBedrijf()` doet `await flushSave()` als ALLEREERSTE statement, vóór listeners stoppen / DB legen / `huidigBedrijf` wisselen. Deze `await` mag nooit weg.
+- `flushSave()` draait ook op `visibilitychange` (hidden) en best-effort op `beforeunload`.
+- `verwerkCloudData()` negeert inkomende Firebase-snapshots zolang `_heeftOnbevestigdeSave()` true is. De oude tijd-gok `_recentlySaved`/`_syncBezig`/`_pendingSave`/`_doSaveCloud` is verwijderd en mag NIET terugkeren.
+- `_bouwSaveData()` stuurt `imports` mee (anders wist `slaAllesOp()` de afschriftgeschiedenis, want die `.set()` overschrijft het hele doc).
+Controleer dit met de `sync-checker` agent (punt 8) na elke wijziging aan de save/load-flow.
+
+### 16. CSV-import duplicaatdetectie is een MULTISET, geen "bestaat er één identieke?"
+In `bank.js` → `bevestigImport()`: twee ECHTE betalingen van hetzelfde bedrag op dezelfde dag met dezelfde omschrijving zijn GEEN dubbelen en moeten allebei geïmporteerd worden. Sla een rij alleen over als er nog een BESTAANDE identieke transactie "over" is (her-import van hetzelfde bestand). Gebruik een telling (`bestaandTeller[sleutel]--`), nooit `DB.transacties.some(...)` — dat laatste gooit legitieme dubbele betalingen binnen dezelfde import weg. Rijen binnen één CSV mogen elkaar nooit als duplicaat zien.
+
+### 17. Grootboeksaldo-conventie: credit-normale rekeningen worden POSITIEF bewaard
+De hele app (`renderBalans`, `checkBalansEvenwicht`, factuurboekingen) bewaart passiva, eigen_vermogen en omzet als POSITIEVE credit-saldi; activa en kosten als positieve debet-saldi. De balansvergelijking is `totActiva == totPassiva + totEV + totOmzet − totKosten` (kale som van `g.saldo`, geen sign-flip).
+Elke boeking die grootboeksaldi muteert via debet/credit MOET het teken op rekeningtype baseren — nooit blind `debet? +bedrag : −bedrag` voor álle rekeningen (dan wordt een credit op eigen vermogen/passiva/omzet als minbedrag opgeslagen en klopt de balans niet). Gebruik `_memSaldoEffect(g, dc, bedrag)` in `btw-rapport.js`. Memoriaalboekingen slaan de toegepaste mutatie op als `r.effect`; `verwijderMemoriaal()` draait terug met `r.effect` en valt terug op de oude formule voor pre-fix boekingen (die fallback NOOIT verwijderen als "dode code" — bestaande gebruikersdata heeft boekingen zonder `.effect`). Contra-activa (accum afschrijving, type passiva) wordt in `renderBalans` via `Math.abs` getoond.
+
 ## Losse eindjes (geen risico)
 - Regel ~3976: stuurt nog ongebruikt `kassiers: DB.kassiers` mee
 - Regel ~1751: maakt nog leeg `kassiers: []` bij nieuw bedrijf
