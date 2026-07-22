@@ -171,6 +171,13 @@ In `bank.js` → `bevestigImport()`: twee ECHTE betalingen van hetzelfde bedrag 
 De hele app (`renderBalans`, `checkBalansEvenwicht`, factuurboekingen) bewaart passiva, eigen_vermogen en omzet als POSITIEVE credit-saldi; activa en kosten als positieve debet-saldi. De balansvergelijking is `totActiva == totPassiva + totEV + totOmzet − totKosten` (kale som van `g.saldo`, geen sign-flip).
 Elke boeking die grootboeksaldi muteert via debet/credit MOET het teken op rekeningtype baseren — nooit blind `debet? +bedrag : −bedrag` voor álle rekeningen (dan wordt een credit op eigen vermogen/passiva/omzet als minbedrag opgeslagen en klopt de balans niet). Gebruik `_memSaldoEffect(g, dc, bedrag)` in `btw-rapport.js`. Memoriaalboekingen slaan de toegepaste mutatie op als `r.effect`; `verwijderMemoriaal()` draait terug met `r.effect` en valt terug op de oude formule voor pre-fix boekingen (die fallback NOOIT verwijderen als "dode code" — bestaande gebruikersdata heeft boekingen zonder `.effect`). Contra-activa (accum afschrijving, type passiva) wordt in `renderBalans` via `Math.abs` getoond.
 
+### 18. Bankkoppeling boekt ALTIJD via `_boekTegenrekening()` — BTW-richting + teken
+Elke koppeling van een banktransactie aan een grootboekrekening in `bank.js` (`inlineBevestig` enkel + split, `snelKoppelGB`, `koppelBevestig`, `bevestigBulkKoppeling`) MOET `_boekTegenrekening(g, bedrag, btwTarief)` gebruiken — nooit met de hand `g.saldo += bedrag` + losse BTW-boeking. Die losse varianten liepen mis met drie fouten tegelijk:
+- BTW-bedrag met een haakjesfout (`...))*100)/100` → gaf voor €15 @ 9% −13,61 i.p.v. +1,24;
+- BTW altijd naar de eerste BTW-rekening (1500, activa) i.p.v. richting-afhankelijk: ontvangst → 1510 'te betalen' (passiva), uitgave → 1500 'te vorderen' (activa);
+- vol bedrag i.p.v. excl. op de rekening, én geen teken op rekeningtype → een uitgave op een kostenrekening werd negatief → balans ~2× scheef.
+`_boekTegenrekening` doet: excl. op de rekening met teken via type (credit-normaal = omzet/passiva/eigen_vermogen → +excl; anders −excl), en het BTW-deel op de richting-juiste BTW-rekening. Bij een gesplitste koppeling moeten de deelbedragen samen exact het bankbedrag dekken vóór er geboekt wordt. Controleer met `node` dat elke variant op €0 balansverschil uitkomt. Zie boekhoud-checker Check 9 en [[project-save-sync-model]] (conventie #17).
+
 ## Losse eindjes (geen risico)
 - Regel ~3976: stuurt nog ongebruikt `kassiers: DB.kassiers` mee
 - Regel ~1751: maakt nog leeg `kassiers: []` bij nieuw bedrijf

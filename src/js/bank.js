@@ -347,39 +347,32 @@ async function inlineBevestig(tId, totalBedrag){
   const why=document.getElementById(`iw-why-${tId}`)?.value||t.omschrijving;
   const btwTarief=inlineBTW[tId]||0;
 
-  function verwerkBTW(){
-    if(btwTarief<=0) return;
-    const btwBedrag=Math.round(Math.abs(bedrag)-(Math.abs(bedrag)/((100+btwTarief)/100))*100)/100;
-    const btwRek=DB.grootboek.find(g=>g.nummer==='2300'||g.nummer==='1500'||g.nummer==='1510'||g.naam.toLowerCase().includes('btw'));
-    if(btwRek) btwRek.saldo=(parseFloat(btwRek.saldo)||0)+(bedrag>=0?btwBedrag:-btwBedrag);
-  }
-
   if(splitsOpen){
     const rows=document.querySelectorAll(`#iw-splits-rows-${tId} .splits-row`);
-    let aantalRijen=0;
+    // Verzamel eerst de geldige gesplitste regels. Boek pas als ze samen exact het
+    // bankbedrag dekken — anders wordt de bank voor het volle bedrag geboekt terwijl
+    // er minder op de grootboekrekeningen komt (stille disbalans).
+    const splitsRegels=[];
     rows.forEach(r=>{
       const sel=r.querySelector('select'); const inp=r.querySelector('input[type="number"]');
       if(!sel||!inp||!sel.value||!inp.value) return;
       const [prefix,id]=sel.value.split(':');
+      if(prefix!=='gb') return;
+      const g=DB.grootboek.find(g=>g.id===id); if(!g) return;
       const deel=parseFloat(inp.value)||0;
-      if(prefix==='gb'){
-        const g=DB.grootboek.find(g=>g.id===id); if(!g) return;
-        // Bedrag excl. BTW op de rekening
-        const rowTarief=parseInt(r.dataset.btwTarief||0);
-        const exclBTW=Math.round((rowTarief>0?deel/((100+rowTarief)/100):deel)*100)/100;
-        g.saldo=(parseFloat(g.saldo)||0)+(bedrag>=0?exclBTW:-exclBTW);
-        // BTW op BTW rekening
-        if(rowTarief>0){
-          const btwBedrag=Math.round((deel-exclBTW)*100)/100;
-          const btwRek=DB.grootboek.find(g=>g.nummer==='2300'||g.nummer==='1500'||g.nummer==='1510'||g.naam.toLowerCase().includes('btw'));
-          if(btwRek) btwRek.saldo=(parseFloat(btwRek.saldo)||0)+(bedrag>=0?btwBedrag:-btwBedrag);
-        }
-      }
-      aantalRijen++;
+      if(deel<=0) return;
+      splitsRegels.push({g, deel, rowTarief:parseInt(r.dataset.btwTarief||0)});
     });
-    if(!aantalRijen){toast('Voeg minstens één gesplitste regel toe.','error');return;}
+    if(!splitsRegels.length){toast('Voeg minstens één gesplitste regel toe.','error');return;}
+    const somDeel=rond(splitsRegels.reduce((a,x)=>a+x.deel,0));
+    if(Math.abs(somDeel - Math.abs(bedrag)) > 0.01){
+      toast(`De gesplitste regels (${fmt(somDeel)}) moeten samen precies het bankbedrag (${fmt(Math.abs(bedrag))}) dekken.`,'error');
+      return;
+    }
+    // `deel` is een positief deelbedrag; teken volgt uit de banktransactie.
+    splitsRegels.forEach(x=>_boekTegenrekening(x.g, (bedrag>=0?x.deel:-x.deel), x.rowTarief));
     boekBank(t,bedrag);
-    t.gekoppeldAan=`Gesplitst (${aantalRijen} regels)`+(contact?' — '+contact:'');
+    t.gekoppeldAan=`Gesplitst (${splitsRegels.length} regels)`+(contact?' — '+contact:'');
     t.gekoppeldType='grootboek'; t.status='gekoppeld';
   } else {
     const selVal=document.getElementById(`iw-gb-${tId}`)?.value;
@@ -441,8 +434,8 @@ Wil je toch koppelen?`,
       boekBetalingsverschil(bedrag, f.totaalIncl);
     } else {
       const g=DB.grootboek.find(g=>g.id===id); if(!g) return;
-      g.saldo=(parseFloat(g.saldo)||0)+bedrag;
-      boekBank(t,bedrag); verwerkBTW();
+      _boekTegenrekening(g, bedrag, btwTarief);
+      boekBank(t,bedrag);
       t.gekoppeldAan=g.nummer+' — '+g.naam; t.gekoppeldType='grootboek'; t.status='gekoppeld';
       // Vaste activa detectie via directe bank koppeling (geen factuur)
       if(g.type==='vaste_activa'){
@@ -485,6 +478,33 @@ function getBankRekening(){
          DB.grootboek.find(g=>g.nummer==='1100')||
          DB.grootboek.find(g=>g.naam.toLowerCase().includes('bank'))||
          DB.grootboek.find(g=>g.type==='activa');
+}
+
+// Boekt een bankbedrag op een tegen-grootboekrekening volgens de juiste
+// boekhoudkundige conventie, zodat de balans ALTIJD klopt:
+//   - het bedrag EXCL. BTW komt op de gekozen rekening;
+//   - het teken volgt uit het rekeningtype: credit-normaal (omzet/passiva/eigen
+//     vermogen) boekt +excl, debet-normaal (kosten/activa) boekt −excl. Zo krijgt
+//     een uitgave op een kostenrekening een POSITIEF saldo (kosten stijgen) i.p.v.
+//     negatief, waardoor de balans niet meer 2× scheef loopt;
+//   - het BTW-deel gaat naar de RICHTING-juiste BTW-rekening: bij een ontvangst
+//     naar 1510 'BTW te betalen' (passiva), bij een uitgave naar 1500 'BTW te
+//     vorderen' (activa) — net als de factuurboekingen in facturen.js.
+// `bedrag` is het ONDERTEKENDE bankbedrag (ontvangst +, uitgave −).
+function _boekTegenrekening(g, bedrag, btwTarief){
+  bedrag = parseFloat(bedrag)||0;
+  btwTarief = parseFloat(btwTarief)||0;
+  const creditNorm = x => ['omzet','passiva','eigen_vermogen'].includes(x.type);
+  const exclSigned = rond(btwTarief>0 ? bedrag/((100+btwTarief)/100) : bedrag);
+  const btwSigned  = rond(bedrag - exclSigned);
+  g.saldo = rond((parseFloat(g.saldo)||0) + (creditNorm(g) ? exclSigned : -exclSigned));
+  if(btwTarief>0 && Math.abs(btwSigned) > 0.001){
+    const isInkomst = bedrag >= 0;
+    const btwRek = isInkomst
+      ? (DB.grootboek.find(x=>x.nummer==='1510') || DB.grootboek.find(x=>x.nummer==='1530') || DB.grootboek.find(x=>x.naam?.toLowerCase().includes('btw te betalen')))
+      : (DB.grootboek.find(x=>x.nummer==='1500') || DB.grootboek.find(x=>x.nummer==='1520') || DB.grootboek.find(x=>x.naam?.toLowerCase().includes('btw te vorderen')));
+    if(btwRek) btwRek.saldo = rond((parseFloat(btwRek.saldo)||0) + (creditNorm(btwRek) ? btwSigned : -btwSigned));
+  }
 }
 
 // Pas bankrekening saldo aan en sla referentie op in transactie
@@ -651,8 +671,8 @@ function bevestigBulkKoppeling(){
   ids.forEach(id=>{
     const t=DB.transacties.find(t=>t.id===id);
     if(!t||t.status==='gekoppeld') return;
-    // Tegenboeking op gekozen rekening
-    g.saldo=(parseFloat(g.saldo)||0)+parseFloat(t.bedrag);
+    // Tegenboeking op gekozen rekening (bulk kent geen BTW-tarief → 0)
+    _boekTegenrekening(g, parseFloat(t.bedrag), 0);
     // Bankboeking
     boekBank(t, t.bedrag);
     t.gekoppeldAan=g.nummer+' — '+g.naam;
@@ -756,13 +776,7 @@ function snelKoppelGB(tId, gId, suggestie){
   else if(suggestie?.omschrijving) t.omschrijving=suggestie.omschrijving;
   // BTW verwerking
   const btwTarief=suggestie?.btw||0;
-  const exclBTW=Math.round((btwTarief>0?bedrag/((100+btwTarief)/100):bedrag)*100)/100;
-  g.saldo=(parseFloat(g.saldo)||0)+exclBTW;
-  if(btwTarief>0){
-    const btwBedrag=Math.round((bedrag-exclBTW)*100)/100;
-    const btwRek=DB.grootboek.find(g=>g.nummer==='2300'||g.nummer==='1500'||g.nummer==='1510'||g.naam.toLowerCase().includes('btw'));
-    if(btwRek) btwRek.saldo=(parseFloat(btwRek.saldo)||0)+btwBedrag;
-  }
+  _boekTegenrekening(g, bedrag, btwTarief);
   boekBank(t, bedrag);
   t.gekoppeldAan=g.nummer+' — '+g.naam;
   t.gekoppeldType='grootboek'; t.status='gekoppeld';
@@ -1210,18 +1224,8 @@ function bevestigKoppeling(){
   } else {
     const g=DB.grootboek.find(g=>g.id===document.getElementById('koppel-gb-sel').value);
     if(g){
-      g.saldo=(parseFloat(g.saldo)||0)+parseFloat(t.bedrag);
+      _boekTegenrekening(g, parseFloat(t.bedrag), inlineBTW[t.id]||0);
       boekBank(t, t.bedrag);
-      const btwTarief=inlineBTW[t.id]||0;
-      if(btwTarief>0){
-        const bedrag=parseFloat(t.bedrag);
-        const btwBedrag=Math.round(Math.abs(bedrag)-(Math.abs(bedrag)/((100+btwTarief)/100))*100)/100;
-        const btwRek=DB.grootboek.find(r=>r.nummer==='2300'||r.nummer==='1500'||r.nummer==='1510'||r.naam.toLowerCase().includes('btw'));
-        if(btwRek){
-          btwRek.saldo=(parseFloat(btwRek.saldo)||0)+(bedrag<0?-btwBedrag:btwBedrag);
-          g.saldo=(parseFloat(g.saldo)||0)-(bedrag<0?-btwBedrag:btwBedrag);
-        }
-      }
       t.gekoppeldAan=g.nummer+' — '+g.naam; t.gekoppeldType='grootboek';
     }
   }
