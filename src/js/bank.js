@@ -36,7 +36,9 @@ function buildMapper(){
     return i>=0?i:-1;
   };
   const datumIdx=guessIdx(['transactiedatum','datum','date','dag']);
-  const omsIdx=guessIdx(['tegenrekeninghouder','omschrijving','description','naam','name','memo']);
+  const omsIdx=guessIdx(['tegenrekeninghouder','naam','name','omschrijving','description','memo']);
+  let detailIdx=guessIdx(['omschrijving','mededeling','description','memo','betalingskenmerk','kenmerk','opmerking']);
+  if(detailIdx===omsIdx) detailIdx=-1; // niet dezelfde kolom twee keer als titel én detail
   const bedragIdx=guessIdx(['bedrag','amount']);
   const tekenIdx=guessIdx(['creditdebet','cd','sign','teken','dc']);
   const creditIdx=-1;
@@ -49,9 +51,14 @@ function buildMapper(){
       <div class="col-sample" id="samp-datum"></div>
     </div>
     <div class="mapper-col">
-      <label>Omschrijving kolom</label>
+      <label>Naam / tegenrekeninghouder kolom</label>
       <select id="map-oms" onchange="updatePreview()">${options}</select>
       <div class="col-sample" id="samp-oms"></div>
+    </div>
+    <div class="mapper-col">
+      <label>Omschrijving / mededelingen kolom <span style="color:var(--text-dim);font-size:10px;">(optioneel)</span></label>
+      <select id="map-detail" onchange="updatePreview()">${noneOpt}${options}</select>
+      <div class="col-sample" id="samp-detail"></div>
     </div>
     <div class="mapper-col">
       <label>Bedrag kolom</label>
@@ -86,6 +93,7 @@ function buildMapper(){
   `;
   document.getElementById('map-datum').value=datumIdx>=0?datumIdx:0;
   document.getElementById('map-oms').value=omsIdx>=0?omsIdx:0;
+  document.getElementById('map-detail').value=detailIdx>=0?detailIdx:-1;
   document.getElementById('map-bedrag').value=bedragIdx>=0?bedragIdx:-1;
   document.getElementById('map-teken').value=tekenIdx>=0?tekenIdx:-1;
   document.getElementById('map-credit').value=-1;
@@ -123,6 +131,7 @@ function parseBedrag(str,dec){
 function getMappedRow(row){
   const dIdx=parseInt(document.getElementById('map-datum').value);
   const oIdx=parseInt(document.getElementById('map-oms').value);
+  const detIdx=parseInt(document.getElementById('map-detail')?.value ?? '-1');
   const bIdx=parseInt(document.getElementById('map-bedrag').value);
   const tIdx=parseInt(document.getElementById('map-teken').value);
   const cIdx=parseInt(document.getElementById('map-credit').value);
@@ -131,6 +140,7 @@ function getMappedRow(row){
 
   const datum=row[dIdx]||'';
   const oms=row[oIdx]||'';
+  const detail=detIdx>=0?(row[detIdx]||''):'';
   let bedrag=NaN;
 
   if(cIdx>=0||dIdxD>=0){
@@ -151,7 +161,7 @@ function getMappedRow(row){
       }
     }
   }
-  return {datum,oms,bedrag};
+  return {datum,oms,detail,bedrag};
 }
 
 function updatePreview(){
@@ -161,9 +171,11 @@ function updatePreview(){
   const tIdx=parseInt(document.getElementById('map-teken').value);
   const cIdx=parseInt(document.getElementById('map-credit').value);
   const dIdxD=parseInt(document.getElementById('map-debet').value);
+  const detIdx=parseInt(document.getElementById('map-detail')?.value ?? '-1');
   const first=csvParsed[0]||[];
   document.getElementById('samp-datum').textContent=first[dIdx]||'—';
   document.getElementById('samp-oms').textContent=first[oIdx]||'—';
+  const sd=document.getElementById('samp-detail'); if(sd) sd.textContent=detIdx>=0?(first[detIdx]||'—'):'—';
   document.getElementById('samp-bedrag').textContent=bIdx>=0?(first[bIdx]||'—'):'—';
   document.getElementById('samp-teken').textContent=tIdx>=0?(first[tIdx]||'—'):'—';
   document.getElementById('samp-credit').textContent=cIdx>=0?(first[cIdx]||'—'):'—';
@@ -177,7 +189,7 @@ function updatePreview(){
     const tekenVal=tIdx>=0?(row[tIdx]||''):'';
     return `<tr>
       <td>${m.datum}</td>
-      <td>${m.oms}${tekenVal?` <span style="font-size:10px;color:var(--text-dim);">[${tekenVal}]</span>`:''}</td>
+      <td>${m.oms}${tekenVal?` <span style="font-size:10px;color:var(--text-dim);">[${tekenVal}]</span>`:''}${m.detail?`<div style="font-size:10px;color:var(--text-dim);">${m.detail}</div>`:''}</td>
       <td class="mono ${cls}">${bedragOK?fmt(m.bedrag):'<span style="color:var(--danger)">⚠ niet herkend</span>'}</td>
     </tr>`;
   }).join('');
@@ -213,7 +225,7 @@ function bevestigImport(){
       dubbel++;
       return;
     }
-    DB.transacties.push({id:uid(),datum:m.datum,omschrijving:m.oms,bedrag:m.bedrag,status:'ongekoppeld',gekoppeldAan:null,gekoppeldType:null,bankGbId:null,importId});
+    DB.transacties.push({id:uid(),datum:m.datum,omschrijving:m.oms,detail:m.detail||'',bedrag:m.bedrag,status:'ongekoppeld',gekoppeldAan:null,gekoppeldType:null,bankGbId:null,importId});
     count++;
   });
   // Sla import op in geschiedenis
@@ -837,6 +849,7 @@ function renderTransacties(resetPagina){
     const leftHTML=`<div class="rec-left">
       <div class="rec-meta">${t.datum}</div>
       <div class="rec-oms" title="${t.omschrijving}">${t.omschrijving}</div>
+      ${t.detail?`<div class="rec-detail" title="${esc(t.detail)}" style="font-size:11px;color:var(--text-dim);margin-top:2px;line-height:1.35;">${esc(t.detail)}</div>`:''}
       <div class="rec-bedrag-wrap" style="margin-top:6px;">
         ${isPos
           ? `<div class="rec-bedrag-col"><span>Ontvangen</span><span class="amount-pos">${fmt(bedrag)}</span></div>`
