@@ -505,13 +505,29 @@ function renderBalans(){
 }
 
 // ===== P&L =====
+// Robuuste datumparser: begrijpt ISO (YYYY-MM-DD) ÉN Europese notatie
+// (DD-MM-YYYY of DD/MM/YYYY, zoals bankexports vaak geven). Retourneert
+// {jaar, maand, dag} als getallen, of null. Nodig omdat banktransacties de
+// CSV-datum ongewijzigd bewaren en die lang niet altijd ISO is — anders viel
+// bank-omzet buiten het jaar/maand-filter van de P&L.
+function _parseDatum(s){
+  if(!s) return null;
+  s = String(s).trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m) return {jaar:+m[1], maand:+m[2], dag:+m[3]};
+  m = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
+  if(m) return {jaar:+m[3], maand:+m[2], dag:+m[1]};
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : {jaar:d.getFullYear(), maand:d.getMonth()+1, dag:d.getDate()};
+}
+
 function vulJaarDropdowns(){
   // Vul jaar dropdowns voor balans, P&L en vergelijking
   const jaren = [...new Set([
-    ...DB.verkoop.map(f=>f.datum?.substring(0,4)),
-    ...DB.inkoop.map(f=>f.datum?.substring(0,4)),
-    ...DB.transacties.map(t=>t.datum?.substring(0,4)),
-  ].filter(Boolean))].sort().reverse();
+    ...DB.verkoop.map(f=>_parseDatum(f.datum)?.jaar),
+    ...DB.inkoop.map(f=>_parseDatum(f.datum)?.jaar),
+    ...DB.transacties.map(t=>_parseDatum(t.datum)?.jaar),
+  ].filter(Boolean).map(String))].sort().reverse();
   if(!jaren.length) jaren.push(new Date().getFullYear().toString());
 
   ['balans-jaar','pl-jaar','pl-vergelijk-jaar'].forEach(id=>{
@@ -536,10 +552,10 @@ function berekenPLVoorPeriode(maand, jaar){
   const ks = isKasstelsel();
 
   function inPeriode(datumStr){
-    if(!datumStr) return false;
-    const d = new Date(datumStr);
-    const jaarMatch = !jaar || d.getFullYear().toString() === jaar.toString();
-    const maandMatch = !maand || (d.getMonth()+1).toString() === maand.toString();
+    const p = _parseDatum(datumStr);
+    if(!p) return false;
+    const jaarMatch = !jaar || p.jaar.toString() === jaar.toString();
+    const maandMatch = !maand || p.maand.toString() === maand.toString();
     return jaarMatch && maandMatch;
   }
 
