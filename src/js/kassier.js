@@ -312,7 +312,10 @@ function _vulMobUrenMaandFilter(){
   const opties = [];
   for(let i = 0; i < 6; i++){
     const d = new Date(nu.getFullYear(), nu.getMonth() - i, 1);
-    const val = d.toISOString().slice(0,7); // 'YYYY-MM'
+    // LOKALE jaar-maand, niet toISOString(): die zet 1 juli 00:00 (UTC+2) terug naar
+    // 30 juni 22:00 UTC → '2026-06', waardoor de optie "juli" op juni ging filteren
+    // en de echte huidige maand helemaal geen optie kreeg.
+    const val = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
     const label = d.toLocaleDateString('nl-NL',{month:'long',year:'numeric'});
     opties.push(`<option value="${val}">${label}</option>`);
   }
@@ -324,7 +327,8 @@ function renderMobUrenLijst(){
   if(!el) return;
   _vulMobUrenMaandFilter();
   const sel = document.getElementById('mob-uren-maand-filter');
-  const filterMaand = sel?.value || new Date().toISOString().slice(0,7);
+  const _nu = new Date();
+  const filterMaand = sel?.value || (_nu.getFullYear() + '-' + String(_nu.getMonth()+1).padStart(2,'0'));
   // Gezamenlijke lijst: alle uren van het bedrijf, niet alleen eigen ingaves.
   const lijst = (DB.uren||[])
     .filter(u=> (u.datum||'').slice(0,7)===filterMaand)

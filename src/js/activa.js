@@ -618,11 +618,12 @@ function renderMobDashboard(){
       const btwFactor = DB.profiel?.urenZonderBtw ? 0 : 0.21;
       const urenOmzetIncl = Math.round(urenOmzetExcl * (1 + btwFactor) * 100) / 100;
       const urenGoedgekeurd = alleUren.filter(u=>u.status==='goedgekeurd').length;
+      const urenIngediend = alleUren.filter(u=>u.status==='ingediend').length;
       const totaalUren = alleUren.reduce((s,u)=>s+(parseFloat(u.uren)||0),0);
       const set2 = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
       set2('mob-uren-omzet', mobFmtEur(urenOmzetExcl));
       set2('mob-uren-omzet-incl', mobFmtEur(urenOmzetIncl));
-      set2('mob-uren-ingediend', alleUren.length);
+      set2('mob-uren-ingediend', urenIngediend);
       set2('mob-uren-goedgekeurd', urenGoedgekeurd);
       set2('mob-uren-totaal', totaalUren % 1 === 0 ? totaalUren+'u' : totaalUren.toFixed(1)+'u');
     }
