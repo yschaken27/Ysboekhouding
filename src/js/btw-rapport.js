@@ -571,14 +571,24 @@ function berekenPLVoorPeriode(maand, jaar){
   const kostenPerRek = {};
   const add = (map, id, bedrag) => { const k = id || 'overig'; map[k] = (map[k]||0) + bedrag; };
 
-  verkoop.forEach(f=>{
+  // Verdeel een factuur over grootboekrekeningen: gebruik de regels (per r.gbId) als
+  // die samen het totaal dekken; anders — bv. een uren-factuur die GEEN regels heeft,
+  // alleen totaalExcl — het hele bedrag op de standaard omzet-/kostenrekening. Zo
+  // verdwijnt uren-omzet niet uit de P&L (dat was een regressie).
+  const verdeelFactuur = (map, f, fallbackType) => {
     const ratio = _getBetaaldRatio(f);
-    (f.regels||[]).forEach(r=> add(omzetPerRek, r.gbId, (parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0)*ratio));
-  });
-  inkoop.forEach(f=>{
-    const ratio = _getBetaaldRatio(f);
-    (f.regels||[]).forEach(r=> add(kostenPerRek, r.gbId, (parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0)*ratio));
-  });
+    const regels = f.regels||[];
+    const regelSom = regels.reduce((a,r)=>a+(parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0),0);
+    const totExcl = parseFloat(f.totaalExcl||0);
+    if(regels.length && Math.abs(regelSom - totExcl) < 0.02){
+      regels.forEach(r=> add(map, r.gbId, (parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0)*ratio));
+    } else {
+      const rek = DB.grootboek.find(g=>g.type===fallbackType);
+      add(map, rek?.id, totExcl*ratio);
+    }
+  };
+  verkoop.forEach(f=> verdeelFactuur(omzetPerRek, f, 'omzet'));
+  inkoop.forEach(f=> verdeelFactuur(kostenPerRek, f, 'kosten'));
 
   // Directe bankboekingen op een grootboekrekening. Rekening bij voorkeur via
   // t.tegenrekeningId (nieuw), anders via de tekst in gekoppeldAan (oude data).
