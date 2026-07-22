@@ -130,6 +130,7 @@ function renderGB(){
     <td><span class="badge ${tb[g.type]||'badge-gray'}">${tl[g.type]||g.type}</span></td>
     <td class="mono ${parseFloat(g.saldo)<0?'amount-neg':''}">${fmt(g.saldo)}</td>
     <td style="white-space:nowrap;">
+      <button class="btn btn-secondary btn-sm" onclick="openGrootboekkaart('${g.id}')">Kaart</button>
       <button class="btn btn-secondary btn-sm" onclick="openGBModal('${g.id}')">Bewerk</button>
       <button class="btn btn-danger btn-sm" onclick="verwijderGB('${g.id}')">✕</button>
     </td>
@@ -418,7 +419,7 @@ function renderBalans(){
       let accumTot = 0;
 
       // Toon het actief
-      activaHTML += `<div class="report-row">
+      activaHTML += `<div class="report-row" style="cursor:pointer;" onclick="openGrootboekkaart('${g.id}')" title="Bekijk grootboekkaart">
         <span class="indent" style="font-weight:500;">${g.nummer} — ${g.naam}</span>
         <span class="mono">${fmt(aanschaf)}</span>
       </div>`;
@@ -469,14 +470,14 @@ function renderBalans(){
   if(vlottendeActiva.length){
     activaHTML += `<div class="report-row subtotal" style="margin-top:12px;"><span>Vlottende activa</span><span></span></div>`;
     vlottendeActiva.forEach(g=>{
-      activaHTML += `<div class="report-row"><span class="indent">${g.nummer} — ${g.naam}</span><span class="mono">${fmt(parseFloat(g.saldo||0))}</span></div>`;
+      activaHTML += `<div class="report-row" style="cursor:pointer;" onclick="openGrootboekkaart('${g.id}')" title="Bekijk grootboekkaart"><span class="indent">${g.nummer} — ${g.naam}</span><span class="mono">${fmt(parseFloat(g.saldo||0))}</span></div>`;
     });
   }
 
   if(overigeActiva.length){
     activaHTML += `<div class="report-row subtotal" style="margin-top:12px;"><span>Overige activa</span><span></span></div>`;
     overigeActiva.forEach(g=>{
-      activaHTML += `<div class="report-row"><span class="indent">${g.nummer} — ${g.naam}</span><span class="mono">${fmt(parseFloat(g.saldo||0))}</span></div>`;
+      activaHTML += `<div class="report-row" style="cursor:pointer;" onclick="openGrootboekkaart('${g.id}')" title="Bekijk grootboekkaart"><span class="indent">${g.nummer} — ${g.naam}</span><span class="mono">${fmt(parseFloat(g.saldo||0))}</span></div>`;
     });
   }
 
@@ -487,13 +488,13 @@ function renderBalans(){
   if(passiva.length){
     passivaHTML += `<div class="report-row subtotal" style="margin-top:4px;"><span>Vreemd vermogen</span><span></span></div>`;
     passiva.forEach(g=>{
-      passivaHTML += `<div class="report-row"><span class="indent">${g.nummer} — ${g.naam}</span><span class="mono">${fmt(parseFloat(g.saldo||0))}</span></div>`;
+      passivaHTML += `<div class="report-row" style="cursor:pointer;" onclick="openGrootboekkaart('${g.id}')" title="Bekijk grootboekkaart"><span class="indent">${g.nummer} — ${g.naam}</span><span class="mono">${fmt(parseFloat(g.saldo||0))}</span></div>`;
     });
   }
   if(eigenVermogen.length || Math.abs(resultaat) > 0.005){
     passivaHTML += `<div class="report-row subtotal" style="margin-top:12px;"><span>Eigen vermogen</span><span></span></div>`;
     eigenVermogen.forEach(g=>{
-      passivaHTML += `<div class="report-row"><span class="indent">${g.nummer} — ${g.naam}</span><span class="mono">${fmt(parseFloat(g.saldo||0))}</span></div>`;
+      passivaHTML += `<div class="report-row" style="cursor:pointer;" onclick="openGrootboekkaart('${g.id}')" title="Bekijk grootboekkaart"><span class="indent">${g.nummer} — ${g.naam}</span><span class="mono">${fmt(parseFloat(g.saldo||0))}</span></div>`;
     });
     passivaHTML += `<div class="report-row"><span class="indent">Resultaat boekjaar (winst/verlies)</span><span class="mono">${fmt(resultaat)}</span></div>`;
   }
@@ -633,10 +634,12 @@ function renderPL(){
     ? `<span class="mono" style="color:var(--text-mid);min-width:100px;text-align:right;">` 
     : '';
 
-  function rij(naam, hBedrag, vBedrag, cls=''){
+  function rij(naam, hBedrag, vBedrag, cls='', gbId=null){
     const diff = vergelijk ? hBedrag - vBedrag : null;
     const diffKleur = diff === null ? '' : diff > 0 ? 'color:#16a34a' : diff < 0 ? 'color:#dc2626' : '';
-    return `<div class="report-row ${cls}" style="gap:8px;">
+    const klikAttr = gbId ? `onclick="openGrootboekkaart('${gbId}')" title="Bekijk grootboekkaart"` : '';
+    const cursor = gbId ? 'cursor:pointer;' : '';
+    return `<div class="report-row ${cls}" style="gap:8px;${cursor}" ${klikAttr}>
       <span class="indent" style="flex:1">${naam}</span>
       <span class="mono" style="min-width:110px;text-align:right;">${fmt(hBedrag)}</span>
       ${heeftVergelijk ? `<span class="mono" style="min-width:110px;text-align:right;color:var(--text-mid);">${fmt(vBedrag)}</span>` : ''}
@@ -653,17 +656,31 @@ function renderPL(){
       <span style="min-width:80px;text-align:right;">Verschil</span>
     </div>` : '';
 
-  // Omzet rijen
+  // Omzet rijen — per grootboekrekening (klikbaar naar de grootboekkaart)
   let oHTML = header;
-  oHTML += rij('Verkoopfacturen', huidig.factuurOmzet, vergelijk?.factuurOmzet||0);
+  const omzetIds = Object.keys(huidig.omzetPerRek||{});
+  if(omzetIds.length){
+    omzetIds.forEach(rekId=>{
+      const g = DB.grootboek.find(x=>x.id===rekId);
+      const naam = g ? (g.nummer+' — '+g.naam) : 'Overige omzet';
+      oHTML += rij(naam, huidig.omzetPerRek[rekId]||0, vergelijk?.omzetPerRek?.[rekId]||0, '', g?rekId:null);
+    });
+  } else {
+    oHTML += rij('Verkoopfacturen', huidig.factuurOmzet, vergelijk?.factuurOmzet||0);
+  }
   const totO_v = vergelijk?.totOmzet||0;
 
-  // Kosten rijen
+  // Kosten rijen — per grootboekrekening (klikbaar), plus directe bankuitgaven
   let kHTML = '';
-  kHTML += rij('Inkoopfacturen', huidig.inkoopKosten, vergelijk?.inkoopKosten||0);
+  Object.keys(huidig.kostenPerRek||{}).forEach(rekId=>{
+    const g = DB.grootboek.find(x=>x.id===rekId);
+    const naam = g ? (g.nummer+' — '+g.naam) : 'Overige kosten';
+    kHTML += rij(naam, huidig.kostenPerRek[rekId]||0, vergelijk?.kostenPerRek?.[rekId]||0, '', g?rekId:null);
+  });
   if(huidig.bankKosten > 0 || (vergelijk?.bankKosten||0) > 0){
     kHTML += rij('Bankuitgaven (direct)', huidig.bankKosten, vergelijk?.bankKosten||0);
   }
+  if(!kHTML) kHTML = rij('Inkoopfacturen', huidig.inkoopKosten, vergelijk?.inkoopKosten||0);
   const totK_v = vergelijk?.totKosten||0;
 
   // Resultaat
@@ -687,6 +704,124 @@ function renderPL(){
       ${heeftVergelijk ? `<span class="mono" style="min-width:110px;text-align:right;color:var(--text-mid);">${fmt(Math.abs(resV))}</span>` : ''}
       ${heeftVergelijk && resDiff!==null ? `<span class="mono" style="min-width:80px;text-align:right;${resDiff>=0?'color:#16a34a':'color:#dc2626'}">${resDiff>=0?'+':''}${fmt(resDiff)}</span>` : ''}
     </div>`;
+}
+
+// ===== GROOTBOEKKAART (drill-down vanuit Balans / P&L / Grootboek) =====
+// Read-only: reconstrueert alle boekingen op één grootboekrekening uit de bestaande
+// data (facturen, banktransacties, memoriaal). Een sluitregel "Niet-toegewezen" vangt
+// wat niet exact te herleiden is (gesplitste/BTW-bankregels, betalingsverschillen,
+// transfers), zodat de kaart ALTIJD eindigt op het echte rekeningsaldo (g.saldo blijft
+// de bron van waarheid). `effect` = de ondertekende mutatie op het saldo van deze rekening.
+function bouwGrootboekkaart(gbId){
+  const g = DB.grootboek.find(x=>x.id===gbId);
+  if(!g) return null;
+  const nr = String(g.nummer||'');
+  const creditNorm = ['omzet','passiva','eigen_vermogen'].includes(g.type);
+  const btwTeBetalen = (nr==='1510'||nr==='1530');
+  const btwTeVorderen = (nr==='1500'||nr==='1520');
+  const posten = [];
+
+  (DB.verkoop||[]).forEach(f=>{
+    const d=f.datum||'';
+    (f.regels||[]).forEach(r=>{
+      if(String(r.gbId||'')===gbId){
+        const excl=rond((parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0));
+        if(Math.abs(excl)>0.005) posten.push({datum:d,bron:'Verkoopfactuur '+(f.nummer||''),oms:f.klant||r.omschrijving||'',effect:excl,ref:{p:'verkoop',id:f.id}});
+      }
+    });
+    if(nr==='1300'){ const v=rond(parseFloat(f.totaalIncl||0)); if(Math.abs(v)>0.005) posten.push({datum:d,bron:'Verkoopfactuur '+(f.nummer||''),oms:'Debiteur — '+(f.klant||''),effect:v,ref:{p:'verkoop',id:f.id}}); }
+    if(btwTeBetalen){ const v=rond(parseFloat(f.btwBedrag||0)); if(v>0.005) posten.push({datum:d,bron:'Verkoopfactuur '+(f.nummer||''),oms:'BTW te betalen',effect:v,ref:{p:'verkoop',id:f.id}}); }
+  });
+  (DB.inkoop||[]).forEach(f=>{
+    const d=f.datum||'';
+    (f.regels||[]).forEach(r=>{
+      if(String(r.gbId||'')===gbId){
+        const excl=rond((parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0));
+        if(Math.abs(excl)>0.005) posten.push({datum:d,bron:'Inkoopfactuur '+(f.nummer||''),oms:f.klant||r.omschrijving||'',effect:excl,ref:{p:'inkoop',id:f.id}});
+      }
+    });
+    if(nr==='2100'){ const v=rond(parseFloat(f.totaalIncl||0)); if(Math.abs(v)>0.005) posten.push({datum:d,bron:'Inkoopfactuur '+(f.nummer||''),oms:'Crediteur — '+(f.klant||''),effect:v,ref:{p:'inkoop',id:f.id}}); }
+    if(btwTeVorderen){ const v=rond(parseFloat(f.btwBedrag||0)); if(v>0.005) posten.push({datum:d,bron:'Inkoopfactuur '+(f.nummer||''),oms:'BTW te vorderen',effect:v,ref:{p:'inkoop',id:f.id}}); }
+  });
+  (DB.transacties||[]).forEach(t=>{
+    const d=t.datum||''; const bedrag=rond(parseFloat(t.bedrag)||0);
+    if(String(t.bankGbId||'')===gbId && Math.abs(bedrag)>0.005){
+      posten.push({datum:d,bron:'Bank',oms:t.omschrijving||'',effect:bedrag,ref:{p:'bank'}});
+    }
+    if(t.status!=='gekoppeld') return;
+    const koppelStr = typeof t.gekoppeldAan==='string' ? t.gekoppeldAan : '';
+    if(t.gekoppeldType==='grootboek' && koppelStr.startsWith(nr+' — ')){
+      const eff = creditNorm ? bedrag : -bedrag; // excl. onbekend bij BTW → sluitregel vangt de rest
+      if(Math.abs(eff)>0.005) posten.push({datum:d,bron:'Bankkoppeling',oms:t.omschrijving||'',effect:eff,ref:{p:'bank'}});
+    }
+    if(t.gekoppeldType==='verkoop' && nr==='1300' && Math.abs(bedrag)>0.005){
+      posten.push({datum:d,bron:'Bankbetaling',oms:'Ontvangst — '+(koppelStr||t.omschrijving||''),effect:-Math.abs(bedrag),ref:{p:'bank'}});
+    }
+    if(t.gekoppeldType==='inkoop' && nr==='2100' && Math.abs(bedrag)>0.005){
+      posten.push({datum:d,bron:'Bankbetaling',oms:'Betaling — '+(koppelStr||t.omschrijving||''),effect:-Math.abs(bedrag),ref:{p:'bank'}});
+    }
+  });
+  (DB.memoriaal||[]).forEach(m=>{
+    (m.regels||[]).forEach(r=>{
+      if(String(r.gbId||'')===gbId){
+        const eff = (r.effect!==undefined) ? rond(r.effect) : rond(r.dc==='debet'?r.bedrag:-r.bedrag);
+        if(Math.abs(eff)>0.005) posten.push({datum:m.datum||'',bron:m.oms||'Memoriaalboeking',oms:r.oms||'',effect:eff,ref:{p:'memoriaal'}});
+      }
+    });
+  });
+
+  posten.sort((a,b)=>String(a.datum).localeCompare(String(b.datum)));
+  let som=0;
+  posten.forEach(p=>{ som=rond(som+p.effect); p.saldo=som; });
+  const werkelijk=rond(parseFloat(g.saldo)||0);
+  const verschil=rond(werkelijk-som);
+  if(Math.abs(verschil)>0.005){
+    posten.push({datum:'',bron:'Niet-toegewezen / correctie',oms:'o.a. gesplitste of BTW-bankregels, betalingsverschillen, transfers',effect:verschil,saldo:werkelijk,ref:null});
+  }
+  return { g, nr, naam:g.naam, saldo:werkelijk, posten };
+}
+
+let _gbkPosten = [];
+function openGrootboekkaart(gbId){
+  const data = bouwGrootboekkaart(gbId);
+  if(!data){ toast('Rekening niet gevonden.','error'); return; }
+  _gbkPosten = data.posten;
+  const tEl=document.getElementById('gbk-titel'); if(tEl) tEl.textContent='Grootboekkaart — '+data.nr+' '+data.naam;
+  const kop = `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;">
+      <span style="font-size:12px;color:var(--text-dim);">${data.posten.length} boeking(en)</span>
+      <span style="font-size:13px;">Eindsaldo: <strong class="mono ${data.saldo<0?'amount-neg':''}">${fmt(data.saldo)}</strong></span>
+    </div>`;
+  let body;
+  if(!data.posten.length){
+    body = kop + `<div class="empty"><p>Nog geen boekingen op deze rekening.</p></div>`;
+  } else {
+    const thStyle='style="text-align:left;padding:7px 8px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;"';
+    const tdStyle='padding:7px 8px;border-bottom:1px solid var(--border);vertical-align:top;';
+    body = kop + `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr>
+        <th ${thStyle}>Datum</th><th ${thStyle}>Boeking</th>
+        <th ${thStyle} style="text-align:right;padding:7px 8px;border-bottom:1px solid var(--border);">Bedrag</th>
+        <th ${thStyle} style="text-align:right;padding:7px 8px;border-bottom:1px solid var(--border);">Saldo</th>
+      </tr></thead>
+      <tbody>${data.posten.map((p,i)=>`<tr ${p.ref?`onclick="gbkOpenBron(${i})" style="cursor:pointer;"`:''}>
+        <td class="mono" style="${tdStyle}white-space:nowrap;">${p.datum||'—'}</td>
+        <td style="${tdStyle}"><div style="font-weight:500;">${esc(p.bron)}</div>${p.oms?`<div style="font-size:11px;color:var(--text-dim);margin-top:1px;">${esc(p.oms)}</div>`:''}</td>
+        <td class="mono ${p.effect>=0?'amount-pos':'amount-neg'}" style="${tdStyle}text-align:right;white-space:nowrap;">${p.effect>=0?'+':''}${fmt(p.effect)}</td>
+        <td class="mono" style="${tdStyle}text-align:right;white-space:nowrap;">${fmt(p.saldo)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+  }
+  const bEl=document.getElementById('gbk-body'); if(bEl) bEl.innerHTML=body;
+  openModal('modal-grootboekkaart');
+}
+
+function gbkOpenBron(i){
+  const p = _gbkPosten[i]; if(!p||!p.ref) return;
+  closeModal('modal-grootboekkaart');
+  const r = p.ref;
+  if((r.p==='verkoop'||r.p==='inkoop') && typeof openFactuurModal==='function') openFactuurModal(r.p, r.id);
+  else if(r.p==='bank' && typeof showPage==='function') showPage('bank');
+  else if(r.p==='memoriaal' && typeof showPage==='function') showPage('memoriaal');
 }
 
 // ===== MEMORIAAL =====

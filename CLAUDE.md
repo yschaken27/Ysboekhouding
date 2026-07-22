@@ -178,6 +178,15 @@ Elke koppeling van een banktransactie aan een grootboekrekening in `bank.js` (`i
 - vol bedrag i.p.v. excl. op de rekening, én geen teken op rekeningtype → een uitgave op een kostenrekening werd negatief → balans ~2× scheef.
 `_boekTegenrekening` doet: excl. op de rekening met teken via type (credit-normaal = omzet/passiva/eigen_vermogen → +excl; anders −excl), en het BTW-deel op de richting-juiste BTW-rekening. Bij een gesplitste koppeling moeten de deelbedragen samen exact het bankbedrag dekken vóór er geboekt wordt. Controleer met `node` dat elke variant op €0 balansverschil uitkomt. Zie boekhoud-checker Check 9 en [[project-save-sync-model]] (conventie #17).
 
+### 19. Grootboekkaart = read-only reconstructie, sluit altijd op `g.saldo`
+De grootboekkaart (drill-down vanuit Balans, P&L en de Grootboek-tab) is een READ-ONLY weergave in `btw-rapport.js` — hij muteert NOOIT saldi. `bouwGrootboekkaart(gbId)` reconstrueert de boekingen per rekening uit de bestaande data:
+- **Facturen** (`DB.verkoop`/`DB.inkoop`): omzet/kosten via `r.gbId` (excl. = aantal×prijs), debiteuren 1300 / crediteuren 2100 = totaalIncl, BTW naar 1510/1530 (verkoop) of 1500/1520 (inkoop) = btwBedrag.
+- **Banktransacties**: de bankrekening zelf (`t.bankGbId`) = bedrag; directe grootboek-koppeling (tegenrekening via `t.gekoppeldAan` startsWith `nr — `) met teken op rekeningtype; factuurbetaling boekt 1300/2100 af.
+- **Memoriaal**: `r.gbId` met `r.effect` (exacte mutatie; fallback op dc/bedrag voor oude boekingen).
+
+`effect` = de ondertekende mutatie op het saldo van díe rekening (credit-normale rekening → +excl, anders −excl). Omdat niet alles exact te herleiden is (gesplitste bankregels, BTW-excl van bankkoppelingen, betalingsverschillen, transfers), wordt een **sluitregel "Niet-toegewezen / correctie"** = `g.saldo − som(effecten)` toegevoegd, zodat de kaart ALTIJD eindigt op het echte rekeningsaldo. `g.saldo` blijft de bron van waarheid; de kaart mag daar nooit overheen schrijven.
+Ingangen: `openGrootboekkaart(gbId)` (modal `#modal-grootboekkaart` in index.html) vanuit klikbare Balans-regels, per-rekening P&L-rijen (`rij(...,gbId)`) en de "Kaart"-knop in `renderGB`. Regels zijn doorklikbaar via `gbkOpenBron()` naar de factuur/bank/memoriaal. Wil je ooit exacte cent-precisie (ook splitsingen), vervang dit door een echt grootboek-logboek (aanpak B) — dat raakt wél alle boekingscode.
+
 ## Losse eindjes (geen risico)
 - Regel ~3976: stuurt nog ongebruikt `kassiers: DB.kassiers` mee
 - Regel ~1751: maakt nog leeg `kassiers: []` bij nieuw bedrijf
