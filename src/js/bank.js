@@ -386,6 +386,8 @@ async function inlineBevestig(tId, totalBedrag){
     boekBank(t,bedrag);
     t.gekoppeldAan=`Gesplitst (${splitsRegels.length} regels)`+(contact?' — '+contact:'');
     t.gekoppeldType='grootboek'; t.status='gekoppeld';
+    // Bewaar de deelregels zodat de P&L/grootboekkaart de omzet/kosten per categorie ziet.
+    t.splitsRegels = splitsRegels.map(x=>({gbId:x.g.id, bedrag:(bedrag>=0?x.deel:-x.deel), btwTarief:x.rowTarief||0}));
   } else {
     const selVal=document.getElementById(`iw-gb-${tId}`)?.value;
     if(!selVal){toast('Kies een rekening of factuur.','error');return;}
@@ -449,6 +451,7 @@ Wil je toch koppelen?`,
       _boekTegenrekening(g, bedrag, btwTarief);
       boekBank(t,bedrag);
       t.gekoppeldAan=g.nummer+' — '+g.naam; t.gekoppeldType='grootboek'; t.status='gekoppeld';
+      t.tegenrekeningId=g.id; t.btwTarief=btwTarief; // voor exacte P&L/grootboekkaart (excl. BTW)
       // Vaste activa detectie via directe bank koppeling (geen factuur)
       if(g.type==='vaste_activa'){
         const alBestaand=(DB.vasteActiva||[]).some(a=>a.factuurId===t.id);
@@ -689,6 +692,7 @@ function bevestigBulkKoppeling(){
     boekBank(t, t.bedrag);
     t.gekoppeldAan=g.nummer+' — '+g.naam;
     t.gekoppeldType='grootboek';
+    t.tegenrekeningId=g.id; t.btwTarief=0;
     t.status='gekoppeld';
   });
   save();
@@ -792,6 +796,7 @@ function snelKoppelGB(tId, gId, suggestie){
   boekBank(t, bedrag);
   t.gekoppeldAan=g.nummer+' — '+g.naam;
   t.gekoppeldType='grootboek'; t.status='gekoppeld';
+  t.tegenrekeningId=g.id; t.btwTarief=btwTarief; // voor exacte P&L/grootboekkaart (excl. BTW)
   save(); updateBankStats();
   toast(`Geboekt op ${g.nummer} — ${g.naam}`,'success');
   renderTransacties(false);
@@ -1240,6 +1245,7 @@ function bevestigKoppeling(){
       _boekTegenrekening(g, parseFloat(t.bedrag), inlineBTW[t.id]||0);
       boekBank(t, t.bedrag);
       t.gekoppeldAan=g.nummer+' — '+g.naam; t.gekoppeldType='grootboek';
+      t.tegenrekeningId=g.id; t.btwTarief=(inlineBTW[t.id]||0); // voor exacte P&L/grootboekkaart
     }
   }
   t.status='gekoppeld';

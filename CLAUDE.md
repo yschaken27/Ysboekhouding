@@ -187,6 +187,17 @@ De grootboekkaart (drill-down vanuit Balans, P&L en de Grootboek-tab) is een REA
 `effect` = de ondertekende mutatie op het saldo van díe rekening (credit-normale rekening → +excl, anders −excl). Omdat niet alles exact te herleiden is (gesplitste bankregels, BTW-excl van bankkoppelingen, betalingsverschillen, transfers), wordt een **sluitregel "Niet-toegewezen / correctie"** = `g.saldo − som(effecten)` toegevoegd, zodat de kaart ALTIJD eindigt op het echte rekeningsaldo. `g.saldo` blijft de bron van waarheid; de kaart mag daar nooit overheen schrijven.
 Ingangen: `openGrootboekkaart(gbId)` (modal `#modal-grootboekkaart` in index.html) vanuit klikbare Balans-regels, per-rekening P&L-rijen (`rij(...,gbId)`) en de "Kaart"-knop in `renderGB`. Regels zijn doorklikbaar via `gbkOpenBron()` naar de factuur/bank/memoriaal. Wil je ooit exacte cent-precisie (ook splitsingen), vervang dit door een echt grootboek-logboek (aanpak B) — dat raakt wél alle boekingscode.
 
+### 20. P&L is categorie-gebaseerd uit ALLE bronnen (niet alleen facturen)
+`berekenPLVoorPeriode` (btw-rapport.js) bouwt `omzetPerRek` en `kostenPerRek` per grootboekrekening uit drie bronnen samen — nooit meer alleen verkoop-/inkoopfacturen:
+1. **Facturen**: per regel via `r.gbId`, met kasstelsel-ratio `_getBetaaldRatio(f)`.
+2. **Directe bankkoppelingen** (`t.gekoppeldType==='grootboek'`): rekening via `t.tegenrekeningId` (of `t.splitsRegels` bij een gesplitste koppeling), anders fallback op de `gekoppeldAan`-tekst; bedrag EXCL. BTW via `t.btwTarief` (0% voor oude data). Alleen `type==='omzet' && bedrag>0` → omzet, `type==='kosten' && bedrag<0` → kosten. Balansrekeningen tellen niet mee.
+3. **Memoriaal** (`m.type!=='jaarafsluiting'`): per regel via `r.gbId`.
+`totOmzet`/`totKosten` = som van de maps. `renderPL` toont elke rekening als eigen klikbare regel (→ grootboekkaart, #19).
+
+Nieuw opgeslagen bij het koppelen (bank.js): `t.tegenrekeningId` + `t.btwTarief` (enkel-rekening) en `t.splitsRegels` (gesplitst). Nodig voor exacte, BTW-vrije P&L én grootboekkaart. Voeg dit toe bij ELKE nieuwe grootboek-koppeling.
+
+**KRITIEK — memoriaal-fallback**: waar `r.effect` ontbreekt (o.a. `kassalijst`-boekingen uit `keurKassaGoed`, `opening_saldo` uit `slaGBOp`) MOET de reconstructie het teken via `_memSaldoEffect(g, r.dc, r.bedrag)` bepalen, nooit via het naïeve `r.dc==='debet'?bedrag:-bedrag`. Anders krijgt een credit op een omzet-/passiva-/eigen-vermogenrekening het verkeerde teken (kassa-omzet gaat dan omlaag i.p.v. omhoog). Zet bij voorkeur `r.effect` al bij het aanmaken van memoriaalregels (zoals `slaMemoriaalOp` doet). Zie boekhoud-checker Check 10.
+
 ## Losse eindjes (geen risico)
 - Regel ~3976: stuurt nog ongebruikt `kassiers: DB.kassiers` mee
 - Regel ~1751: maakt nog leeg `kassiers: []` bij nieuw bedrijf

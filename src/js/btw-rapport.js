@@ -553,29 +553,7 @@ function berekenPLVoorPeriode(maand, jaar){
     return d && inPeriode(d);
   });
 
-  // Directe bankkosten: alleen gekoppeldType=grootboek op een kostenrekening
-  // Privé-opnames en transfers zijn geen bedrijfskosten en worden uitgesloten
-  const transacties = DB.transacties.filter(t=>inPeriode(t.datum));
-  const bankKosten = transacties
-    .filter(t=>
-      parseFloat(t.bedrag) < 0 &&
-      t.gekoppeldType === 'grootboek' &&
-      t.gekoppeldType !== 'prive' &&
-      t.gekoppeldType !== 'transfer'
-    )
-    .filter(t=>{
-      // Controleer of de gekoppelde grootboekrekening een kostenrekening is
-      const g = DB.grootboek.find(g=>(g.nummer+' — '+g.naam)===t.gekoppeldAan);
-      return g && g.type === 'kosten';
-    })
-    .reduce((a,t)=>{
-      // Trek BTW eraf als die aanwezig is — P&L werkt excl BTW
-      const bedrag = Math.abs(parseFloat(t.bedrag)||0);
-      const btwTarief = (window.inlineBTW||{})[t.id]||0;
-      return a + (btwTarief > 0 ? bedrag / ((100 + btwTarief) / 100) : bedrag);
-    }, 0);
-
-  // Kasstelsel: omzet proportioneel op betaald bedrag
+  // Kasstelsel: omzet proportioneel op betaald bedrag (alleen facturen)
   const factuurOmzet = ks
     ? verkoop.reduce((a,f)=>a+getOmzetKas(f), 0)
     : verkoop.reduce((a,f)=>a+parseFloat(f.totaalExcl||0), 0);
@@ -584,32 +562,61 @@ function berekenPLVoorPeriode(maand, jaar){
     ? inkoop.reduce((a,f)=>a+getInkoopKas(f), 0)
     : inkoop.reduce((a,f)=>a+parseFloat(f.totaalExcl||0), 0);
 
-  // Omzet per grootboekrekening
+  // Omzet én kosten PER grootboekrekening uit ALLE bronnen (niet alleen facturen):
+  //   1) verkoop-/inkoopfacturen (regel → r.gbId),
+  //   2) directe bankkoppelingen naar een omzet-/kostenrekening (excl. BTW),
+  //   3) memoriaalboekingen op omzet/kosten (exacte r.effect).
+  // Zo verschijnt alles met categorie omzet/kosten in de P&L, ongeacht de bron.
   const omzetPerRek = {};
+  const kostenPerRek = {};
+  const add = (map, id, bedrag) => { const k = id || 'overig'; map[k] = (map[k]||0) + bedrag; };
+
   verkoop.forEach(f=>{
     const ratio = _getBetaaldRatio(f);
-    (f.regels||[]).forEach(r=>{
-      const excl = (parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0) * ratio;
-      const rekId = r.gbId || 'overig';
-      omzetPerRek[rekId] = (omzetPerRek[rekId]||0) + excl;
-    });
+    (f.regels||[]).forEach(r=> add(omzetPerRek, r.gbId, (parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0)*ratio));
   });
-
-  // Kosten per grootboekrekening
-  const kostenPerRek = {};
   inkoop.forEach(f=>{
     const ratio = _getBetaaldRatio(f);
-    (f.regels||[]).forEach(r=>{
-      const excl = (parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0) * ratio;
-      const rekId = r.gbId || 'overig';
-      kostenPerRek[rekId] = (kostenPerRek[rekId]||0) + excl;
+    (f.regels||[]).forEach(r=> add(kostenPerRek, r.gbId, (parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0)*ratio));
+  });
+
+  // Directe bankboekingen op een grootboekrekening. Rekening bij voorkeur via
+  // t.tegenrekeningId (nieuw), anders via de tekst in gekoppeldAan (oude data).
+  // Excl. BTW via t.btwTarief; oude bankregels zonder tarief tellen als 0% (bruto).
+  DB.transacties.filter(t=>inPeriode(t.datum) && t.gekoppeldType==='grootboek').forEach(t=>{
+    // Gesplitste koppeling → elke deelregel apart; anders de hele transactie op één rekening.
+    const delen = Array.isArray(t.splitsRegels) && t.splitsRegels.length
+      ? t.splitsRegels
+      : [{ gbId: t.tegenrekeningId || null, bedrag: parseFloat(t.bedrag)||0, btwTarief: parseFloat(t.btwTarief)||0 }];
+    delen.forEach(d=>{
+      const g = (d.gbId && DB.grootboek.find(x=>x.id===d.gbId))
+             || DB.grootboek.find(x=>(x.nummer+' — '+x.naam)===t.gekoppeldAan);
+      if(!g) return;
+      const bedrag = parseFloat(d.bedrag)||0;
+      const tarief = parseFloat(d.btwTarief)||0;
+      const bedragExcl = tarief>0 ? Math.abs(bedrag)/((100+tarief)/100) : Math.abs(bedrag);
+      if(g.type==='omzet' && bedrag>0) add(omzetPerRek, g.id, bedragExcl);
+      else if(g.type==='kosten' && bedrag<0) add(kostenPerRek, g.id, bedragExcl);
     });
   });
 
-  const totOmzet = factuurOmzet;
-  const totKosten = inkoopKosten + bankKosten;
+  // Memoriaalboekingen op omzet/kosten (jaarafsluiting uitgesloten — die verplaatst
+  // het resultaat naar eigen vermogen en hoort niet als omzet/kosten in de P&L).
+  (DB.memoriaal||[]).filter(m=>inPeriode(m.datum||'') && m.type!=='jaarafsluiting').forEach(m=>{
+    (m.regels||[]).forEach(r=>{
+      const g = DB.grootboek.find(x=>x.id===r.gbId); if(!g) return;
+      // Fallback type-bewust via _memSaldoEffect: een credit op een omzetrekening
+      // (bv. kassalijst-boeking zonder r.effect) telt POSITIEF, niet negatief.
+      const eff = (r.effect!==undefined) ? r.effect : _memSaldoEffect(g, r.dc, r.bedrag);
+      if(g.type==='omzet') add(omzetPerRek, g.id, eff);
+      else if(g.type==='kosten') add(kostenPerRek, g.id, eff);
+    });
+  });
 
-  return { omzetPerRek, kostenPerRek, totOmzet, totKosten, factuurOmzet, inkoopKosten, bankKosten };
+  const totOmzet = Object.values(omzetPerRek).reduce((a,b)=>a+b, 0);
+  const totKosten = Object.values(kostenPerRek).reduce((a,b)=>a+b, 0);
+
+  return { omzetPerRek, kostenPerRek, totOmzet, totKosten, factuurOmzet, inkoopKosten };
 }
 
 function renderPL(){
@@ -673,13 +680,10 @@ function renderPL(){
   // Kosten rijen — per grootboekrekening (klikbaar), plus directe bankuitgaven
   let kHTML = '';
   Object.keys(huidig.kostenPerRek||{}).forEach(rekId=>{
-    const g = DB.grootboek.find(x=>x.id===rekId);
+    const g = rekId==='overig' ? null : DB.grootboek.find(x=>x.id===rekId);
     const naam = g ? (g.nummer+' — '+g.naam) : 'Overige kosten';
     kHTML += rij(naam, huidig.kostenPerRek[rekId]||0, vergelijk?.kostenPerRek?.[rekId]||0, '', g?rekId:null);
   });
-  if(huidig.bankKosten > 0 || (vergelijk?.bankKosten||0) > 0){
-    kHTML += rij('Bankuitgaven (direct)', huidig.bankKosten, vergelijk?.bankKosten||0);
-  }
   if(!kHTML) kHTML = rij('Inkoopfacturen', huidig.inkoopKosten, vergelijk?.inkoopKosten||0);
   const totK_v = vergelijk?.totKosten||0;
 
@@ -750,8 +754,10 @@ function bouwGrootboekkaart(gbId){
     }
     if(t.status!=='gekoppeld') return;
     const koppelStr = typeof t.gekoppeldAan==='string' ? t.gekoppeldAan : '';
-    if(t.gekoppeldType==='grootboek' && koppelStr.startsWith(nr+' — ')){
-      const eff = creditNorm ? bedrag : -bedrag; // excl. onbekend bij BTW → sluitregel vangt de rest
+    if(t.gekoppeldType==='grootboek' && (t.tegenrekeningId===g.id || koppelStr.startsWith(nr+' — '))){
+      const tarief = parseFloat(t.btwTarief)||0;
+      const excl = tarief>0 ? rond(bedrag/((100+tarief)/100)) : bedrag; // excl. BTW als tarief bekend
+      const eff = creditNorm ? excl : -excl;
       if(Math.abs(eff)>0.005) posten.push({datum:d,bron:'Bankkoppeling',oms:t.omschrijving||'',effect:eff,ref:{p:'bank'}});
     }
     if(t.gekoppeldType==='verkoop' && nr==='1300' && Math.abs(bedrag)>0.005){
@@ -764,7 +770,7 @@ function bouwGrootboekkaart(gbId){
   (DB.memoriaal||[]).forEach(m=>{
     (m.regels||[]).forEach(r=>{
       if(String(r.gbId||'')===gbId){
-        const eff = (r.effect!==undefined) ? rond(r.effect) : rond(r.dc==='debet'?r.bedrag:-r.bedrag);
+        const eff = (r.effect!==undefined) ? rond(r.effect) : rond(_memSaldoEffect(g, r.dc, r.bedrag));
         if(Math.abs(eff)>0.005) posten.push({datum:m.datum||'',bron:m.oms||'Memoriaalboeking',oms:r.oms||'',effect:eff,ref:{p:'memoriaal'}});
       }
     });
