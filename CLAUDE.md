@@ -199,6 +199,14 @@ Nieuw opgeslagen bij het koppelen (bank.js): `t.tegenrekeningId` + `t.btwTarief`
 
 **KRITIEK — memoriaal-fallback**: waar `r.effect` ontbreekt (o.a. `kassalijst`-boekingen uit `keurKassaGoed`, `opening_saldo` uit `slaGBOp`) MOET de reconstructie het teken via `_memSaldoEffect(g, r.dc, r.bedrag)` bepalen, nooit via het naïeve `r.dc==='debet'?bedrag:-bedrag`. Anders krijgt een credit op een omzet-/passiva-/eigen-vermogenrekening het verkeerde teken (kassa-omzet gaat dan omlaag i.p.v. omhoog). Zet bij voorkeur `r.effect` al bij het aanmaken van memoriaalregels (zoals `slaMemoriaalOp` doet). Zie boekhoud-checker Check 10.
 
+### 21. Het boekhoudmodel — kerninvarianten (overzicht)
+Elke boeking/terugdraai/rapportage moet hieraan voldoen. Wijkt code hiervan af, ook als het "toevallig" balanceert, dan is dat fout. Laat de `boekhoud-checker` dit verifiëren na elke wijziging aan `bank.js`, `facturen.js`, `btw-rapport.js`, `kassier.js`, `activa.js` of `state.js`.
+1. **Dubbel boekhouden**: som debet = som credit → `Activa = Passiva + EV + (Omzet − Kosten)` klopt altijd; `checkBalansEvenwicht()` bewaakt en blokkeert.
+2. **Saldo-conventie** (#17): debet-normaal (activa, kosten) stijgt bij debet; credit-normaal (passiva, eigen_vermogen, omzet) stijgt bij credit; teken altijd op rekeningtype.
+3. **Alleen excl. BTW = omzet/kosten (P&L)**; BTW is een balanspost. Uitgave: Debet kosten (excl.) + Debet 1500 BTW te vorderen / Credit bank (incl.). Ontvangst: Debet bank (incl.) / Credit omzet (excl.) + Credit 1510 BTW te betalen. Omzet-BTW→1510, kosten-BTW→1500 (#18).
+4. **Terugdraaien = exacte spiegel** (#18): boeken + verwijderen = netto €0 op ELKE geraakte rekening. Bank-grootboek via `_boekTegenrekening(...,-1)`; factuur via `boekFactuurTegenboeking(...,'draai')`; memoriaal via omgekeerde `r.effect`. Nooit het volle bedrag i.p.v. excl. terugdraaien, en de BTW-rekening MOET mee.
+5. **Balans ↔ P&L ↔ grootboek gelijk**: het P&L-resultaat (reconstructie, excl. BTW) moet gelijk zijn aan de resultaat-beweging in het grootboek (balans). Wijken ze af, dan is er een booking-/terugdraai-bug of vervuilde data — dit is de belangrijkste stille-fout-detector, want een verkeerde BTW-/tekensplitsing valt bij één boeking niet op maar stapelt op. Het excl.-bedrag op de rekening moet identiek zijn aan wat de P&L uit `t.btwTarief` afleidt.
+
 ## Losse eindjes (geen risico)
 - (Verwijderd 2026-07-22: de twee oude "regel ~3976 / ~1751"-notities verwezen naar de
   inmiddels opgesliste monoliet-`index.html` en klopten niet meer met de `src/`-structuur.)
