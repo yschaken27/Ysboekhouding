@@ -506,19 +506,23 @@ function getBankRekening(){
 //     naar 1510 'BTW te betalen' (passiva), bij een uitgave naar 1500 'BTW te
 //     vorderen' (activa) — net als de factuurboekingen in facturen.js.
 // `bedrag` is het ONDERTEKENDE bankbedrag (ontvangst +, uitgave −).
-function _boekTegenrekening(g, bedrag, btwTarief){
+// `mult` = +1 om te boeken (standaard), −1 om exact terug te draaien (ontkoppelen).
+// De BTW-RICHTING blijft altijd op het originele `bedrag` bepaald, zodat terugdraaien
+// dezelfde BTW-rekening raakt als de oorspronkelijke boeking.
+function _boekTegenrekening(g, bedrag, btwTarief, mult){
   bedrag = parseFloat(bedrag)||0;
   btwTarief = parseFloat(btwTarief)||0;
+  mult = (mult===-1) ? -1 : 1;
   const creditNorm = x => ['omzet','passiva','eigen_vermogen'].includes(x.type);
   const exclSigned = rond(btwTarief>0 ? bedrag/((100+btwTarief)/100) : bedrag);
   const btwSigned  = rond(bedrag - exclSigned);
-  g.saldo = rond((parseFloat(g.saldo)||0) + (creditNorm(g) ? exclSigned : -exclSigned));
+  g.saldo = rond((parseFloat(g.saldo)||0) + mult*(creditNorm(g) ? exclSigned : -exclSigned));
   if(btwTarief>0 && Math.abs(btwSigned) > 0.001){
     const isInkomst = bedrag >= 0;
     const btwRek = isInkomst
       ? (DB.grootboek.find(x=>x.nummer==='1510') || DB.grootboek.find(x=>x.nummer==='1530') || DB.grootboek.find(x=>x.naam?.toLowerCase().includes('btw te betalen')))
       : (DB.grootboek.find(x=>x.nummer==='1500') || DB.grootboek.find(x=>x.nummer==='1520') || DB.grootboek.find(x=>x.naam?.toLowerCase().includes('btw te vorderen')));
-    if(btwRek) btwRek.saldo = rond((parseFloat(btwRek.saldo)||0) + (creditNorm(btwRek) ? btwSigned : -btwSigned));
+    if(btwRek) btwRek.saldo = rond((parseFloat(btwRek.saldo)||0) + mult*(creditNorm(btwRek) ? btwSigned : -btwSigned));
   }
 }
 
@@ -1099,8 +1103,23 @@ function draaiBoekingTerug(t){
     const f=arr.find(f=>(f.nummer+' — '+f.klant)===t.gekoppeldAan||f.id===t.factuurId);
     if(f&&f.status==='betaald') f.status=t.gekoppeldType==='verkoop'?'verstuurd':'te betalen';
   } else if(t.gekoppeldType==='grootboek'){
-    const g=DB.grootboek.find(g=>(g.nummer+' — '+g.naam)===t.gekoppeldAan);
-    if(g) g.saldo=(parseFloat(g.saldo)||0)-bedrag;
+    // Draai de tegenboeking EXACT terug zoals _boekTegenrekening hem maakte
+    // (excl. op de rekening + BTW apart), via mult=-1.
+    if(Array.isArray(t.splitsRegels) && t.splitsRegels.length){
+      t.splitsRegels.forEach(d=>{
+        const g=DB.grootboek.find(x=>x.id===d.gbId);
+        if(g) _boekTegenrekening(g, parseFloat(d.bedrag)||0, parseFloat(d.btwTarief)||0, -1);
+      });
+    } else if(t.tegenrekeningId!==undefined || t.btwTarief!==undefined){
+      const g = (t.tegenrekeningId && DB.grootboek.find(x=>x.id===t.tegenrekeningId))
+             || DB.grootboek.find(x=>(x.nummer+' — '+x.naam)===t.gekoppeldAan);
+      if(g) _boekTegenrekening(g, bedrag, parseFloat(t.btwTarief)||0, -1);
+    } else {
+      // Oude boeking (vóór _boekTegenrekening): destijds stond het VOLLE bedrag op
+      // de rekening, dus draai dat op dezelfde manier terug.
+      const g=DB.grootboek.find(x=>(x.nummer+' — '+x.naam)===t.gekoppeldAan);
+      if(g) g.saldo=rond((parseFloat(g.saldo)||0)-bedrag);
+    }
   } else if(t.gekoppeldType==='prive'){
     // Privéboeking terugdraaien wordt al gedaan via inlineBevestigPrive flow
     // Bank is al teruggedraaid hierboven, privérekening nog:
