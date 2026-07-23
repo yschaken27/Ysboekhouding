@@ -52,8 +52,8 @@ function slaGBOp(){
             type:'opening_saldo',
             relatie:'',
             regels:[
-              {dc:isDebet?'debet':'credit', gbId:g.id,     oms:`Opening saldo ${g.naam}`,         bedrag:Math.abs(saldoVerschil)},
-              {dc:isDebet?'credit':'debet', gbId:evRek.id, oms:`Tegenrekening eigen vermogen`,    bedrag:Math.abs(saldoVerschil)},
+              {dc:isDebet?'debet':'credit', gbId:g.id,     oms:`Opening saldo ${g.naam}`,         bedrag:Math.abs(saldoVerschil), effect:saldoVerschil},
+              {dc:isDebet?'credit':'debet', gbId:evRek.id, oms:`Tegenrekening eigen vermogen`,    bedrag:Math.abs(saldoVerschil), effect:-saldoVerschil},
             ],
             debet:Math.abs(saldoVerschil),
             aangemaakt:new Date().toISOString()
@@ -80,8 +80,8 @@ function slaGBOp(){
           type:'opening_saldo',
           relatie:'',
           regels:[
-            {dc:isDebet?'debet':'credit', gbId:nieuwId,   oms:`Opening saldo ${naam}`,         bedrag:Math.abs(saldo)},
-            {dc:isDebet?'credit':'debet', gbId:evRek.id,  oms:`Tegenrekening eigen vermogen`,  bedrag:Math.abs(saldo)},
+            {dc:isDebet?'debet':'credit', gbId:nieuwId,   oms:`Opening saldo ${naam}`,         bedrag:Math.abs(saldo), effect:saldo},
+            {dc:isDebet?'credit':'debet', gbId:evRek.id,  oms:`Tegenrekening eigen vermogen`,  bedrag:Math.abs(saldo), effect:-saldo},
           ],
           debet:Math.abs(saldo),
           aangemaakt:new Date().toISOString()
@@ -345,6 +345,90 @@ function renderOpenPosten(){
   }
 }
 
+// ===== BOEKHOUD-AUDIT (reconciliatie balans ↔ brondocumenten) =====
+// Herberekent per omzet-/kostenrekening het VERWACHTE saldo uit de onderliggende
+// boekingen (facturen + directe bankkoppelingen + memoriaal, VOL bedrag excl. BTW —
+// dat matcht hoe de saldi geboekt worden) en vergelijkt met het werkelijke saldo.
+// Een verschil betekent een scheve of ontbrekende boeking (bv. een verkeerde
+// BTW-splitsing) die de balans "toevallig" wel laat kloppen maar de verdeling scheef
+// zet — precies het soort stille fout dat je bij veel boekingen niet ziet.
+function balansAudit(){
+  const verwacht = {};
+  const add = (id, x) => { if(id){ verwacht[id] = rond((verwacht[id]||0) + x); } };
+  const factuurExcl = (f, fallbackType) => {
+    const regels = f.regels||[];
+    const regelSom = regels.reduce((a,r)=>a+(parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0),0);
+    const totExcl = parseFloat(f.totaalExcl||0);
+    if(regels.length && Math.abs(regelSom - totExcl) < 0.02){
+      // Spiegelt facturen.js: per regel naar r.gbId, of anders de eerste omzet-/kostenrekening.
+      regels.forEach(r=>{
+        const excl = (parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0);
+        const rek = (r.gbId ? DB.grootboek.find(g=>g.id===r.gbId) : null) || DB.grootboek.find(g=>g.type===fallbackType);
+        add(rek?.id, excl);
+      });
+    } else {
+      const rek = DB.grootboek.find(g=>g.type===fallbackType);
+      add(rek?.id, totExcl);
+    }
+  };
+  (DB.verkoop||[]).forEach(f=>factuurExcl(f, 'omzet'));
+  (DB.inkoop||[]).forEach(f=>factuurExcl(f, 'kosten'));
+  (DB.transacties||[]).filter(t=>t.gekoppeldType==='grootboek').forEach(t=>{
+    const delen = Array.isArray(t.splitsRegels) && t.splitsRegels.length
+      ? t.splitsRegels
+      : [{ gbId: t.tegenrekeningId || null, bedrag: parseFloat(t.bedrag)||0, btwTarief: parseFloat(t.btwTarief)||0 }];
+    delen.forEach(d=>{
+      const g = (d.gbId && DB.grootboek.find(x=>x.id===d.gbId))
+             || DB.grootboek.find(x=>(x.nummer+' — '+x.naam)===t.gekoppeldAan);
+      if(!g || (g.type!=='omzet' && g.type!=='kosten')) return;
+      const bedrag = parseFloat(d.bedrag)||0;
+      const tarief = parseFloat(d.btwTarief)||0;
+      const exclSigned = tarief>0 ? bedrag/((100+tarief)/100) : bedrag;
+      // Exact zoals _boekTegenrekening: omzet (credit-normaal) +excl, kosten −excl —
+      // ook bij een terugbetaling (omgekeerd teken), zodat dat geen vals alarm geeft.
+      add(g.id, g.type==='omzet' ? exclSigned : -exclSigned);
+    });
+  });
+  (DB.memoriaal||[]).filter(m=>m.type!=='jaarafsluiting').forEach(m=>{
+    (m.regels||[]).forEach(r=>{
+      const g = DB.grootboek.find(x=>x.id===r.gbId);
+      if(!g || (g.type!=='omzet' && g.type!=='kosten')) return;
+      add(g.id, (r.effect!==undefined) ? r.effect : _memSaldoEffect(g, r.dc, r.bedrag));
+    });
+  });
+  const afw = [];
+  (DB.grootboek||[]).forEach(g=>{
+    if(g.type!=='omzet' && g.type!=='kosten') return;
+    // 8900 Betalingsverschillen / kassaverschil is een plug-rekening die legitiem
+    // afrondings- en kasverschillen opvangt (deels zonder eigen memoriaalregel), dus
+    // daar is een strikte reconciliatie niet zinvol — uitsluiten voorkomt vals alarm.
+    if(String(g.nummer)==='8900' || (g.naam||'').toLowerCase().includes('verschil')) return;
+    const werk = rond(parseFloat(g.saldo)||0);
+    const verw = rond(verwacht[g.id]||0);
+    if(Math.abs(werk - verw) > 0.01){
+      afw.push({ id:g.id, nummer:g.nummer, naam:g.naam, saldo:werk, verwacht:verw, verschil:rond(werk-verw) });
+    }
+  });
+  return afw;
+}
+
+// Zet (of verwijdert) het rode waarschuwingsbanner bovenaan de opgegeven pagina.
+function _boekhoudAuditBanner(pageId){
+  const page = document.getElementById(pageId);
+  if(!page) return;
+  const oud = page.querySelector('.boekhoud-audit-banner');
+  if(oud) oud.remove();
+  const afw = balansAudit();
+  if(!afw.length) return;
+  const div = document.createElement('div');
+  div.className = 'boekhoud-audit-banner';
+  div.style.cssText = 'margin:0 0 14px;padding:12px 16px;border-radius:8px;background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;font-size:13px;line-height:1.55;';
+  div.innerHTML = `<strong>⚠ Boekhoudcontrole: ${afw.length} rekening(en) sluiten niet aan op de onderliggende boekingen.</strong><br>`
+    + afw.map(a=>`<a href="#" onclick="openGrootboekkaart('${a.id}');return false;" style="color:#991b1b;font-weight:600;text-decoration:underline;">${a.nummer} — ${a.naam}</a>: saldo ${fmt(a.saldo)}, verwacht ${fmt(a.verwacht)} <strong>(verschil ${fmt(a.verschil)})</strong>`).join('<br>')
+    + `<br><span style="opacity:.85;">Dit wijst op een scheve of ontbrekende boeking. Open de grootboekkaart om te zien wat er mist.</span>`;
+  page.prepend(div);
+}
+
 // ===== BALANS =====
 function renderBalans(){
   const vlottendeActiva = DB.grootboek.filter(g=>g.type==='vlottende_activa');
@@ -502,6 +586,7 @@ function renderBalans(){
 
   document.getElementById('balans-activa').innerHTML = activaHTML;
   document.getElementById('balans-passiva').innerHTML = passivaHTML;
+  _boekhoudAuditBanner('page-balans');
 }
 
 // ===== P&L =====
@@ -734,6 +819,7 @@ function renderPL(){
       ${heeftVergelijk ? `<span class="mono" style="min-width:110px;text-align:right;color:var(--text-mid);">${fmt(Math.abs(resV))}</span>` : ''}
       ${heeftVergelijk && resDiff!==null ? `<span class="mono" style="min-width:80px;text-align:right;${resDiff>=0?'color:#16a34a':'color:#dc2626'}">${resDiff>=0?'+':''}${fmt(resDiff)}</span>` : ''}
     </div>`;
+  _boekhoudAuditBanner('page-pl');
 }
 
 // ===== GROOTBOEKKAART (drill-down vanuit Balans / P&L / Grootboek) =====
