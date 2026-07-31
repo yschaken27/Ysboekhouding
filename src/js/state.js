@@ -635,7 +635,11 @@ async function laadGebruikersInDB(){
 // ============================================================
 // BEDRIJVEN — cloud + lokaal
 // ============================================================
-async function wisselBedrijf(naam){
+// Gedeelde kern van een bedrijfswissel. ELK pad dat huidigBedrijf wijzigt MOET hier
+// doorheen — anders wordt de flushSave-garantie uit punt 15 omzeild en kan een net
+// gemaakte wijziging verloren gaan of in het verkeerde bedrijf belanden. De aanroepers
+// verschillen alleen in wat ze daarna op het scherm doen.
+async function _wisselBedrijfKern(naam){
   // Schrijf eerst alle nog niet verzonden wijzigingen van het HUIDIGE bedrijf weg en
   // wacht daarop. Pas daarna legen we DB en wisselen we. Zonder dit kon een net
   // gemaakte bewerking (bijv. verwerkte bankregels) verloren gaan bij het wisselen.
@@ -651,13 +655,24 @@ async function wisselBedrijf(naam){
        btwNotities:{}, profiel:{}, memoriaal:[], vasteActiva:[], kassalijsten:[], kassiers:[], uren:[],
        editId:null, editType:null, koppelId:null,
        csvRaw:[], csvHeaders:[], fVK:'', fsVK:'', fIK:'', fsIK:'', fT:'', fsT:'', huidigeBankId:null };
-  closeModal('modal-bedrijf');
-  showPage('dashboard');
   load(); // loadLokaal() kan DB.kassiers overschrijven met stale per-bedrijf data
   DB.kassiers = _bewaardeKassiers; // herstel globale kassiers (verwerkCloudData vervangt ze zodra de cloud vuurt)
-  renderGB(); renderRegels();
   const el=document.getElementById('sidebar-bedrijf-naam');
   if(el) el.textContent=getBedrijfWeergavenaam(naam);
+}
+
+async function wisselBedrijf(naam){
+  // finally: gaat er iets mis in de kern, dan is huidigBedrijf mogelijk al gewisseld.
+  // De modal moet dan alsnog dicht en we moeten naar het dashboard — anders blijft de
+  // gebruiker in een openstaande modal boven de data van een ánder bedrijf hangen,
+  // terwijl de fout in een unhandled rejection verdwijnt (aanroeper is een onclick).
+  try{
+    await _wisselBedrijfKern(naam);
+  } finally {
+    closeModal('modal-bedrijf');
+    showPage('dashboard');
+    renderGB(); renderRegels();
+  }
 }
 
 async function voegBedrijfToe(){

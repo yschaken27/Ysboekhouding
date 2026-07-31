@@ -1364,6 +1364,10 @@ function wisselKoppelTransactie(transactieId, factuurId){
 // ---- Bonnen pagina (desktop eigenaar) ----
 let _bonnenFilter = '';
 let _bonnenData = [];
+// Volgnummer per laadpoging. Zonder dit kan een nog lopende laadUploads(A) landen
+// NADAT er naar bedrijf B is gewisseld, waardoor de bonnen van A onder de kop van B
+// verschijnen — en een bon van A als inkoopfactuur van B verwerkt zou kunnen worden.
+let _bonnenLaadToken = 0;
 
 function setBonnenFilter(filter){
   _bonnenFilter = filter;
@@ -1395,8 +1399,11 @@ function laadBonnenPagina(){
   }
 
   el.innerHTML = '<div style="padding:24px 0;text-align:center;color:var(--text-dim);">Laden van <strong>'+huidigBedrijf+'</strong>...</div>';
+  const token = ++_bonnenLaadToken;
   fbAanroep(fb=>fb.laadUploads(huidigBedrijf))
     .then(json=>{
+      // Er is intussen opnieuw geladen (of van bedrijf gewisseld) — deze uitkomst is stale.
+      if(token !== _bonnenLaadToken) return;
       try{
         _bonnenData = JSON.parse(json||'[]');
         console.log('[Bonnen] Eigenaar ziet '+_bonnenData.length+' uploads voor bedrijf: '+huidigBedrijf);
@@ -1405,17 +1412,22 @@ function laadBonnenPagina(){
       renderBonnenLijst();
     })
     .catch(err=>{
+      if(token !== _bonnenLaadToken) return;
       console.error('[Bonnen] Laad fout:', err);
       if(el) el.innerHTML = '<div style="padding:24px 0;text-align:center;color:var(--danger);">Laden mislukt van <strong>'+huidigBedrijf+'</strong>: '+err+'<br><small style=\"color:var(--text-dim);\">Controleer de Firestore beveiligingsregels</small></div>';
     });
 }
 
-function bonnenWisselBedrijf(bedrijf){
-  huidigBedrijf = bedrijf;
-  localStorage.setItem('ledger_actief_bedrijf', bedrijf);
-  load();
-  // Herlaad bonnen na kort moment zodat load() klaar is
-  setTimeout(()=>laadBonnenPagina(), 800);
+async function bonnenWisselBedrijf(bedrijf){
+  // Via _wisselBedrijfKern(), niet met de hand huidigBedrijf zetten: die kern doet de
+  // await flushSave() en de DB-reset. Zonder dat ging een wijziging die nog in de
+  // save-wachtrij stond verloren, en bleef data van het vorige bedrijf in DB staan
+  // (loadLokaal() merget de blob over DB heen) — zie punt 15.
+  await _wisselBedrijfKern(bedrijf);
+  // Anders dan wisselBedrijf() blijven we hier op de bonnen-pagina staan.
+  // laadBonnenPagina() leest de uploads rechtstreeks uit Firestore en heeft alleen
+  // huidigBedrijf nodig, dus de oude setTimeout-gok van 800ms is niet meer nodig.
+  laadBonnenPagina();
 }
 
 function renderBonnenLijst(){
