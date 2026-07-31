@@ -214,6 +214,39 @@ Elke boeking/terugdraai/rapportage moet hieraan voldoen. Wijkt code hiervan af, 
 4. **Terugdraaien = exacte spiegel** (#18): boeken + verwijderen = netto €0 op ELKE geraakte rekening. Bank-grootboek via `_boekTegenrekening(...,-1)`; factuur via `boekFactuurTegenboeking(...,'draai')`; memoriaal via omgekeerde `r.effect`. Nooit het volle bedrag i.p.v. excl. terugdraaien, en de BTW-rekening MOET mee.
 5. **Balans ↔ P&L ↔ grootboek gelijk**: het P&L-resultaat (reconstructie, excl. BTW) moet gelijk zijn aan de resultaat-beweging in het grootboek (balans). Wijken ze af, dan is er een booking-/terugdraai-bug of vervuilde data — dit is de belangrijkste stille-fout-detector, want een verkeerde BTW-/tekensplitsing valt bij één boeking niet op maar stapelt op. Het excl.-bedrag op de rekening moet identiek zijn aan wat de P&L uit `t.btwTarief` afleidt.
 
+### 22. Elk veld dat `save()` wegschrijft MOET `verwerkCloudData()` ook inlezen
+De schrijf-set (`_bouwSaveData()` in state.js → `slaAllesOp()` in firebase-config.js) en de
+lees-set (`laadAlles()`/`luisterAlles()` → `verwerkCloudData()`) moeten veld voor veld identiek
+zijn. Voeg je een veld aan `DB` toe dat gepersisteerd moet worden, dan raak je **zes** plekken:
+`_bouwSaveData`, `slaAllesOp`, `laadAlles`, `luisterAlles`, `verwerkCloudData` én `maakBedrijf`
+(initiële waarde), plus de resets in de initiële `DB`-declaratie, `loadLokaal()` en `wisselBedrijf()`.
+
+Een veld dat wél geschreven maar niet gelezen wordt, geeft **actief dataverlies**, niet alleen
+stale data: `slaAllesOp()` doet `.set()` zonder merge op `data/main`, dus een apparaat dat het veld
+niet kent schrijft de lege standaardwaarde over de echte data van een ander apparaat heen. Zo ging
+`imports` verloren (juli 2026: importgeschiedenis weg op laptop 2 → geen "Verwijder import"-knop,
+en de eerstvolgende save wiste de geschiedenis ook voor laptop 1).
+Andersom — geschreven naar localStorage maar nooit naar Firebase — geeft stille apparaat-lokale
+opslag (`btwNotities`, zelfde ronde gefixt). Let op het juiste type-default: `{}` voor objecten
+zoals `btwNotities`, `[]` voor arrays. Laat de `sync-checker` de lijst na elke uitbreiding
+opnieuw veld-voor-veld vergelijken.
+
+### 23. De `profiel`-guard in `verwerkCloudData()` is OPZETTELIJK — niet "opruimen"
+```js
+if(d.profiel && Object.keys(d.profiel).length) DB.profiel=d.profiel;
+```
+Dit ziet eruit als een schending van "cloud wint altijd" (#15) en is al eens als zodanig
+aangemerkt, maar de asymmetrie is correct en moet blijven. Voor `profiel` is "leeg" nooit een
+geldige waarheid: `maakBedrijf()` schrijft altijd 4 keys, `slaBedrijfProfielOp()` altijd ~18 keys —
+ook als de gebruiker elk veld leegmaakt blijven de keys bestaan. Een leeg `d.profiel` betekent dus
+"main-doc ontbreekt of is legacy", niet "de eigenaar heeft het profiel gewist".
+Maak je dit onvoorwaardelijk, dan wist de eerstvolgende snapshot het lokale profiel, schrijft dat
+naar localStorage, en pusht de volgende `save()` een leeg profiel via `.set()` zonder merge →
+definitief weg op alle apparaten. Met de guard heelt zo'n bedrijf juist vanzelf bij de volgende save.
+`kiesBedrijfNaLogin()` (auth.js) heeft dezelfde guard — die twee moeten gelijk blijven.
+Voor `kassiers` geldt het omgekeerde: daar is een lege cloud-lijst wél de waarheid, dus daar is de
+onvoorwaardelijke overschrijving terecht (#15).
+
 ## Losse eindjes (geen risico)
 - (Verwijderd 2026-07-22: de twee oude "regel ~3976 / ~1751"-notities verwezen naar de
   inmiddels opgesliste monoliet-`index.html` en klopten niet meer met de `src/`-structuur.)
