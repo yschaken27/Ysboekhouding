@@ -1024,56 +1024,83 @@ function renderKassaoverzicht(){
   }).join('');
 }
 
+// ── Kassalijst → grootboek ──
+// Boeken en terugdraaien lopen bewust door dezelfde bedragen- en rekeningkeuze,
+// zodat goedkeuren + terugdraaien op ELKE geraakte rekening netto op 0 uitkomt
+// (CLAUDE.md punt 21.4). Tot juli 2026 trok het terugdraaien het EXCL-bedrag van
+// de kas af terwijl er INCL was geboekt, en bleef de BTW-rekening onaangeroerd.
+// Dat liet bij elke terugdraai het BTW-bedrag als spookgeld staan op zowel Kas
+// als BTW te betalen — even groot aan beide kanten van de balans, dus
+// checkBalansEvenwicht() zag het nooit. Splits deze functies nooit weer.
+function _kassaBedragen(k){
+  // totaalOmzet is excl BTW, totaalOmzetIncl is incl BTW. Oudere lijsten zonder
+  // btwTarief-veld: behandel totaalOmzet als incl voor backwards compat.
+  const incl     = parseFloat(k.totaalOmzetIncl || k.totaalOmzet || 0);
+  const excl     = parseFloat(k.totaalOmzet || 0);
+  const btw      = parseFloat(k.omzetBtw || (incl - excl) || 0);
+  const contant  = parseFloat(k.totContant || 0);
+  const uitgaven = parseFloat(k.totUitgaven || 0);
+  // Kas ontvangt het fysieke geld: incl BTW, tenzij de lijst een contant-telling heeft.
+  const kasBedrag = contant > 0 ? contant : incl;
+  return {
+    tarief: parseInt(k.btwTarief ?? DB.profiel?.btwStandaard ?? '21'),
+    incl, excl, btw, contant, uitgaven, kasBedrag,
+    kasMutatie: kasBedrag - uitgaven,
+    verschil: kasBedrag - excl - btw,
+  };
+}
+
+// maakBtwAan alleen bij het boeken zelf — bij terugdraaien mag er nooit een
+// nieuwe rekening ontstaan, dan zou je op een lege rekening terugboeken.
+function _kassaRekeningen(btwBedrag, maakBtwAan){
+  if(!DB.grootboek) DB.grootboek = [];
+  const kasRek = DB.grootboek.find(g=>g.nummer==='1000')
+    || DB.grootboek.find(g=>g.naam.toLowerCase().includes('kas'));
+  const omzetRek = DB.grootboek.find(g=>g.type==='omzet'&&g.naam.toLowerCase().includes('kap'))
+    || DB.grootboek.find(g=>g.type==='omzet');
+  let btwRek = DB.grootboek.find(g=>g.nummer==='2300')
+    || DB.grootboek.find(g=>g.nummer==='1810')
+    || DB.grootboek.find(g=>g.naam.toLowerCase().includes('btw te betalen'));
+  if(!btwRek && maakBtwAan && btwBedrag > 0){
+    btwRek = { id:uid(), nummer:'2300', naam:'BTW te betalen', type:'schuld', saldo:0 };
+    DB.grootboek.push(btwRek);
+  }
+  const verschilRek = DB.grootboek.find(g=>g.naam.toLowerCase().includes('kassaverschil'))
+    || DB.grootboek.find(g=>g.nummer==='8900');
+  return { kasRek, omzetRek, btwRek, verschilRek };
+}
+
+// mult = 1 boekt de kassalijst, mult = -1 draait exact dezelfde mutaties terug.
+function _boekKassalijst(k, mult){
+  const b = _kassaBedragen(k);
+  const r = _kassaRekeningen(b.btw, mult > 0);
+  const muteer = (g, bedrag)=>{ if(g) g.saldo = (parseFloat(g.saldo)||0) + mult*bedrag; };
+  muteer(r.kasRek,   b.kasMutatie);   // debet kas — fysiek geld, dus incl BTW
+  muteer(r.omzetRek, b.excl);         // credit omzet — alleen excl BTW
+  if(b.btw > 0) muteer(r.btwRek, b.btw);
+  if(Math.abs(b.verschil) > 0.01) muteer(r.verschilRek, b.verschil);
+  return Object.assign({}, b, r);
+}
+
 async function keurKassaGoed(id){
   const k = DB.kassalijsten.find(k=>k.id===id);
   if(!k) return;
+  const v = _kassaBedragen(k);
   const ok = await bevestig(
-    `Kassalijst van ${k.datum} goedkeuren?\n\nOmzet ${fmt(k.totaalOmzet)} wordt geboekt op:\n• Kas: +${fmt(k.totContant)}\n• Omzet rekening: +${fmt(k.totaalOmzet)}`,
+    `Kassalijst van ${k.datum} goedkeuren?\n\nDit wordt geboekt:\n• Kas: +${fmt(v.kasMutatie)}\n• Omzet excl BTW: +${fmt(v.excl)}\n• BTW ${v.tarief}% te betalen: +${fmt(v.btw)}`,
     'Kassalijst goedkeuren', 'Goedkeuren'
   );
   if(!ok) return;
 
-  // Kassalijst bedragen — totaalOmzet is excl BTW, totaalOmzetIncl is incl BTW
-  // Oudere kassalijsten zonder btwTarief veld: behandel totaalOmzet als incl voor backwards compat
-  const btwTarief  = parseInt(k.btwTarief ?? DB.profiel?.btwStandaard ?? '21');
-  const kasOmzetIncl = parseFloat(k.totaalOmzetIncl || k.totaalOmzet || 0);
-  const kasOmzetExcl = parseFloat(k.totaalOmzet || 0);
-  const kasOmzetBtw  = parseFloat(k.omzetBtw || (kasOmzetIncl - kasOmzetExcl) || 0);
-  const kasContant   = parseFloat(k.totContant || 0);
-  const kasUitgaven  = parseFloat(k.totUitgaven || 0);
-  // Kas ontvangt incl BTW bedrag (fysiek geld in de kassa)
-  const kasBoekbedrag = kasContant > 0 ? kasContant : kasOmzetIncl;
+  const g = _boekKassalijst(k, 1);
+  const btwTarief = g.tarief;
+  const kasOmzetExcl = g.excl;
+  const kasOmzetBtw = g.btw;
+  const kasBoekbedrag = g.kasBedrag;
+  const boekverschil = g.verschil;
+  const kasRek = g.kasRek, omzetRek = g.omzetRek, btwRek = g.btwRek;
 
-  // Boek naar grootboek
-  if(!DB.grootboek) DB.grootboek = [];
-  // 1. Kas saldo omhoog met incl BTW bedrag — debet kas
-  const kasRek = DB.grootboek.find(g=>g.nummer==='1000') || DB.grootboek.find(g=>g.naam.toLowerCase().includes('kas'));
-  if(kasRek) kasRek.saldo = (parseFloat(kasRek.saldo)||0) + kasBoekbedrag - kasUitgaven;
-
-  // 2. Omzetrekening omhoog met excl BTW — credit omzet
-  const omzetRek = DB.grootboek.find(g=>g.type==='omzet'&&g.naam.toLowerCase().includes('kap'))
-    || DB.grootboek.find(g=>g.type==='omzet');
-  if(omzetRek) omzetRek.saldo = (parseFloat(omzetRek.saldo)||0) + kasOmzetExcl;
-
-  // 3. BTW afdracht rekening — credit BTW te betalen
-  // Maak rekening aan als die niet bestaat — voorkomt silent fail
-  let btwRek = DB.grootboek.find(g=>g.nummer==='2300') || DB.grootboek.find(g=>g.nummer==='1810') || DB.grootboek.find(g=>g.naam.toLowerCase().includes('btw te betalen'));
-  if(!btwRek && kasOmzetBtw > 0){
-    btwRek = { id:uid(), nummer:'2300', naam:'BTW te betalen', type:'schuld', saldo:0 };
-    if(!DB.grootboek) DB.grootboek = [];
-    DB.grootboek.push(btwRek);
-  }
-  if(btwRek && kasOmzetBtw > 0) btwRek.saldo = (parseFloat(btwRek.saldo)||0) + kasOmzetBtw;
-
-  // 4. Kassaverschil boeken indien aanwezig
-  const boekverschil = kasBoekbedrag - kasOmzetExcl - kasOmzetBtw;
-  if(Math.abs(boekverschil) > 0.01){
-    const verschilRek = DB.grootboek.find(g=>g.naam.toLowerCase().includes('kassaverschil'))
-      || DB.grootboek.find(g=>g.nummer==='8900');
-    if(verschilRek) verschilRek.saldo = (parseFloat(verschilRek.saldo)||0) + boekverschil;
-  }
-
-  // 5. Memoriaalboeking — volledig in evenwicht (debet = credit)
+  // Memoriaalboeking — volledig in evenwicht (debet = credit)
   if(!DB.memoriaal) DB.memoriaal = [];
   DB.memoriaal.push({
     id: uid(),
@@ -1092,7 +1119,9 @@ async function keurKassaGoed(id){
       }] : []),
       ...(Math.abs(boekverschil) > 0.01 ? [{
         dc: boekverschil > 0 ? 'credit' : 'debet',
-        gbId: DB.grootboek.find(g=>g.nummer==='8900')?.id||'',
+        // Dezelfde rekening als waar _boekKassalijst het verschil op zette —
+        // niet opnieuw zoeken, anders wijst de memoriaalregel naar een andere rekening.
+        gbId: g.verschilRek?.id||'',
         oms: 'Kassaverschil',
         bedrag: Math.abs(boekverschil)
       }] : []),
@@ -1128,16 +1157,17 @@ async function verwijderKassalijst(id){
     : `Kassalijst van ${k.datum} definitief verwijderen?`;
   const ok = await bevestig(bevestigTekst, 'Verwijderen', 'Verwijderen');
   if(!ok) return;
-  // Als goedgekeurd: draai grootboek eerst terug
+  // Als goedgekeurd: draai grootboek eerst terug — exacte spiegel van het boeken.
   if(wasGoedgekeurd){
-    const kasRek   = DB.grootboek.find(g=>g.nummer==='1000')||DB.grootboek.find(g=>g.naam.toLowerCase().includes('kas'));
-    const omzetRek = DB.grootboek.find(g=>g.type==='omzet'&&g.naam.toLowerCase().includes('kap'))
-      || DB.grootboek.find(g=>g.type==='omzet');
-    const _kasBoekbedrag = (parseFloat(k.totContant)||0) > 0 ? parseFloat(k.totContant) : parseFloat(k.totaalOmzet)||0;
-    if(kasRek)   kasRek.saldo   = (parseFloat(kasRek.saldo)||0)   - _kasBoekbedrag + (parseFloat(k.totUitgaven)||0);
-    if(omzetRek) omzetRek.saldo = (parseFloat(omzetRek.saldo)||0) - (parseFloat(k.totaalOmzet)||0);
-    // Verwijder ook de memoriaalboeking
-    if(DB.memoriaal) DB.memoriaal = DB.memoriaal.filter(m=>!(m.oms&&m.oms.includes(k.datum)&&m.oms.includes('Kassalijst')));
+    _boekKassalijst(k, -1);
+    // Verwijder ook de memoriaalboeking. Op kassaId, zodat een tweede kassalijst
+    // op dezelfde datum blijft staan; de tekst-match is de fallback voor oude
+    // boekingen van vóór het kassaId-veld.
+    if(DB.memoriaal){
+      const idx = DB.memoriaal.findIndex(m=>m.kassaId===k.id);
+      if(idx !== -1) DB.memoriaal.splice(idx, 1);
+      else DB.memoriaal = DB.memoriaal.filter(m=>!(!m.kassaId&&m.oms&&m.oms.includes(k.datum)&&m.oms.includes('Kassalijst')));
+    }
   }
   DB.kassalijsten = DB.kassalijsten.filter(x=>x.id!==id);
   save();
@@ -1150,16 +1180,15 @@ async function trekKassaGBTerug(id){
   if(!DB.grootboek) DB.grootboek = [];
   const k = DB.kassalijsten.find(k=>k.id===id);
   if(!k) return;
-  const ok = await bevestig(`Boeking van kassalijst ${k.datum} terugdraaien?`, 'Terugdraaien', 'Terugdraaien');
+  const v = _kassaBedragen(k);
+  const ok = await bevestig(
+    `Boeking van kassalijst ${k.datum} terugdraaien?\n\nDit wordt teruggeboekt:\n• Kas: -${fmt(v.kasMutatie)}\n• Omzet excl BTW: -${fmt(v.excl)}\n• BTW ${v.tarief}% te betalen: -${fmt(v.btw)}`,
+    'Terugdraaien', 'Terugdraaien'
+  );
   if(!ok) return;
 
-  const kasRek   = DB.grootboek.find(g=>g.nummer==='1000')||DB.grootboek.find(g=>g.naam.toLowerCase().includes('kas'));
-  const omzetRek = DB.grootboek.find(g=>g.type==='omzet'&&g.naam.toLowerCase().includes('kap'))
-    || DB.grootboek.find(g=>g.type==='omzet');
-
-  const _kasBoekbedrag = (parseFloat(k.totContant)||0) > 0 ? parseFloat(k.totContant) : parseFloat(k.totaalOmzet)||0;
-  if(kasRek)   kasRek.saldo   = (parseFloat(kasRek.saldo)||0)   - _kasBoekbedrag + (parseFloat(k.totUitgaven)||0);
-  if(omzetRek) omzetRek.saldo = (parseFloat(omzetRek.saldo)||0) - (parseFloat(k.totaalOmzet)||0);
+  // Exacte spiegel van keurKassaGoed — inclusief de BTW-rekening.
+  _boekKassalijst(k, -1);
 
   // Verwijder ook de memoriaalboeking die bij goedkeuren werd aangemaakt,
   // zodat grootboek en memoriaal in sync blijven na het terugdraaien.
