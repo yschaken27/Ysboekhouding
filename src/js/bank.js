@@ -1531,6 +1531,22 @@ function bonMaakFactuur(uploadId, omschrijving, uploadDatum){
 
     // Sla uploadId op zodat we na opslaan de status kunnen updaten
     window._pendingBonUploadId = uploadId;
+
+    // Koppel het bonbestand automatisch als bijlage aan de nieuwe factuur.
+    // openFactuurModal() heeft _bijlagenBuffer al geleegd; hier zetten we het
+    // bonbestand erin zodat de bestaande opslag-flow (slaaBijlagenOp) het uploadt.
+    const bon = _bonnenData.find(x=>x.id===uploadId);
+    const bonData = bon && (bon.bestandData || bon.viewUrl);
+    if(bonData){
+      _bijlagenBuffer.push({
+        naam: bon.naam || (omschrijving ? 'Bon '+omschrijving : 'Bon kassier'),
+        type: bon.type || 'application/octet-stream',
+        data: bonData,
+        datum: bon.uploadedAt || new Date().toISOString(),
+        isNew: true
+      });
+      renderBijlagenBuffer();
+    }
   });
 
   toast('Factuurmodal geopend — vul leverancier en bedrag in.','success');
