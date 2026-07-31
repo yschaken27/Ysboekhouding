@@ -1,5 +1,5 @@
 // ===== STATE =====
-let DB = { verkoop:[], inkoop:[], transacties:[], grootboek:[], regels:[], imports:[], profiel:{}, kassalijsten:[], kassiers:[], uren:[], editId:null, editType:null, koppelId:null, csvRaw:[], csvHeaders:[], fVK:'', fsVK:'', fIK:'', fsIK:'', fT:'', fsT:'', huidigeBankId:null };
+let DB = { verkoop:[], inkoop:[], transacties:[], grootboek:[], regels:[], imports:[], btwNotities:{}, profiel:{}, kassalijsten:[], kassiers:[], uren:[], editId:null, editType:null, koppelId:null, csvRaw:[], csvHeaders:[], fVK:'', fsVK:'', fIK:'', fsIK:'', fT:'', fsT:'', huidigeBankId:null };
 
 // Standaard rekeningschema (zzp). Bestaande nummers zijn bewust ongewijzigd
 // zodat lopende boekingen kloppen. 'Accumuleerde afschrijvingen' staat als
@@ -430,6 +430,7 @@ function _bouwSaveData(){
     vasteActiva:DB.vasteActiva||[], profiel:DB.profiel||{},
     kassalijsten:DB.kassalijsten||[], kassiers:DB.kassiers||[],
     uren:DB.uren||[], imports:DB.imports||[],
+    btwNotities:DB.btwNotities||{},
   });
 }
 
@@ -518,7 +519,7 @@ function loadLokaal(){
     if(_liveKassiers) DB.kassiers = _liveKassiers;
   }catch(e){ console.error('localStorage data corrupt:',e); toast('Lokale data kon niet worden geladen — data mogelijk corrupt.','error'); } }
   else {
-    DB.verkoop=[]; DB.inkoop=[]; DB.transacties=[]; DB.regels=[]; DB.imports=[];
+    DB.verkoop=[]; DB.inkoop=[]; DB.transacties=[]; DB.regels=[]; DB.imports=[]; DB.btwNotities={};
     DB.grootboek=JSON.parse(JSON.stringify(DEFAULT_GB));
   }
   // Ontbrekende standaardrekeningen aanvullen (bestaande, incomplete lokale set).
@@ -559,6 +560,10 @@ function loadCloud(){
       // imports altijd mee en slaAllesOp() overschrijft het hele document, dus de
       // eerstvolgende save() vanaf dat apparaat wiste de importgeschiedenis in de cloud.
       if(d.imports      !== undefined) DB.imports      = d.imports      || [];
+      // btwNotities is een object (sleutel: btw_notities_<jaar>_<periode>), geen array.
+      // Werd voorheen alleen in localStorage bewaard: notities waren apparaat-lokaal
+      // en verdwenen bij een andere browser of gewiste cache, zonder melding.
+      if(d.btwNotities  !== undefined) DB.btwNotities  = d.btwNotities  || {};
       // Kassiers: cloud vervangt de lokale lijst VOLLEDIG — geen merge.
       // Elke gebruikerswijziging schrijft de complete lijst naar alle bedrijven
       // (slaKassiersOpCloud), dus dit document bevat altijd de hele waarheid.
@@ -643,7 +648,7 @@ async function wisselBedrijf(naam){
   huidigBedrijf=naam;
   localStorage.setItem('ledger_actief_bedrijf', naam);
   DB={ verkoop:[], inkoop:[], transacties:[], grootboek:[], regels:[], imports:[],
-       profiel:{}, memoriaal:[], vasteActiva:[], kassalijsten:[], kassiers:[], uren:[],
+       btwNotities:{}, profiel:{}, memoriaal:[], vasteActiva:[], kassalijsten:[], kassiers:[], uren:[],
        editId:null, editType:null, koppelId:null,
        csvRaw:[], csvHeaders:[], fVK:'', fsVK:'', fIK:'', fsIK:'', fT:'', fsT:'', huidigeBankId:null };
   closeModal('modal-bedrijf');

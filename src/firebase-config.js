@@ -114,6 +114,7 @@
         memoriaal:   main.memoriaal||[],
         vasteActiva: main.vasteActiva||[],
         imports:     main.imports||[],
+        btwNotities: main.btwNotities||{},
         verkoop:     vkSnap.exists ? (vkSnap.data().items||[]) : [],
         inkoop:      ikSnap.exists ? (ikSnap.data().items||[]) : [],
         transacties: trSnap.exists ? (trSnap.data().items||[]) : [],
@@ -141,6 +142,7 @@
             memoriaal:    main.memoriaal    || [],
             vasteActiva:  main.vasteActiva  || [],
             imports:      main.imports      || [],
+            btwNotities:  main.btwNotities  || {},
             verkoop:      docs.verkoop.items      || [],
             inkoop:       docs.inkoop.items       || [],
             transacties:  docs.transacties.items  || [],
@@ -193,6 +195,7 @@
           memoriaal:   d.memoriaal||[],
           vasteActiva: d.vasteActiva||[],
           imports:     d.imports||[],
+          btwNotities: d.btwNotities||{},
         }),
         ref.doc('verkoop').set({items: d.verkoop||[]}),
         ref.doc('inkoop').set({items: d.inkoop||[]}),
@@ -243,7 +246,7 @@
           rechtsvorm:'eenmanszaak',
         },
         grootboek:[], regels:[],
-        memoriaal:[], vasteActiva:[], imports:[]
+        memoriaal:[], vasteActiva:[], imports:[], btwNotities:{}
       }, {merge:true});
       // Maak ook lege kassalijsten doc aan
       await db.collection('bedrijven').doc(naam).collection('data').doc('kassalijsten').set({items:[]}, {merge:true});
