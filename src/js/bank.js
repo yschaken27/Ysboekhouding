@@ -1567,7 +1567,29 @@ function bonAfkeuren(uploadId){
 function renderImports(){
   const el=document.getElementById('imports-list');
   if(!el) return;
-  const imports=DB.imports||[];
+  const imports=(DB.imports||[]).slice();
+
+  // Reconstrueer imports waarvan het record ontbreekt terwijl de transacties er nog
+  // zijn. Dit komt voor bij data van vóór de imports-sync-fix in state.js: een
+  // apparaat dat de importgeschiedenis niet had ingelezen schreef imports:[] naar de
+  // cloud, terwijl elke transactie zijn importId gewoon behield. Zonder deze
+  // reconstructie is zo'n import op géén enkel apparaat meer in één keer te
+  // verwijderen. We tonen ze alleen — er wordt niets teruggeschreven of gewist.
+  const bekend=new Set(imports.map(i=>i.id));
+  const wees={};
+  (DB.transacties||[]).forEach(t=>{
+    if(!t.importId||bekend.has(t.importId)) return;
+    const w=wees[t.importId]||(wees[t.importId]={aantal:0,datums:[]});
+    w.aantal++;
+    if(t.datum) w.datums.push(t.datum);
+  });
+  Object.keys(wees).forEach(id=>{
+    const w=wees[id];
+    w.datums.sort();
+    // Geen importdatum bekend — val terug op de vroegste transactiedatum.
+    imports.push({id,datum:w.datums[0]||'onbekend',aantalTransacties:w.aantal,hersteld:true});
+  });
+
   if(!imports.length){el.innerHTML='<div class="empty" style="padding:20px;"><p>Geen imports</p></div>';return;}
   el.innerHTML=imports.slice().reverse().map(imp=>{
     const transacties=DB.transacties.filter(t=>t.importId===imp.id);
@@ -1576,7 +1598,7 @@ function renderImports(){
     const totaal=transacties.length;
     return `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);">
       <div>
-        <div style="font-size:13px;font-weight:500;">Import ${imp.datum}</div>
+        <div style="font-size:13px;font-weight:500;">Import ${imp.datum}${imp.hersteld?` <span class="badge badge-orange" title="Importrecord ontbrak — afgeleid uit de transacties. Datum is de vroegste transactiedatum, niet de importdatum.">hersteld</span>`:''}</div>
         <div style="font-size:12px;color:var(--text-dim);margin-top:3px;">
           ${totaal} transacties
           ${gekoppeld>0?`· <span style="color:var(--accent);">${gekoppeld} gekoppeld</span>`:''}

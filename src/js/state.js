@@ -553,6 +553,12 @@ function loadCloud(){
       if(d.vasteActiva  !== undefined) DB.vasteActiva  = d.vasteActiva  || [];
       if(d.kassalijsten !== undefined) DB.kassalijsten = d.kassalijsten || [];
       if(d.uren         !== undefined) DB.uren         = d.uren         || [];
+      // imports MOET hier mee. Ontbrak dit, dan bleef DB.imports leeg op een tweede
+      // apparaat → geen import-regels in beeld, dus ook geen "Verwijder import"-knop,
+      // terwijl de transacties zelf wél binnenkwamen. Erger: _bouwSaveData() stuurt
+      // imports altijd mee en slaAllesOp() overschrijft het hele document, dus de
+      // eerstvolgende save() vanaf dat apparaat wiste de importgeschiedenis in de cloud.
+      if(d.imports      !== undefined) DB.imports      = d.imports      || [];
       // Kassiers: cloud vervangt de lokale lijst VOLLEDIG — geen merge.
       // Elke gebruikerswijziging schrijft de complete lijst naar alle bedrijven
       // (slaKassiersOpCloud), dus dit document bevat altijd de hele waarheid.
