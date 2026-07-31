@@ -59,6 +59,13 @@ Bekende modals: `modal-bedrijf`, `modal-opdrachtgevers`, `modal-gebruiker-detail
 - Code echt lezen voordat je conclusies trekt — niet gokken.
 - Firebase is de single source of truth. localStorage mag nooit winnen, geen merging.
 - Verwijderingen op één apparaat moeten na refresh doorzetten.
+- **Na elk opgelost issue: zelf committen én pushen, zonder te vragen.** Deze repo
+  (`Ysboekhouding/`) heeft een remote (`origin` → GitHub) en we werken direct op `main`.
+  Let op: de bovenliggende map `Bookkeeping/` is GEEN repo — check dus altijd
+  `Ysboekhouding/` zelf. Commit alleen de bestanden van de fix, niet losse
+  rommel als `_backup/` of ongerelateerde `.claude/`-wijzigingen.
+  Commit-messages met aanhalingstekens erin gaan mis in PowerShell → gebruik
+  `git commit -F <bestand>` met de message in een tijdelijk bestand.
 
 ## Architectuur
 - Firebase 10.12.0 (compat SDK: app, firestore, storage, auth)
