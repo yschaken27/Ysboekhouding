@@ -878,15 +878,26 @@ function renderKassaoverzicht(){
   const geboekt  = DB.kassalijsten.filter(k=>k.status==='goedgekeurd');
   // Gebruik totaalOmzetIncl voor weergave — dat is wat fysiek in de kassa zat
   const totOmzet = geboekt.reduce((a,k)=>a+parseFloat(k.totaalOmzetIncl||k.totaalOmzet||0),0);
-  const totCont  = geboekt.reduce((a,k)=>a+parseFloat(k.totContant||0),0);
+  // Contant in kas = exact het bedrag dat keurKassaGoed op rekening 1000 boekt:
+  // totContant als die gevuld is, anders de omzet incl BTW, min de uitgaven.
+  const totCont  = geboekt.reduce((a,k)=>{
+    const cont = parseFloat(k.totContant||0);
+    const incl = parseFloat(k.totaalOmzetIncl||k.totaalOmzet||0);
+    return a + (cont>0?cont:incl) - parseFloat(k.totUitgaven||0);
+  },0);
   const wacht    = DB.kassalijsten.filter(k=>k.status==='ingediend').length;
-  const totVersc = DB.kassalijsten.reduce((a,k)=>a+Math.abs(parseFloat(k.verschil||0)),0);
+  // BTW die met deze kassalijsten is meegeboekt naar de BTW-schuldrekening.
+  const totBtw   = geboekt.reduce((a,k)=>{
+    const incl = parseFloat(k.totaalOmzetIncl||k.totaalOmzet||0);
+    const excl = parseFloat(k.totaalOmzet||0);
+    return a + parseFloat(k.omzetBtw||(incl-excl)||0);
+  },0);
 
   const s = id => document.getElementById(id);
   if(s('kov-omzet'))   s('kov-omzet').textContent   = fmt(totOmzet);
   if(s('kov-contant')) s('kov-contant').textContent  = fmt(totCont);
   if(s('kov-wacht'))   s('kov-wacht').textContent    = wacht;
-  if(s('kov-verschil'))s('kov-verschil').textContent = fmt(totVersc);
+  if(s('kov-btw'))     s('kov-btw').textContent      = fmt(totBtw);
 
   const el = document.getElementById('kassa-overzicht-lijst');
   if(!el) return;
@@ -899,7 +910,27 @@ function renderKassaoverzicht(){
   el.innerHTML = lijst.map(k=>{
     const statusKleur = {ingediend:'#d97706',goedgekeurd:'#16a34a',afgewezen:'#dc2626'}[k.status]||'#64748b';
     const statusLabel = {ingediend:'⏳ Wacht goedkeuring',goedgekeurd:'✓ Goedgekeurd',afgewezen:'✕ Afgewezen'}[k.status]||k.status;
-    const verschilKleur = Math.abs(k.verschil||0)<0.01?'#16a34a':k.verschil>0?'#16a34a':'#dc2626';
+
+    // Wat de kassier daadwerkelijk heeft ingevoerd — de basis van de hele lijst.
+    const begin     = parseFloat(k.beginsaldo||0);
+    const eind      = parseFloat(k.eindsaldo||0);
+    const omzetIncl = parseFloat(k.totaalOmzetIncl||k.totaalOmzet||0);
+    const omzetExcl = parseFloat(k.totaalOmzet||0);
+    const btwBedrag = parseFloat(k.omzetBtw||(omzetIncl-omzetExcl)||0);
+    const btwTarief = k.btwTarief ?? DB.profiel?.btwStandaard ?? 21;
+    // Kastelling: eind − begin hoort exact de omzet incl BTW te zijn. Wijkt dat af,
+    // dan is de lijst met de hand aangepast. Oude lijsten uit de categorie-invoer
+    // hebben helemaal geen eindsaldo — daar is er niets te vergelijken.
+    const heeftTelling = k.eindsaldo !== undefined && k.eindsaldo !== null && k.eindsaldo !== '';
+    const telVerschil  = (eind-begin) - omzetIncl;
+    const telAfwijking = heeftTelling && Math.abs(telVerschil) > 0.01;
+
+    // Contant/pin/uitgaven zijn in de huidige invoer altijd 0 — alleen tonen
+    // als een (oudere) lijst ze echt gevuld heeft.
+    const heeftKasDetails = (parseFloat(k.totContant||0)!==0)
+      || (parseFloat(k.totPin||0)!==0) || (parseFloat(k.totUitgaven||0)!==0);
+    const categorieen = (k.categorieen||[]).filter(c=>(parseFloat(c.contant)||0)+(parseFloat(c.pin)||0)>0);
+    const uitgaven = k.uitgaven||[];
 
     return `<div class="card" style="margin-bottom:10px;">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;">
@@ -922,12 +953,16 @@ function renderKassaoverzicht(){
       </div>
 
       <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px;">
-        <div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em;">Omzet totaal</div><div style="font-size:14px;font-family:var(--mono);font-weight:600;color:#16a34a;margin-top:3px;">${fmt(k.totaalOmzet)}</div></div>
-        <div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em;">Contant</div><div style="font-size:14px;font-family:var(--mono);font-weight:600;margin-top:3px;">${fmt(k.totContant)}</div></div>
-        <div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em;">Pin/Kaart</div><div style="font-size:14px;font-family:var(--mono);font-weight:600;margin-top:3px;">${fmt(k.totPin)}</div></div>
-        <div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em;">Uitgaven</div><div style="font-size:14px;font-family:var(--mono);font-weight:600;color:#dc2626;margin-top:3px;">-${fmt(k.totUitgaven)}</div></div>
-        <div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em;">Kassaverschil</div><div style="font-size:14px;font-family:var(--mono);font-weight:600;color:${verschilKleur};margin-top:3px;">${fmt(k.verschil||0)}</div></div>
+        <div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em;">Beginsaldo kas</div><div style="font-size:14px;font-family:var(--mono);font-weight:600;margin-top:3px;">${heeftTelling?fmt(begin):'—'}</div></div>
+        <div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em;">Eindsaldo kas</div><div style="font-size:14px;font-family:var(--mono);font-weight:600;margin-top:3px;">${heeftTelling?fmt(eind):'—'}</div></div>
+        <div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em;">Omzet incl BTW</div><div style="font-size:14px;font-family:var(--mono);font-weight:600;color:#16a34a;margin-top:3px;">${fmt(omzetIncl)}</div></div>
+        <div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em;">Omzet excl BTW</div><div style="font-size:14px;font-family:var(--mono);font-weight:600;margin-top:3px;">${fmt(omzetExcl)}</div></div>
+        <div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em;">BTW ${btwTarief}%</div><div style="font-size:14px;font-family:var(--mono);font-weight:600;margin-top:3px;">${fmt(btwBedrag)}</div></div>
       </div>
+
+      ${telAfwijking?`<div style="font-size:12px;color:#dc2626;background:rgba(220,38,38,.08);border-radius:6px;padding:6px 10px;margin-bottom:12px;">
+        ⚠ Kastelling wijkt af: eindsaldo − beginsaldo = ${fmt(eind-begin)}, maar de geboekte omzet incl BTW is ${fmt(omzetIncl)} (verschil ${fmt(telVerschil)}).
+      </div>`:''}
 
       <details>
         <summary style="cursor:pointer;font-size:12px;color:var(--text-dim);list-style:none;display:flex;align-items:center;gap:6px;user-select:none;">
@@ -935,21 +970,53 @@ function renderKassaoverzicht(){
         </summary>
         <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div>
-            <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">Omzet per categorie</div>
-            ${k.categorieen.map(c=>`
+            <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">Ingevoerd door kassier</div>
+            ${heeftTelling?`
               <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
-                <span>${c.naam}${c.aantal>0?` (${c.aantal}x)`:''}</span>
-                <span class="mono">${fmt(c.contant+c.pin)}</span>
-              </div>`).join('')}
+                <span>Bedrag in kas bij opening</span><span class="mono">${fmt(begin)}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
+                <span>Geteld bedrag bij sluiting</span><span class="mono">${fmt(eind)}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-top:1px solid var(--border);margin-top:3px;">
+                <span>Toename kas (eind − begin)</span><span class="mono">${fmt(eind-begin)}</span>
+              </div>`
+            :`<div style="font-size:12px;color:var(--text-dim);padding:3px 0;">Geen kastelling vastgelegd (oude invoer).</div>`}
+            ${heeftKasDetails?`
+              <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
+                <span>Contant</span><span class="mono">${fmt(k.totContant||0)}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
+                <span>Pin/Kaart</span><span class="mono">${fmt(k.totPin||0)}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
+                <span>Uitgaven</span><span class="mono amount-neg">-${fmt(k.totUitgaven||0)}</span>
+              </div>`:''}
+            ${categorieen.length?`<div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em;margin:10px 0 6px;">Omzet per categorie</div>
+            ${categorieen.map(c=>`
+              <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
+                <span>${esc(c.naam)}${c.aantal>0?` (${c.aantal}x)`:''}</span>
+                <span class="mono">${fmt((parseFloat(c.contant)||0)+(parseFloat(c.pin)||0))}</span>
+              </div>`).join('')}`:''}
           </div>
           <div>
-            ${k.uitgaven.length?`<div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">Uitgaven</div>
-            ${k.uitgaven.map(u=>`
+            <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">Boeking bij goedkeuren</div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
+              <span>Kas (1000)</span><span class="mono">+${fmt((parseFloat(k.totContant||0)>0?parseFloat(k.totContant):omzetIncl)-parseFloat(k.totUitgaven||0))}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
+              <span>Omzet excl BTW</span><span class="mono">+${fmt(omzetExcl)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
+              <span>BTW te betalen ${btwTarief}%</span><span class="mono">+${fmt(btwBedrag)}</span>
+            </div>
+            ${uitgaven.length?`<div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em;margin:10px 0 6px;">Uitgaven</div>
+            ${uitgaven.map(u=>`
               <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
-                <span>${u.oms}</span>
+                <span>${esc(u.oms||'')}</span>
                 <span class="mono amount-neg">-${fmt(u.bedrag)}</span>
               </div>`).join('')}`:''}
-            ${k.notities?`<div style="font-size:11px;color:var(--text-dim);margin-top:8px;">📝 ${k.notities}</div>`:''}
+            ${k.notities?`<div style="font-size:11px;color:var(--text-dim);margin-top:8px;">📝 ${esc(k.notities)}</div>`:''}
           </div>
         </div>
       </details>

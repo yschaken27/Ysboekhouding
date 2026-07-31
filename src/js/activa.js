@@ -662,6 +662,38 @@ function initMobKassa(){
   if(notitiesEl) notitiesEl.value = '';
 
   mobHerbereken();
+  renderMobKassaHistorie();
+}
+
+// Historie onder het invoerformulier: iedereen met de kassa-module ziet dezelfde
+// ingediende lijsten van dit bedrijf, met de ingevoerde begin- en eindsaldi.
+function renderMobKassaHistorie(){
+  const el = document.getElementById('mob-kassa-historie');
+  if(!el) return;
+  const lijsten = [...(DB.kassalijsten||[])]
+    .sort((a,b)=>(b.datum||'').localeCompare(a.datum||''))
+    .slice(0,10);
+  if(!lijsten.length){
+    el.innerHTML = '<div style="color:rgba(255,255,255,0.25);font-size:14px;text-align:center;padding:24px 0">Nog geen kassalijsten.</div>';
+    return;
+  }
+  el.innerHTML = lijsten.map(l=>{
+    const statusClass = l.status==='goedgekeurd'?'goed':l.status==='afgekeurd'?'afgekeurd':l.status==='ingediend'?'ingediend':'open';
+    const statusLabel = {goedgekeurd:'Goedgekeurd',afgekeurd:'Afgekeurd',ingediend:'Ingediend',open:'Openstaand'}[l.status]||l.status;
+    const datum = l.datum?new Date(l.datum).toLocaleDateString('nl-NL',{weekday:'short',day:'numeric',month:'short'}):'-';
+    const heeftTelling = l.eindsaldo!==undefined && l.eindsaldo!==null && l.eindsaldo!=='';
+    const begin = parseFloat(l.beginsaldo||0);
+    const eind  = parseFloat(l.eindsaldo||0);
+    const door  = l.ingevoerdDoor ? ' · '+esc(l.ingevoerdDoor) : '';
+    // Oude lijsten hebben geen kastelling — toon dan gewoon de omzet.
+    const bedrag = heeftTelling
+      ? mobFmtEur(begin)+' → '+mobFmtEur(eind)
+      : mobFmtEur(l.totaalOmzetIncl||l.totaalOmzet||0);
+    return '<div class="mob-lijst-item" onclick="mobOpenDetail(\''+l.id+'\')">'
+      +'<div><div class="mob-lijst-datum">'+datum+door+'</div>'
+      +'<div class="mob-lijst-bedrag" style="font-size:14px;">'+bedrag+'</div></div>'
+      +'<span class="mob-lijst-status '+statusClass+'">'+statusLabel+'</span></div>';
+  }).join('');
 }
 
 function bouwMobCatGrid(){
@@ -1204,8 +1236,20 @@ function mobOpenDetail(id){
       }
     });
   }
+  // Beginsaldo/eindsaldo zijn wat de kassier zelf heeft ingetikt — die horen
+  // bovenaan, zodat hij (en de eigenaar) zijn eigen invoer kan controleren.
+  const dHeeftTelling = l.eindsaldo!==undefined && l.eindsaldo!==null && l.eindsaldo!=='';
+  const dBegin = parseFloat(l.beginsaldo||0);
+  const dEind  = parseFloat(l.eindsaldo||0);
+  const saldoHTML = dHeeftTelling
+    ? '<div class="mob-detail-row"><span>Beginsaldo</span><span>'+mobFmtEur(dBegin)+'</span></div>'
+      +'<div class="mob-detail-row"><span>Eindsaldo</span><span>'+mobFmtEur(dEind)+'</span></div>'
+      +'<div class="mob-detail-row"><span>Verschil (eind − begin)</span><span>'+mobFmtEur(dEind-dBegin)+'</span></div>'
+    : '';
+
   contentEl.innerHTML = '<div class="mob-detail-titel">Kassalijst</div>'
     +'<div class="mob-detail-row"><span>Datum</span><span>'+datum+'</span></div>'
+    +saldoHTML
     +'<div class="mob-detail-row"><span>Omzet excl. BTW</span><span>'+mobFmtEur(l.totaalOmzet||0)+'</span></div>'
     +(l.totaalOmzetIncl?'<div class="mob-detail-row"><span>Omzet incl. BTW</span><span>'+mobFmtEur(l.totaalOmzetIncl)+'</span></div>':'')
     +(l.omzetBtw?'<div class="mob-detail-row"><span>BTW '+(l.btwTarief||9)+'%</span><span>'+mobFmtEur(l.omzetBtw)+'</span></div>':'')
