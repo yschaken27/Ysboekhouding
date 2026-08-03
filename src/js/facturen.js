@@ -796,6 +796,12 @@ function boekHandmatigeBetaling(f, type, richting){
   // Verkoop: geld binnen, vordering weg. Inkoop: geld eruit, schuld weg.
   bank.saldo  = rond((parseFloat(bank.saldo)||0)  + (isVK ? incl : -incl));
   tegen.saldo = rond((parseFloat(tegen.saldo)||0) - incl);
+  // Vastleggen op wélke rekening het geld geboekt is. De grootboekkaart moet deze
+  // betaling later kunnen reconstrueren; zonder dit zou hij alleen de factuur zien
+  // en de betaling als niet-herleidbare restpost tonen. getBankRekening() kan
+  // ondertussen iets anders teruggeven, dus gokken achteraf is niet goed genoeg.
+  if(richting > 0) f.betaaldGbId = bank.id;
+  else delete f.betaaldGbId;
   return true;
 }
 

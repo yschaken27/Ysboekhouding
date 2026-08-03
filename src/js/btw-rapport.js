@@ -861,6 +861,19 @@ function bouwGrootboekkaart(gbId){
     });
     if(nr==='1300'){ const v=rond(parseFloat(f.totaalIncl||0)); if(Math.abs(v)>0.005) posten.push({datum:d,bron:'Verkoopfactuur '+(f.nummer||''),oms:'Debiteur — '+(f.klant||''),effect:v,ref:{p:'verkoop',id:f.id}}); }
     if(btwTeBetalen){ const v=rond(parseFloat(f.btwBedrag||0)); if(v>0.005) posten.push({datum:d,bron:'Verkoopfactuur '+(f.nummer||''),oms:'BTW te betalen',effect:v,ref:{p:'verkoop',id:f.id}}); }
+    // Handmatig betaald gemarkeerd: boekt bank/kas ↔ debiteuren zonder dat er een
+    // banktransactie bestaat. Zonder deze twee posten kent de kaart die boeking
+    // niet en verschijnt het bedrag als niet-herleidbare restpost op ALLEBEI de
+    // rekeningen — een van de manieren waarop restposten zijn ontstaan.
+    if(f.handmatigBetaald){
+      const inc = rond(parseFloat(f.totaalIncl||0));
+      const bankId = f.betaaldGbId || (typeof getBankRekening==='function' ? getBankRekening()?.id : null);
+      const dB = f.betaaldOp||d;
+      if(Math.abs(inc)>0.005){
+        if(nr==='1300') posten.push({datum:dB,bron:'Betaling (handmatig)',oms:'Ontvangen — '+(f.klant||''),effect:-inc,ref:{p:'verkoop',id:f.id}});
+        if(bankId && gbId===String(bankId)) posten.push({datum:dB,bron:'Betaling (handmatig)',oms:'Factuur '+(f.nummer||'')+' — '+(f.klant||''),effect:inc,ref:{p:'verkoop',id:f.id}});
+      }
+    }
   });
   (DB.inkoop||[]).forEach(f=>{
     const d=f.datum||'';
@@ -871,6 +884,16 @@ function bouwGrootboekkaart(gbId){
       }
     });
     if(nr==='2100'){ const v=rond(parseFloat(f.totaalIncl||0)); if(Math.abs(v)>0.005) posten.push({datum:d,bron:'Inkoopfactuur '+(f.nummer||''),oms:'Crediteur — '+(f.klant||''),effect:v,ref:{p:'inkoop',id:f.id}}); }
+    // Zelfde als bij verkoop, maar dan geld eruit: crediteuren omlaag, bank omlaag.
+    if(f.handmatigBetaald){
+      const inc = rond(parseFloat(f.totaalIncl||0));
+      const bankId = f.betaaldGbId || (typeof getBankRekening==='function' ? getBankRekening()?.id : null);
+      const dB = f.betaaldOp||d;
+      if(Math.abs(inc)>0.005){
+        if(nr==='2100') posten.push({datum:dB,bron:'Betaling (handmatig)',oms:'Betaald — '+(f.klant||''),effect:-inc,ref:{p:'inkoop',id:f.id}});
+        if(bankId && gbId===String(bankId)) posten.push({datum:dB,bron:'Betaling (handmatig)',oms:'Factuur '+(f.nummer||'')+' — '+(f.klant||''),effect:-inc,ref:{p:'inkoop',id:f.id}});
+      }
+    }
     if(btwTeVorderen){ const v=rond(parseFloat(f.btwBedrag||0)); if(v>0.005) posten.push({datum:d,bron:'Inkoopfactuur '+(f.nummer||''),oms:'BTW te vorderen',effect:v,ref:{p:'inkoop',id:f.id}}); }
   });
   (DB.transacties||[]).forEach(t=>{
