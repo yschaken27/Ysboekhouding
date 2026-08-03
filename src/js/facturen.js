@@ -423,6 +423,7 @@ function openFactuurModal(type, id){
   const arr=isVK?DB.verkoop:DB.inkoop;
   if(id){
     const f=arr.find(x=>x.id===id);
+    if(!f){ toast('Factuur niet gevonden.','error'); return; }
     document.getElementById('f-nummer').value=f.nummer;
     document.getElementById('f-datum').value=f.datum;
     document.getElementById('f-klant').value=f.klant;
@@ -435,7 +436,28 @@ function openFactuurModal(type, id){
     document.getElementById('f-status').value=f.status;
     // gbrekId per regel wordt ingeladen via addRegel(r)
     document.getElementById('f-regels').innerHTML='';
-    f.regels.forEach(r=>addRegel(r));
+    // Uren-/dagfacturen (maakUrenFactuur) worden zonder `regels` opgeslagen, alleen
+    // met totalen. Zonder deze fallback klapte `f.regels.forEach` hier op undefined,
+    // bleef de modal leeg achter, en strandde opslaan daarna op "totaal €0,00" —
+    // zo'n factuur was dus niet te bewerken en ook niet op betaald te zetten.
+    // We bouwen er één regel van, zodat hij verder precies als elke andere factuur werkt.
+    const bestaandeRegels = Array.isArray(f.regels) ? f.regels : [];
+    if(bestaandeRegels.length){
+      bestaandeRegels.forEach(r=>addRegel(r));
+    } else {
+      const excl = parseFloat(f.totaalExcl)||0;
+      const btw  = parseFloat(f.btwBedrag)||0;
+      // BTW-tarief terugrekenen uit de bedragen; alleen een geldig Nederlands
+      // tarief overnemen, anders 0% zodat het totaal hoe dan ook klopt.
+      const pct  = excl>0 ? Math.round(btw/excl*100) : 0;
+      addRegel({
+        omschrijving: f.omschrijving || ('Factuur '+(f.nummer||'')),
+        aantal: 1,
+        prijs: excl,
+        gbId: '',   // leeg = eerste omzet-/kostenrekening, net als maakUrenFactuur deed
+        btw: String([0,9,21].includes(pct) ? pct : 0)
+      });
+    }
   } else {
     const prefix=isVK?'VK-':'IK-';
     const jaar=new Date().getFullYear();
