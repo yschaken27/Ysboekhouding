@@ -867,6 +867,219 @@ Let op: deze factuur is gekoppeld aan een bankbetaling van ${fmt(gekoppeldeT.bed
   toast('Factuur verwijderd.','info');
 }
 
+// ===== FACTUURDOCUMENT =====
+// Eén A4-template voor élk factuurdocument dat de klant onder ogen krijgt.
+// Stond eerst inline in maakUrenFactuur() (kassier.js); nu gedeeld met de
+// "Factuur"-knop bij verkoopfacturen, zodat er maar één opmaak te onderhouden is
+// en beide dezelfde wettelijk verplichte velden tonen (Wet OB 1968 art. 35a).
+// Wijzig je hier iets, dan verandert het voor allebei — check met factuur-validator.
+//
+// o = {
+//   bedrijf          bedrijfsnaam in de header
+//   p                bedrijfsprofiel (straat, postcode, stad, kvk, btw, iban)
+//   klantNaam        geadresseerde
+//   klantRegels[]    adresregels van de klant, lege regels worden overgeslagen
+//   factuurNr, factuurdatumFmt, vervaldatumFmt, termijnLabel
+//   kolommen[]       tabelkoppen; eerste kolom links uitgelijnd, de rest rechts
+//   rijen[[]]        celwaarden per regel, zelfde aantal kolommen
+//   subtotaalExcl, btwRegels[{label,bedrag}], totaalIncl
+//   zonderBtw        true = compacte totaalregel + "BTW niet van toepassing"
+//   notities         optioneel, onder de totalen
+// }
+function bouwFactuurHtml(o){
+  const p = o.p || {};
+  const eur = n => '€ ' + (parseFloat(n)||0).toFixed(2);
+  // esc() doet (s||'').replace(...) en klapt dus op een number — altijd eerst String().
+  const cel = c => esc(String(c==null?'':c));
+  const adresBlok = (o.klantRegels||[]).filter(r=>r&&String(r).trim()).map(cel).join('<br>');
+  const kop = (o.kolommen||[]).map(k=>`<th>${cel(k)}</th>`).join('');
+  const rijen = (o.rijen||[]).map(r=>`<tr>${(r||[]).map(c=>`<td>${cel(c)}</td>`).join('')}</tr>`).join('');
+  const totaalRijen = o.zonderBtw
+    ? `<tr class="scheidslijn eindtotaal"><td>Totaal</td><td>${eur(o.totaalIncl)}</td></tr>`
+    : `<tr><td>Subtotaal excl. BTW</td><td>${eur(o.subtotaalExcl)}</td></tr>
+      ${(o.btwRegels||[]).map(b=>`<tr><td>${cel(b.label)}</td><td>${eur(b.bedrag)}</td></tr>`).join('')}
+      <tr class="scheidslijn eindtotaal"><td>Totaal incl. BTW</td><td>${eur(o.totaalIncl)}</td></tr>`;
+
+  return `<!doctype html><html lang="nl"><head><meta charset="utf-8"><title>Factuur ${cel(o.factuurNr)}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;width:794px;min-height:1123px;margin:0 auto;font-size:13px;line-height:1.5;background:#fff;display:flex;flex-direction:column;}
+  .header{background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 60%,#38bdf8 100%);padding:32px 40px 28px;display:flex;justify-content:space-between;align-items:flex-start;}
+  .header-title{font-size:38px;font-weight:900;color:#fff;letter-spacing:1px;}
+  .header-bedrijf{text-align:right;color:#fff;}
+  .header-bedrijf .naam{font-size:16px;font-weight:700;margin-bottom:4px;}
+  .header-bedrijf .info{font-size:11px;opacity:.85;line-height:1.7;}
+  .meta-balk{background:#f1f5fb;border-bottom:2px solid #e2e8f0;display:flex;gap:0;}
+  .meta-cel{flex:1;padding:14px 20px;border-right:1px solid #e2e8f0;}
+  .meta-cel:last-child{border-right:none;}
+  .meta-cel .lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin-bottom:3px;}
+  .meta-cel .val{font-size:14px;font-weight:700;color:#1e3a8a;}
+  .body{flex:1;padding:28px 40px;display:flex;flex-direction:column;}
+  .factuur-aan{margin-bottom:28px;}
+  .factuur-aan .lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin-bottom:6px;}
+  .factuur-aan .naam{font-size:14px;font-weight:700;margin-bottom:2px;}
+  .factuur-aan .adres{font-size:12px;color:#444;line-height:1.6;}
+  table.regels{width:100%;border-collapse:collapse;margin-bottom:0;}
+  table.regels thead tr{background:#1e3a8a;}
+  table.regels th{padding:9px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#fff;text-align:left;}
+  table.regels th:not(:first-child){text-align:right;}
+  table.regels td{padding:9px 12px;font-size:12px;border-bottom:1px solid #e2e8f0;}
+  table.regels td:not(:first-child){text-align:right;}
+  table.regels tbody tr:nth-child(even){background:#f8fafc;}
+  .totaal-sectie{display:flex;justify-content:flex-end;margin-top:16px;}
+  .totaal-tabel{border-collapse:collapse;min-width:280px;}
+  .totaal-tabel td{padding:5px 12px;font-size:13px;}
+  .totaal-tabel td:last-child{text-align:right;font-weight:600;min-width:90px;}
+  .totaal-tabel .scheidslijn td{border-top:2px solid #1e3a8a;padding-top:8px;}
+  .totaal-tabel .eindtotaal td{font-size:16px;font-weight:800;color:#1e3a8a;}
+  .kor-tekst{font-size:11px;color:#64748b;text-align:right;margin-top:6px;padding-right:12px;}
+  .notities{margin-top:24px;font-size:12px;color:#444;line-height:1.6;white-space:pre-wrap;}
+  .notities .lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin-bottom:4px;}
+  .footer{margin-top:auto;padding:20px 40px 28px;border-top:2px solid #e2e8f0;}
+  .betaalinfo{font-size:12px;color:#444;line-height:1.8;}
+  .betaalinfo strong{color:#1a1a1a;}
+  .print-btn{display:inline-block;margin-top:16px;padding:10px 28px;font-size:13px;border:none;border-radius:6px;background:#1e3a8a;color:#fff;cursor:pointer;font-weight:600;}
+  @media print{.print-btn{display:none;}body{width:100%;min-height:unset;}}
+</style></head><body>
+
+<div class="header">
+  <div class="header-title">FACTUUR</div>
+  <div class="header-bedrijf">
+    <div class="naam">${cel(o.bedrijf)}</div>
+    <div class="info">
+      ${p.straat?cel(p.straat)+'<br>':''}${(p.postcode||p.stad)?((cel(p.postcode||'')+' '+cel(p.stad||'')).trim())+'<br>':''}${p.kvk?'KvK: '+cel(p.kvk)+'<br>':''}${p.btw?'BTW: '+cel(p.btw)+'<br>':''}${p.iban?'IBAN: '+cel(p.iban):''}
+    </div>
+  </div>
+</div>
+
+<div class="meta-balk">
+  <div class="meta-cel"><div class="lbl">Factuurnummer</div><div class="val">${cel(o.factuurNr)}</div></div>
+  <div class="meta-cel"><div class="lbl">Factuurdatum</div><div class="val">${cel(o.factuurdatumFmt)}</div></div>
+  <div class="meta-cel"><div class="lbl">Vervaldatum</div><div class="val">${cel(o.vervaldatumFmt)}</div></div>
+  <div class="meta-cel"><div class="lbl">Betalingstermijn</div><div class="val">${cel(o.termijnLabel||'30 dagen')}</div></div>
+</div>
+
+<div class="body">
+  <div class="factuur-aan">
+    <div class="lbl">Factuur aan</div>
+    <div class="naam">${cel(o.klantNaam)}</div>
+    <div class="adres">${adresBlok}</div>
+  </div>
+
+  <table class="regels">
+    <thead><tr>${kop}</tr></thead>
+    <tbody>${rijen}</tbody>
+  </table>
+
+  <div class="totaal-sectie">
+    <table class="totaal-tabel">${totaalRijen}</table>
+  </div>
+  ${o.zonderBtw?'<div class="kor-tekst">BTW niet van toepassing</div>':''}
+  ${o.notities?`<div class="notities"><div class="lbl">Opmerkingen</div>${cel(o.notities)}</div>`:''}
+</div>
+
+<div class="footer">
+  ${p.iban?`<div class="betaalinfo">
+    Gelieve <strong>${eur(o.totaalIncl)}</strong> over te maken vóór <strong>${cel(o.vervaldatumFmt)}</strong><br>
+    op IBAN <strong>${cel(p.iban)}</strong> t.n.v. <strong>${cel(o.bedrijf)}</strong><br>
+    onder vermelding van factuurnummer <strong>${cel(o.factuurNr)}</strong>.
+  </div>`:''}
+  <button class="print-btn" onclick="window.print()">Afdrukken / opslaan als PDF</button>
+</div>
+
+</body></html>`;
+}
+
+// Opent een factuurdocument in een nieuw venster. Eén plek voor de pop-upcheck,
+// zodat elke aanroeper dezelfde melding geeft als de browser het venster blokkeert.
+function openFactuurVenster(html){
+  const w = window.open('','_blank');
+  if(!w){ toast('Sta pop-ups toe om de factuur te openen.','warning'); return false; }
+  w.document.write(html);
+  w.document.close();
+  return true;
+}
+
+// Bouwt het verstuurbare factuurdocument voor een opgeslagen VERKOOPfactuur.
+// Waarschuwt eerst over ontbrekende wettelijk verplichte velden (art. 35a Wet OB
+// 1968) — dezelfde controle die maakUrenFactuur() al deed, zodat je geen
+// ongeldige factuur naar een klant stuurt.
+async function toonVerkoopFactuur(id){
+  const f = (DB.verkoop||[]).find(x=>x.id===id);
+  if(!f){ toast('Factuur niet gevonden.','error'); return; }
+  const p = DB.profiel || {};
+  const bedrijf = p.naam || huidigBedrijf;
+
+  const ontbrekend = [];
+  if(!p.straat) ontbrekend.push('Bedrijfsadres (Instellingen → Bedrijfsprofiel)');
+  if(!p.kvk)    ontbrekend.push('KvK-nummer (Instellingen → Bedrijfsprofiel)');
+  if(!p.btw)    ontbrekend.push('BTW-nummer (Instellingen → Bedrijfsprofiel)');
+  if(!p.iban)   ontbrekend.push('IBAN (Instellingen → Bedrijfsprofiel)');
+  if(!f.nummer) ontbrekend.push('Factuurnummer');
+  if(!f.datum)  ontbrekend.push('Factuurdatum');
+  if(!f.klant)  ontbrekend.push('Naam van de klant');
+  if(!f.adres)  ontbrekend.push('Adres van de klant (Bewerk deze factuur)');
+  if(ontbrekend.length){
+    const ok = await bevestig(
+      `Waarschuwing: de factuur is mogelijk ongeldig.\n\nOntbrekende verplichte velden:\n• ${ontbrekend.join('\n• ')}\n\nToch openen?`,
+      'Toch openen', 'Openen'
+    );
+    if(!ok) return;
+  }
+
+  const dFmt = d => d ? new Date(d).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'}) : '—';
+  const regels = Array.isArray(f.regels) ? f.regels : [];
+
+  // BTW per tarief samenvatten: een factuur mag regels met 21%, 9% én 0% bevatten
+  // en dan moet elk tarief apart op de factuur staan.
+  const perTarief = {};
+  regels.forEach(r=>{
+    const pct = parseInt(r.btw)||0;
+    const excl = (parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0);
+    perTarief[pct] = (perTarief[pct]||0) + Math.round(excl*pct)/100;
+  });
+  const btwRegels = Object.keys(perTarief).sort((a,b)=>b-a)
+    .map(pct=>({label:`BTW ${pct}%`, bedrag:perTarief[pct]}));
+
+  const btwBedrag = parseFloat(f.btwBedrag)||0;
+  const html = bouwFactuurHtml({
+    bedrijf, p,
+    klantNaam: f.klant,
+    klantRegels: [ ...String(f.adres||'').split('\n'),
+                   f.kvk?'KvK: '+f.kvk:'', f.btwnr?'BTW: '+f.btwnr:'' ],
+    factuurNr: f.nummer,
+    factuurdatumFmt: dFmt(f.datum),
+    vervaldatumFmt: dFmt(f.vervaldatum),
+    termijnLabel: berekenTermijnLabel(f.datum, f.vervaldatum),
+    kolommen: ['Omschrijving','Aantal','Prijs','BTW','Bedrag'],
+    rijen: regels.map(r=>{
+      const aantal = parseFloat(r.aantal)||0, prijs = parseFloat(r.prijs)||0;
+      return [ r.omschrijving||'',
+               String(Math.round(aantal*100)/100).replace('.',','),
+               '€ '+prijs.toFixed(2),
+               (parseInt(r.btw)||0)+'%',
+               '€ '+(aantal*prijs).toFixed(2) ];
+    }),
+    subtotaalExcl: parseFloat(f.totaalExcl)||0,
+    btwRegels,
+    totaalIncl: parseFloat(f.totaalIncl)||0,
+    // Compacte weergave alleen bij een echte vrijstelling (KOR): bij 0%-regels
+    // moet het tarief zichtbaar blijven, dus dan gewoon het normale BTW-blok.
+    zonderBtw: !!p.urenZonderBtw && Math.abs(btwBedrag) < 0.005,
+    notities: f.notities||''
+  });
+  openFactuurVenster(html);
+}
+
+// Betalingstermijn in dagen uit de twee datums; valt terug op de standaardtekst
+// als er geen vervaldatum is ingevuld.
+function berekenTermijnLabel(datum, vervaldatum){
+  if(!datum || !vervaldatum) return '30 dagen';
+  const d = Math.round((new Date(vervaldatum) - new Date(datum)) / 86400000);
+  if(!isFinite(d) || d < 0) return '30 dagen';
+  return d === 0 ? 'Direct' : d + (d===1?' dag':' dagen');
+}
+
 function filterF(type,v){ if(type==='verkoop') DB.fVK=v; else DB.fIK=v; renderFacturen(type); }
 function filterFS(type,v){ if(type==='verkoop') DB.fsVK=v; else DB.fsIK=v; renderFacturen(type); }
 
@@ -898,6 +1111,7 @@ function renderFacturen(type){
       ${!isVK&&f.status!=='betaald'?`<button class="btn btn-secondary btn-sm" onclick="openKoppelVanafFactuur('${f.id}')" style="background:rgba(96,165,250,.1);border-color:rgba(96,165,250,.3);color:#60a5fa;">⇄ Koppel betaling</button>`:''}
       ${f.status!=='betaald'&&!_getBetalingen(f).length?`<button class="btn btn-secondary btn-sm" onclick="zetFactuurBetaald('${type}','${f.id}')" style="background:rgba(22,163,74,.1);border-color:rgba(22,163,74,.35);color:#16a34a;" title="Markeer als betaald — boekt bank ↔ ${isVK?'debiteuren':'crediteuren'}">✓ Betaald</button>`:''}
       ${f.status==='betaald'&&f.handmatigBetaald?`<button class="btn btn-secondary btn-sm" onclick="zetFactuurOnbetaald('${type}','${f.id}')" title="Betaling terugdraaien — factuur komt weer open te staan">↩</button>`:''}
+      ${isVK?`<button class="btn btn-secondary btn-sm" onclick="toonVerkoopFactuur('${f.id}')" style="background:rgba(30,58,138,.1);border-color:rgba(30,58,138,.35);color:#1e3a8a;" title="Factuur openen om af te drukken of als PDF op te slaan voor de klant">📄 Factuur</button>`:''}
       <button class="btn btn-secondary btn-sm" onclick="openFactuurModal('${type}','${f.id}')">Bewerk</button>
       <button class="btn btn-danger btn-sm" onclick="verwijderFactuur('${type}','${f.id}')">✕</button>
     </td>
