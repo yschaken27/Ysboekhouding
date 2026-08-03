@@ -388,27 +388,24 @@ function toonSyncStatus(status){
 // ============================================================
 // SAVE — lokaal + cloud
 // ============================================================
+// Rekent de balans door ZONDER melding of blokkade. Gedeeld door
+// checkBalansEvenwicht() (die waarschuwt en tegenhoudt) en door simulaties die
+// vooraf willen weten of een handeling de balans zou sluiten — zo'n simulatie
+// mag natuurlijk geen alert oproepen.
+function _balansVerschil(){
+  const som = types => DB.grootboek
+    .filter(g=>types.includes(g.type))
+    .reduce((a,g)=>a+parseFloat(g.saldo||0),0);
+  const totActiva = som(['vaste_activa','vlottende_activa','activa']);
+  const passivaPlusEV = som(['passiva']) + som(['eigen_vermogen']) + som(['omzet']) - som(['kosten']);
+  return { totActiva, passivaPlusEV, verschil: Math.abs(totActiva - passivaPlusEV) };
+}
+
 function checkBalansEvenwicht(){
   // Balans moet altijd kloppen: Activa = Passiva + Eigen Vermogen + (Omzet - Kosten)
   // Geen enkele afwijking is acceptabel — bij verschil wordt opslaan geblokkeerd
   if(DB.grootboek.length < 5) return true; // te weinig rekeningen voor zinvolle check
-  const totActiva = DB.grootboek
-    .filter(g=>['vaste_activa','vlottende_activa','activa'].includes(g.type))
-    .reduce((a,g)=>a+parseFloat(g.saldo||0),0);
-  const totPassiva = DB.grootboek
-    .filter(g=>g.type==='passiva')
-    .reduce((a,g)=>a+parseFloat(g.saldo||0),0);
-  const totEV = DB.grootboek
-    .filter(g=>g.type==='eigen_vermogen')
-    .reduce((a,g)=>a+parseFloat(g.saldo||0),0);
-  const totOmzet = DB.grootboek
-    .filter(g=>g.type==='omzet')
-    .reduce((a,g)=>a+parseFloat(g.saldo||0),0);
-  const totKosten = DB.grootboek
-    .filter(g=>g.type==='kosten')
-    .reduce((a,g)=>a+parseFloat(g.saldo||0),0);
-  const passivaPlusEV = totPassiva + totEV + totOmzet - totKosten;
-  const verschil = Math.abs(totActiva - passivaPlusEV);
+  const { totActiva, passivaPlusEV, verschil } = _balansVerschil();
   // Halve cent marge tegen afrondingsruis van kommagetallen — alleen een ÉCHTE
   // afwijking (≥ 1 cent) blokkeert, zodat er geen valse balansfouten ontstaan.
   if(verschil > 0.005){

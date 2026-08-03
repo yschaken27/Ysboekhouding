@@ -399,7 +399,9 @@ function balansAudit(){
       add(g.id, g.type==='omzet' ? exclSigned : -exclSigned);
     });
   });
-  (DB.memoriaal||[]).filter(m=>m.type!=='jaarafsluiting').forEach(m=>{
+  // saldocorrectie ook uitgesloten: die zit al in g.saldo verwerkt en hoort niet
+  // als resultaatmutatie mee te tellen (zie bouwGrootboekkaart).
+  (DB.memoriaal||[]).filter(m=>m.type!=='jaarafsluiting' && m.type!=='saldocorrectie').forEach(m=>{
     (m.regels||[]).forEach(r=>{
       const g = DB.grootboek.find(x=>x.id===r.gbId);
       if(!g || (g.type!=='omzet' && g.type!=='kosten')) return;
@@ -722,8 +724,10 @@ function berekenPLVoorPeriode(maand, jaar){
   });
 
   // Memoriaalboekingen op omzet/kosten (jaarafsluiting uitgesloten — die verplaatst
-  // het resultaat naar eigen vermogen en hoort niet als omzet/kosten in de P&L).
-  (DB.memoriaal||[]).filter(m=>inPeriode(m.datum||'') && m.type!=='jaarafsluiting').forEach(m=>{
+  // het resultaat naar eigen vermogen en hoort niet als omzet/kosten in de P&L.
+  // saldocorrectie ook: dat is het auditspoor van een weggehaalde restpost die al
+  // in g.saldo verwerkt zit, geen resultaatmutatie.)
+  (DB.memoriaal||[]).filter(m=>inPeriode(m.datum||'') && m.type!=='jaarafsluiting' && m.type!=='saldocorrectie').forEach(m=>{
     (m.regels||[]).forEach(r=>{
       const g = DB.grootboek.find(x=>x.id===r.gbId); if(!g) return;
       // Fallback type-bewust via _memSaldoEffect: een credit op een omzetrekening
@@ -890,6 +894,10 @@ function bouwGrootboekkaart(gbId){
     }
   });
   (DB.memoriaal||[]).forEach(m=>{
+    // Een 'saldocorrectie' is het auditspoor van een handmatig weggehaalde
+    // restpost. De correctie zit al VERWERKT in g.saldo, dus meetellen zou hem
+    // dubbel laten wegen en direct een nieuwe sluitregel opleveren. Zie #24b.
+    if(m.type==='saldocorrectie') return;
     (m.regels||[]).forEach(r=>{
       if(String(r.gbId||'')===gbId){
         const eff = (r.effect!==undefined) ? rond(r.effect) : rond(_memSaldoEffect(g, r.dc, r.bedrag));
@@ -910,10 +918,12 @@ function bouwGrootboekkaart(gbId){
 }
 
 let _gbkPosten = [];
+let _gbkGbId = null; // rekening waar de open kaart bij hoort — nodig voor gbkVerwijderPost
 function openGrootboekkaart(gbId){
   const data = bouwGrootboekkaart(gbId);
   if(!data){ toast('Rekening niet gevonden.','error'); return; }
   _gbkPosten = data.posten;
+  _gbkGbId = gbId;
   const tEl=document.getElementById('gbk-titel'); if(tEl) tEl.textContent='Grootboekkaart — '+data.nr+' '+data.naam;
   const kop = `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;">
       <span style="font-size:12px;color:var(--text-dim);">${data.posten.length} boeking(en)</span>
@@ -930,17 +940,101 @@ function openGrootboekkaart(gbId){
         <th ${thStyle}>Datum</th><th ${thStyle}>Boeking</th>
         <th ${thStyle} style="text-align:right;padding:7px 8px;border-bottom:1px solid var(--border);">Bedrag</th>
         <th ${thStyle} style="text-align:right;padding:7px 8px;border-bottom:1px solid var(--border);">Saldo</th>
+        <th ${thStyle}></th>
       </tr></thead>
-      <tbody>${data.posten.map((p,i)=>`<tr ${p.ref?`onclick="gbkOpenBron(${i})" style="cursor:pointer;"`:''}>
-        <td class="mono" style="${tdStyle}white-space:nowrap;">${p.datum||'—'}</td>
-        <td style="${tdStyle}"><div style="font-weight:500;">${esc(p.bron)}</div>${p.oms?`<div style="font-size:11px;color:var(--text-dim);margin-top:1px;">${esc(p.oms)}</div>`:''}</td>
+      <tbody>${data.posten.map((p,i)=>`<tr>
+        <td class="mono" style="${tdStyle}white-space:nowrap;${p.ref?'cursor:pointer;':''}" ${p.ref?`onclick="gbkOpenBron(${i})"`:''}>${p.datum||'—'}</td>
+        <td style="${tdStyle}${p.ref?'cursor:pointer;':''}" ${p.ref?`onclick="gbkOpenBron(${i})"`:''}><div style="font-weight:500;">${esc(p.bron)}</div>${p.oms?`<div style="font-size:11px;color:var(--text-dim);margin-top:1px;">${esc(p.oms)}</div>`:''}</td>
         <td class="mono ${p.effect>=0?'amount-pos':'amount-neg'}" style="${tdStyle}text-align:right;white-space:nowrap;">${p.effect>=0?'+':''}${fmt(p.effect)}</td>
         <td class="mono" style="${tdStyle}text-align:right;white-space:nowrap;">${fmt(p.saldo)}</td>
+        <td style="${tdStyle}text-align:right;white-space:nowrap;">${
+          p.ref
+            ? `<button class="btn btn-secondary btn-sm" onclick="gbkOpenBron(${i})" title="Deze boeking komt uit een factuur, bankregel of memoriaal — daar verwijder je hem, zodat de tegenboeking meegaat">Naar bron</button>`
+            : `<button class="btn btn-danger btn-sm" onclick="gbkVerwijderPost(${i})" title="Restpost van deze rekening halen — kan alleen als de balans daarna sluit">✕ Verwijder</button>`
+        }</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
   }
   const bEl=document.getElementById('gbk-body'); if(bEl) bEl.innerHTML=body;
   openModal('modal-grootboekkaart');
+}
+
+// Haalt een niet-herleidbare restpost van een grootboekrekening af.
+//
+// Dit is de ENIGE plek waar de grootboekkaart aan g.saldo komt. #19 verbiedt dat
+// voor de wéérgave (die reconstrueert en mag nooit terugschrijven); dit is een
+// expliciete, door de gebruiker aangezette correctie.
+//
+// Waarom eenzijdig en niet via een normale tegenboeking: een sluitende
+// memoriaalboeking verschuift het bedrag alleen — debet en credit veranderen even
+// veel, dus een scheve balans blijft even scheef. Een restpost die nergens vandaan
+// komt kan alleen weg door de rekening te corrigeren waar hij op staat. Het
+// balansverschil ná de ingreep is daarom de enige toets: sluit hij niet, dan gaat
+// het niet door.
+async function gbkVerwijderPost(i){
+  const p = _gbkPosten[i];
+  if(!p) return;
+  if(p.ref){
+    toast('Deze boeking hoort bij een factuur, bankregel of memoriaal. Verwijder hem daar, dan gaat de tegenboeking automatisch mee.','info',6000);
+    return;
+  }
+  const g = DB.grootboek.find(x=>x.id===_gbkGbId);
+  if(!g){ toast('Rekening niet gevonden.','error'); return; }
+
+  const effect = rond(p.effect);
+  const voor = _balansVerschil().verschil;
+  // Simuleren: even toepassen, doorrekenen, en hoe dan ook terugzetten. Pas na
+  // akkoord van de gebruiker wordt het echt geboekt.
+  const oudSaldo = parseFloat(g.saldo)||0;
+  g.saldo = rond(oudSaldo - effect);
+  const na = _balansVerschil().verschil;
+  g.saldo = oudSaldo;
+
+  if(na > 0.005){
+    alert(`Deze restpost kan niet verwijderd worden — de balans zou daarna nog steeds niet kloppen.\n\n`
+        + `Rekening: ${g.nummer} ${g.naam}\n`
+        + `Restpost: ${fmt(effect)}\n\n`
+        + `Balansverschil nu:     ${fmt(voor)}\n`
+        + `Balansverschil daarna: ${fmt(na)}\n\n`
+        + `Er staat dus nog een andere fout open. Zoek eerst de rekening waar het verschil vandaan komt.`);
+    return;
+  }
+
+  const ok = await bevestig(
+    `Restpost van ${fmt(effect)} van rekening ${g.nummer} ${g.naam} halen?\n\n`
+    + `Saldo: ${fmt(oudSaldo)} → ${fmt(rond(oudSaldo - effect))}\n`
+    + `Balansverschil: ${fmt(voor)} → ${fmt(na)}\n\n`
+    + `Dit bedrag is niet te herleiden naar een factuur, bankregel of memoriaalboeking. `
+    + `Er wordt een correctie vastgelegd zodat je later kunt terugzien wat je hebt weggehaald.`,
+    'Restpost verwijderen', 'Verwijderen');
+  if(!ok) return;
+
+  g.saldo = rond(oudSaldo - effect);
+  if(!DB.memoriaal) DB.memoriaal = [];
+  // type 'saldocorrectie' wordt bewust NIET meegeteld in de reconstructie en de
+  // P&L — de correctie zit al in g.saldo. Zonder die uitsluiting zou de kaart
+  // meteen weer een sluitregel van hetzelfde bedrag tonen.
+  DB.memoriaal.push({
+    id: uid(),
+    datum: today(),
+    oms: `Restpost gecorrigeerd — ${g.nummer} ${g.naam}`,
+    type: 'saldocorrectie',
+    relatie: '',
+    regels: [{
+      gbId: g.id,
+      oms: `Niet-herleidbare restpost verwijderd (saldo ${fmt(oudSaldo)} → ${fmt(g.saldo)})`,
+      bedrag: Math.abs(effect),
+      dc: effect > 0 ? 'debet' : 'credit',
+    }],
+    debet: Math.abs(effect),
+    aangemaakt: new Date().toISOString()
+  });
+
+  if(!save()) return; // balans blokkeerde alsnog: alles is al teruggedraaid
+  toast(`Restpost van ${fmt(effect)} verwijderd — de balans sluit.`,'success',5000);
+  renderGB();
+  if(typeof renderBalans==='function') renderBalans();
+  openGrootboekkaart(g.id); // kaart opnieuw opbouwen, sluitregel hoort nu weg te zijn
 }
 
 function gbkOpenBron(i){
@@ -1107,6 +1201,14 @@ async function verwijderMemoriaal(id){
   }
   if(mem.type==='afschrijving'){
     toast('Afschrijvingsboekingen kunnen alleen worden verwijderd via Vaste Activa.','error');
+    return;
+  }
+  // Een saldocorrectie is een auditspoor, geen boeking: de mutatie zit al in
+  // g.saldo en de regel heeft bewust geen `effect`. Terugdraaien zou de aftrekking
+  // een TWEEDE keer toepassen (de fallback hieronder gaat ervan uit dat de
+  // vooruit-boeking optelde) en de rekening opnieuw scheeftrekken.
+  if(mem.type==='saldocorrectie'){
+    toast('Een saldocorrectie is een vast auditspoor en kan niet worden verwijderd.','error',6000);
     return;
   }
 

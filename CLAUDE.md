@@ -187,13 +187,50 @@ Elke koppeling van een banktransactie aan een grootboekrekening in `bank.js` (`i
 **Terugdraaien MOET spiegelen:** ontkoppelen/verwijderen (`draaiBoekingTerug` in bank.js) draait een grootboek-koppeling terug via `_boekTegenrekening(g, bedrag, btwTarief, -1)` (de `mult=-1` variant) — nooit met `g.saldo -= bedrag` (vol bedrag, geen BTW). Dat laatste liet bij verwijderen een verschil staan (excl + BTW) waardoor de balanscontrole de verwijdering blokkeerde. De BTW-richting blijft op het originele `bedrag` bepaald, zodat terugdraaien dezelfde BTW-rekening raakt. Oude boekingen zonder `t.tegenrekeningId`/`t.btwTarief` vallen terug op `g.saldo -= bedrag` (zo zijn ze destijds geboekt).
 
 ### 19. Grootboekkaart = read-only reconstructie, sluit altijd op `g.saldo`
-De grootboekkaart (drill-down vanuit Balans, P&L en de Grootboek-tab) is een READ-ONLY weergave in `btw-rapport.js` — hij muteert NOOIT saldi. `bouwGrootboekkaart(gbId)` reconstrueert de boekingen per rekening uit de bestaande data:
+De grootboekkaart (drill-down vanuit Balans, P&L en de Grootboek-tab) is een READ-ONLY weergave in `btw-rapport.js` — de wéérgave muteert NOOIT saldi.
+**Eén uitzondering: `gbkVerwijderPost()`** (aug 2026). Zie #19b hieronder; alle andere code in de kaart blijft read-only. `bouwGrootboekkaart(gbId)` reconstrueert de boekingen per rekening uit de bestaande data:
 - **Facturen** (`DB.verkoop`/`DB.inkoop`): omzet/kosten via `r.gbId` (excl. = aantal×prijs), debiteuren 1300 / crediteuren 2100 = totaalIncl, BTW naar 1510/1530 (verkoop) of 1500/1520 (inkoop) = btwBedrag.
 - **Banktransacties**: de bankrekening zelf (`t.bankGbId`) = bedrag; directe grootboek-koppeling (tegenrekening via `t.tegenrekeningId`, anders `t.gekoppeldAan` startsWith `nr — `) excl. BTW via `t.btwTarief`, met teken op rekeningtype; factuurbetaling boekt 1300/2100 af. Gesplitste koppelingen belanden in de sluitregel (kaart blijft kloppen via `g.saldo`).
 - **Memoriaal**: `r.gbId` met `r.effect` (exacte mutatie); fallback via `_memSaldoEffect(g, r.dc, r.bedrag)` — NOOIT naïef `dc?bedrag:-bedrag`, want dat geeft credit-normale rekeningen (omzet/passiva/EV) het verkeerde teken.
 
 `effect` = de ondertekende mutatie op het saldo van díe rekening (credit-normale rekening → +excl, anders −excl). Omdat niet alles exact te herleiden is (gesplitste bankregels, BTW-excl van bankkoppelingen, betalingsverschillen, transfers), wordt een **sluitregel "Niet-toegewezen / correctie"** = `g.saldo − som(effecten)` toegevoegd, zodat de kaart ALTIJD eindigt op het echte rekeningsaldo. `g.saldo` blijft de bron van waarheid; de kaart mag daar nooit overheen schrijven.
 Ingangen: `openGrootboekkaart(gbId)` (modal `#modal-grootboekkaart` in index.html) vanuit klikbare Balans-regels, per-rekening P&L-rijen (`rij(...,gbId)`) en de "Kaart"-knop in `renderGB`. Regels zijn doorklikbaar via `gbkOpenBron()` naar de factuur/bank/memoriaal. Wil je ooit exacte cent-precisie (ook splitsingen), vervang dit door een echt grootboek-logboek (aanpak B) — dat raakt wél alle boekingscode.
+
+### 19b. `gbkVerwijderPost()` — de enige toegestane eenzijdige saldocorrectie
+De sluitregel "Niet-toegewezen / correctie" op een grootboekkaart is geen boeking maar een
+restpost: `g.saldo − som(herleidbare effecten)`. Staat daar een bedrag dat uit geen enkele
+factuur, bankregel of memoriaalboeking komt, dan staat de balans dáármee scheef en is dat met
+een normale boeking niet te repareren — een sluitende tegenboeking verandert debet en credit
+even veel en verschuift het verschil alleen. Alleen een eenzijdige correctie op de rekening
+waar de restpost op staat haalt hem weg.
+
+`gbkVerwijderPost(i)` doet dat, met de balans zelf als enige poortwachter:
+1. Alleen posten **zonder `ref`** (geen bron). Posten mét bron krijgen "Naar bron" — daar
+   verwijder je ze, zodat de tegenboeking meegaat. Het saldo-effect losweken van een nog
+   bestaand brondocument lost niets op: bij de volgende reconstructie staat er gewoon weer
+   een sluitregel van hetzelfde bedrag.
+2. **Simuleer eerst**: `g.saldo -= effect`, `_balansVerschil()` opnieuw, en het saldo
+   ALTIJD terugzetten — ook bij annuleren. Alleen doorlaten als het verschil daarna
+   ≤ €0,005 is; anders staat er nog een andere fout open en gaat het niet door.
+3. `effect` zit al in `g.saldo`-eenheden (het komt uit `werkelijk − som`), dus er is géén
+   type-vertaling nodig zoals bij `_memSaldoEffect`. `g.saldo -= effect` klopt voor zowel
+   debet- als credit-normale rekeningen. Gebruik hier nooit alsnog `_memSaldoEffect`.
+4. Auditspoor in `DB.memoriaal` met **`type:'saldocorrectie'`**, regel zonder `effect`-veld.
+
+**`saldocorrectie` MOET overal uitgesloten worden waar `DB.memoriaal` gereconstrueerd wordt**,
+want de mutatie zit al in `g.saldo`; meetellen laat hem dubbel wegen en geeft direct een nieuwe
+sluitregel van hetzelfde bedrag. Nu uitgesloten in `balansAudit`, de P&L-reconstructie en
+`bouwGrootboekkaart`. Voeg je een nieuwe memoriaal-doorloop toe, sluit dit type dan ook uit.
+(Niet nodig in `voerJaarafsluitingUit` — die telt rechtstreeks `g.saldo` op, waar de correctie
+al in verwerkt zit — en in de BTW-aangifte en het mutatie-overzicht, die geen memoriaal lezen.)
+
+`verwijderMemoriaal()` **blokkeert** dit type, net als `jaarafsluiting` en `afschrijving`. De
+regel heeft bewust geen `effect`, en de terugdraai-fallback gaat ervan uit dat de vooruit-boeking
+optélde — terugdraaien zou de aftrekking dus een tweede keer toepassen. Die blokkade nooit weghalen.
+
+Dit doorbreekt bewust "elke boeking raakt minstens twee rekeningen" (#21.1). Dat mag hier omdat
+de invariant die het écht moet bewaken — `Activa = Passiva + EV + (Omzet − Kosten)` — vooraf
+wordt gecontroleerd en de ingreep die invariant juist herstelt.
 
 ### 20. P&L is categorie-gebaseerd uit ALLE bronnen (niet alleen facturen)
 `berekenPLVoorPeriode` (btw-rapport.js) bouwt `omzetPerRek` en `kostenPerRek` per grootboekrekening uit drie bronnen samen — nooit meer alleen verkoop-/inkoopfacturen:
