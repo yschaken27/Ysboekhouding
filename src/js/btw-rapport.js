@@ -29,6 +29,16 @@ function slaGBOp(){
   if(bestaandNr){ toast(`Rekeningnummer ${nr} bestaat al — ${bestaandNr.naam}.`,'error'); return; }
   const saldo=parseFloat(document.getElementById('gb-saldo').value)||0;
   if(!nr||!naam){toast('Vul nummer en naam in.','error');return;}
+
+  // Standaardnummers hebben een VAST type. Boekingen zoeken de rekening op nummer,
+  // maar de balans groepeert op type — een afwijkend type zet het saldo aan de
+  // verkeerde kant en blokkeert daarna elke opslag met een balansfout die als
+  // codebug oogt (CLAUDE.md #24). Zelf verzonnen nummers mogen elk type houden.
+  const stdRek = DEFAULT_GB.find(s=>String(s.nummer)===nr);
+  if(stdRek && stdRek.type!==type){
+    toast(`Rekening ${nr} (${stdRek.naam}) moet type "${GB_TYPE_LABELS[stdRek.type]}" hebben — met "${GB_TYPE_LABELS[type]||type}" komt het saldo aan de verkeerde kant van de balans.`,'error',7000);
+    return;
+  }
   if(gbEditId){
     const g=DB.grootboek.find(g=>g.id===gbEditId);
     if(g){
@@ -122,7 +132,7 @@ async function verwijderGB(id){
 }
 
 function renderGB(){
-  const tl={vaste_activa:'Vaste activa',vlottende_activa:'Vlottende activa',activa:'Activa',passiva:'Passiva',eigen_vermogen:'Eigen vermogen',omzet:'Omzet',kosten:'Kosten'};
+  const tl=GB_TYPE_LABELS; // gedeeld met slaGBOp (state.js) — één lijst met typenamen
   const tb={vaste_activa:'badge-blue',vlottende_activa:'badge-gray',activa:'badge-blue',passiva:'badge-orange',eigen_vermogen:'badge-gray',omzet:'badge-green',kosten:'badge-red'};
   document.getElementById('tbody-gb').innerHTML=[...DB.grootboek].sort((a,b)=>a.nummer.localeCompare(b.nummer,undefined,{numeric:true})).map(g=>`<tr>
     <td class="mono">${g.nummer}</td>

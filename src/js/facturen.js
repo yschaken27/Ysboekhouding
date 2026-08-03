@@ -707,8 +707,11 @@ function draaiFactuurGBTerug(f, type){
       if(omzetRek) omzetRek.saldo = (parseFloat(omzetRek.saldo)||0) - (parseFloat(f.totaalExcl)||0);
     }
 
-    // Draai BTW te betalen terug
-    if(btwBedrag > 0.01){
+    // Draai BTW te betalen terug. Math.abs spiegelt de boeking bij het aanmaken:
+    // een creditnota heeft een NEGATIEF btwBedrag en werd daar wél geboekt, dus
+    // zonder abs bleef die BTW hier staan → balansverschil dat het bewerken of
+    // verwijderen van een creditnota daarna blokkeerde.
+    if(Math.abs(btwBedrag) > 0.01){
       const btwRek = DB.grootboek.find(g=>g.nummer==='1510')
                   || DB.grootboek.find(g=>g.nummer==='1530')
                   || DB.grootboek.find(g=>g.naam.toLowerCase().includes('btw te betalen'));
@@ -729,8 +732,8 @@ function draaiFactuurGBTerug(f, type){
       if(kostenRek) kostenRek.saldo = (parseFloat(kostenRek.saldo)||0) - excl;
     });
 
-    // Draai BTW te ontvangen terug
-    if(btwBedrag > 0.01){
+    // Draai BTW te vorderen terug — zelfde spiegeling als bij verkoop hierboven.
+    if(Math.abs(btwBedrag) > 0.01){
       const btwRek = DB.grootboek.find(g=>g.nummer==='1500')
                   || DB.grootboek.find(g=>g.nummer==='1520')
                   || DB.grootboek.find(g=>g.naam.toLowerCase().includes('btw te vorderen'))

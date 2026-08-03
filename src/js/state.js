@@ -58,10 +58,47 @@ function vulStandaardRekeningenAan(){
   return toegevoegd;
 }
 
+// Labels bij de type-waarden — gedeeld door renderGB en de typevalidatie in slaGBOp.
+const GB_TYPE_LABELS = {
+  vaste_activa:'Vaste activa', vlottende_activa:'Vlottende activa', activa:'Activa',
+  passiva:'Passiva', eigen_vermogen:'Eigen vermogen', omzet:'Omzet', kosten:'Kosten'
+};
+
+// Herstelt het `type` van standaardrekeningen dat in de bedrijfsdata is afgeweken.
+// Boekingen zoeken rekeningen op NUMMER (find(g=>g.nummer==='1300')), maar
+// checkBalansEvenwicht() en renderBalans groeperen op TYPE. Staat 1300 Debiteuren
+// dus op 'passiva', dan belandt een volkomen correcte factuurboeking aan de
+// credit-kant en blokkeert de balanscontrole elke volgende opslag — een fout die
+// als codebug oogt terwijl alleen de data stuk is (zie CLAUDE.md #24).
+// Draait bij elke load, vóór de eerste save: idempotent, raakt alleen nummers uit
+// DEFAULT_GB, laat saldi, namen en zelf toegevoegde rekeningen ongemoeid.
+// Net als vulStandaardRekeningenAan() alleen in-memory — save() zou hier nog
+// blokkeren op het (nog niet herstelde) balansverschil; de correctie persisteert
+// vanzelf bij de eerstvolgende reguliere save van de gebruiker.
+function herstelGBTypes(){
+  if(!Array.isArray(DB.grootboek)) return 0;
+  const hersteld = [];
+  DB.grootboek.forEach(g=>{
+    const std = DEFAULT_GB.find(s=>String(s.nummer)===String(g.nummer));
+    if(std && g.type !== std.type){
+      hersteld.push(`${g.nummer} ${g.naam}: ${g.type||'(leeg)'} → ${std.type}`);
+      g.type = std.type;
+    }
+  });
+  if(hersteld.length){
+    console.warn('[Grootboek] verkeerd rekeningtype hersteld:\n'+hersteld.join('\n'));
+    toast(`${hersteld.length} grootboekrekening(en) hadden een verkeerd type — automatisch hersteld. Controleer de balans.`,'warning',7000);
+  }
+  return hersteld.length;
+}
+
 // ===== TOAST =====
 function toast(msg, type='success', duur=3000){
   const icons={success:'✓',error:'✕',info:'ℹ',warning:'⚠'};
   const container=document.getElementById('toast-container');
+  // Kan ontbreken als er al vóór DOMContentLoaded getoast wordt (bijv. herstelGBTypes
+  // tijdens een vroege load) — dan alleen loggen i.p.v. crashen op appendChild.
+  if(!container){ console.log('[toast]', type, msg); return; }
   const el=document.createElement('div');
   el.className=`toast ${type}`;
   el.innerHTML=`<span class="toast-icon">${icons[type]||'✓'}</span><span class="toast-msg">${msg}</span><button class="toast-close" onclick="this.closest('.toast').remove()">✕</button>`;
@@ -401,6 +438,10 @@ function herstelNaLaatsteGoedeStand(){
       const _liveKassiers = (DB.kassiers||[]).length ? DB.kassiers : null;
       DB = {...DB, ...p};
       if(_liveKassiers) DB.kassiers = _liveKassiers;
+      // De snapshot uit localStorage kan van vóór de type-correctie zijn; zonder
+      // dit zou een recovery de verkeerde rekeningtypes terugzetten en blijft de
+      // balans scheef staan waar we hem juist herstellen (CLAUDE.md #24).
+      if(typeof herstelGBTypes==='function') herstelGBTypes();
     }catch(e){ console.error('Herstel na balansfout mislukt:', e); }
   }
   // Herteken het huidige scherm zodat de herstelde, kloppende stand direct zichtbaar is.
@@ -524,6 +565,9 @@ function loadLokaal(){
   }
   // Ontbrekende standaardrekeningen aanvullen (bestaande, incomplete lokale set).
   if(typeof vulStandaardRekeningenAan==='function') vulStandaardRekeningenAan();
+  // …en een afgeweken rekeningtype terugzetten, anders staat het saldo aan de
+  // verkeerde kant van de balans en blokkeert save() (CLAUDE.md #24).
+  if(typeof herstelGBTypes==='function') herstelGBTypes();
   toonSyncStatus('lokaal');
 }
 
@@ -586,6 +630,11 @@ function loadCloud(){
       // opnieuw aangevuld (idempotent) en persisteren vanzelf bij de eerstvolgende
       // reguliere, kloppende save() van de gebruiker.
       if(typeof vulStandaardRekeningenAan==='function') vulStandaardRekeningenAan();
+      // Hetzelfde geldt voor een afgeweken `type` op een standaardnummer: dat zet
+      // het saldo aan de verkeerde kant van de balans en blokkeert daarna elke
+      // save(). Herstellen vóór de localStorage-cache hieronder, zodat de
+      // gerepareerde stand ook offline meegaat (CLAUDE.md #24).
+      if(typeof herstelGBTypes==='function') herstelGBTypes();
 
       // Profiel: cloud wint altijd (eigenaar beheert dit)
       if(d.profiel && Object.keys(d.profiel).length) DB.profiel=d.profiel;
