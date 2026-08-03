@@ -247,6 +247,31 @@ definitief weg op alle apparaten. Met de guard heelt zo'n bedrijf juist vanzelf 
 Voor `kassiers` geldt het omgekeerde: daar is een lege cloud-lijst wél de waarheid, dus daar is de
 onvoorwaardelijke overschrijving terecht (#15).
 
+### 24. Balansfout bij een correcte boeking = verkeerd `type` op een grootboekrekening (DATA, niet code)
+Boekingen zoeken rekeningen op **nummer** (`find(g=>g.nummer==='1300')`), maar `checkBalansEvenwicht()`
+(state.js) en `renderBalans` groeperen op **`g.type`**. Die twee zijn niet aan elkaar gekoppeld: een
+rekening met het juiste nummer maar een verkeerd `type` laat een correcte boeking aan de verkeerde
+kant van de balans landen → "Boekhoudkundige fout" terwijl de code niets fout doet. `slaGBOp()` laat
+elk type op elk nummer toe en valideert die combinatie niet.
+
+**Zoek dus eerst in de data, niet in de code.** Diagnose vanuit de alert-tekst zelf:
+1. **Tel beide kanten op.** Is `Activa + (Passiva+EV+Resultaat)` gelijk aan de som van alle bedragen
+   die de boeking zou maken, dan zijn álle boekingen gedaan en staat er alleen iets aan de verkeerde
+   kant. Ontbreekt er juist een bedrag in het totaal, dan is een rekening niet gevonden (lookup faalt,
+   nummer bestaat niet) — dát is wél een codeprobleem.
+2. **Een bedrag X aan de verkeerde kant telt dubbel door**: `verschil = 2 × Σ(verkeerd geplaatste bedragen, getekend)`.
+   Deel het verschil door 2 en zoek welke boekingsbedragen daarop uitkomen.
+3. Bevestig met `console.table(DB.grootboek.map(g=>({nr:g.nummer,naam:g.naam,type:g.type,saldo:g.saldo})))`.
+
+Praktijkgeval (aug 2026) — verkoopfactuur €75 excl. + 21% BTW: alert gaf Activa €15,75,
+Passiva+EV+Resultaat €165,75, verschil €150,00. Som = €181,50 = 90,75 + 75 + 15,75 → alle drie de
+boekingen gedaan. `2 × (90,75 − 15,75) = 150` → Debiteuren (1300, €90,75) stond aan de credit-kant en
+BTW te betalen (1510, €15,75) aan de activa-kant: hun `type` was in de bedrijfsdata verwisseld.
+`DEFAULT_GB` in state.js was correct (1300 = `activa`, 1510 = `passiva`); de types waren via
+Grootboek → bewerken verkeerd gezet. Fix = types goedzetten, niet de boekingscode aanpassen.
+
+Zie boekhoud-checker Check 11 voor de verplichte nummer↔type-koppeling.
+
 ## Losse eindjes (geen risico)
 - (Verwijderd 2026-07-22: de twee oude "regel ~3976 / ~1751"-notities verwezen naar de
   inmiddels opgesliste monoliet-`index.html` en klopten niet meer met de `src/`-structuur.)

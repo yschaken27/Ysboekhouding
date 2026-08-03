@@ -241,6 +241,68 @@ Controleer:
 ⚠️  activa.js: accumulatierekening naam bevat geen 'accum'/'afschr' — verschijnt dan als gewone passiva i.p.v. contra-activa op de balans
 ```
 
+## Check 11 — Nummer↔type-koppeling en diagnose van een balansverschil
+
+Boekingen zoeken rekeningen op **nummer** (`find(g=>g.nummer==='1300')`), maar
+`checkBalansEvenwicht()` (state.js) en `renderBalans`/`berekenPLVoorPeriode` groeperen
+op **`g.type`**. Die twee zijn nergens aan elkaar gekoppeld. Gevolg: een rekening met het
+juiste nummer maar een verkeerd `type` laat een volledig correcte boeking aan de verkeerde
+kant van de balans landen → "Boekhoudkundige fout" terwijl de boekingscode klopt.
+`slaGBOp()` (btw-rapport.js) accepteert elk type op elk nummer en valideert dit niet.
+
+### Verplichte nummer → type-koppeling
+
+| Nummer | Naam | MOET type zijn |
+|---|---|---|
+| 1000/1100/1200 | Kas / Bank / Spaar | `activa` |
+| **1300** | Debiteuren | **`activa`** (debet-normaal) |
+| **1500** | BTW te vorderen (inkoop) | **`activa`** (voorbelasting = vordering) |
+| **1510** | BTW te betalen (verkoop) | **`passiva`** (af te dragen = schuld) |
+| 2000 | Inventaris | `vlottende_activa` / `vaste_activa` |
+| **2100** | Crediteuren | **`passiva`** |
+| 2200 | Te betalen belastingen | `passiva` |
+| 2900 | Accum. afschrijvingen | `passiva` (contra-activa, zie Check 10) |
+| 3xxx | Eigen vermogen / privé | `eigen_vermogen` |
+| 4xxx | Omzet | `omzet` |
+| 8xxx | Kosten | `kosten` |
+
+Controleer:
+1. Komt elke `nummer`-lookup in de boekingscode uit op een rekening waarvan het
+   `type` in deze tabel staat? Vooral de spiegelparen **1300 vs 1510** en
+   **1500 vs 1510** — die worden in de praktijk verwisseld (BTW te vorderen ↔ te betalen).
+2. Introduceert nieuwe code een rekening via `push({...})` zonder `type` uit `DEFAULT_GB`
+   over te nemen? (Zie `vulStandaardRekeningenAan()` en het auto-aanmaakblok in
+   `kassier.js` → `maakUrenFactuur`.)
+3. Wordt er ergens op `type` geboekt terwijl op `nummer` gecontroleerd wordt (of andersom)?
+
+### Diagnose vanuit een balansfout-melding
+
+Krijg je een concrete alert (Activa / Passiva+EV+Resultaat / Verschil), gebruik dan deze
+volgorde vóór je de boekingscode verdenkt:
+
+1. **Tel beide kanten op.** Is `Activa + (Passiva+EV+Resultaat)` gelijk aan de som van alle
+   bedragen die de boeking zou maken, dan zijn álle boekingen uitgevoerd en staat er alleen
+   iets aan de verkeerde kant → **data-probleem** (verkeerd `type`).
+   Ontbreekt er een bedrag in dat totaal, dan is een rekening niet gevonden → **codeprobleem**
+   (lookup faalt; zie Check 4 punt 2).
+2. **Een bedrag X aan de verkeerde kant telt dubbel door**:
+   `verschil = 2 × Σ(verkeerd geplaatste bedragen, getekend)`.
+   Deel het verschil door 2 en zoek welke boekingsbedragen daarop uitkomen.
+3. Laat de gebruiker bevestigen met:
+   `console.table(DB.grootboek.map(g=>({nr:g.nummer,naam:g.naam,type:g.type,saldo:g.saldo})))`
+
+Referentiegeval (aug 2026): verkoopfactuur €75 excl. + 21% BTW gaf Activa €15,75,
+Passiva+EV+Resultaat €165,75, verschil €150,00. Som = €181,50 = 90,75 + 75 + 15,75 → alle drie
+de boekingen gedaan. `2 × (90,75 − 15,75) = 150` → Debiteuren (€90,75) stond aan de credit-kant
+en BTW te betalen (€15,75) aan de activa-kant: de types van 1300 en 1510 waren in de bedrijfsdata
+verwisseld. `DEFAULT_GB` was correct; de fix zat in de data, niet in `facturen.js`.
+
+```
+❌ state.js DEFAULT_GB: 1510 'BTW te betalen' heeft type 'activa' — moet passiva; verkoop-BTW belandt aan de activa-kant
+❌ kassier.js regel 819: auto-aangemaakte 1510 zonder type uit DEFAULT_GB — balans klapt eruit bij de eerste uren-factuur
+⚠️  btw-rapport.js slaGBOp: type wordt vrij gekozen, geen validatie tegen de nummer→type-tabel; een verkeerd type geeft een balansfout die als codebug oogt
+```
+
 ## Uitvoer formaat
 
 ```
