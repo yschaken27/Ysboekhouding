@@ -491,8 +491,14 @@ function getBankRekening(){
   }
   return DB.grootboek.find(g=>g.subtype==='bank')||
          DB.grootboek.find(g=>g.nummer==='1100')||
-         DB.grootboek.find(g=>g.naam.toLowerCase().includes('bank'))||
-         DB.grootboek.find(g=>g.type==='activa');
+         DB.grootboek.find(g=>(g.naam||'').toLowerCase().includes('bank'))||
+         // Kas is het laatste échte liquide alternatief. NOOIT terugvallen op
+         // "de eerste activa-rekening": dat kan Debiteuren of BTW te vorderen
+         // opleveren, en dan boekt een betaling zichzelf weg op dezelfde
+         // rekening als de tegenboeking — saldo blijft staan, balans klopt,
+         // geen foutmelding. Liever niets teruggeven; elke aanroeper vangt dat af.
+         DB.grootboek.find(g=>g.nummer==='1000')||
+         null;
 }
 
 // Boekt een bankbedrag op een tegen-grootboekrekening volgens de juiste
@@ -1084,8 +1090,15 @@ function ontkoppel(id){
     return;
   }
 
-  draaiBoekingTerug(t);
+  draaiBoekingTerug(t); // heeft factuurId/tegenrekeningId/btwTarief/splitsRegels nog nodig
   t.status='ongekoppeld'; t.gekoppeldAan=null; t.gekoppeldType=null; t.bankGbId=null;
+  // Ook de koppeling-specifieke velden wissen. Bleven die staan, dan bleef de
+  // transactie via _getBetalingen() gelden als betaling van de oude factuur
+  // (waardoor die factuur niet meer handmatig op betaald te zetten was), en
+  // draaide een volgende ontkoppeling terug op de oude tegenrekening — precies
+  // het soort restpost dat na "alles ontkoppelen" bleef staan.
+  t.factuurId=null;
+  delete t.tegenrekeningId; delete t.btwTarief; delete t.splitsRegels;
   save(); renderTransacties(true); updateBankStats(); toast('Transactie ontkoppeld.','info'); switchBankTab('koppelen');
 }
 
@@ -1197,6 +1210,7 @@ function koppelAanMatch(factuurId, type){
   if(!f) return;
   t.gekoppeldAan=f.nummer+' — '+f.klant;
   t.gekoppeldType=type;
+  t.factuurId=f.id; // expliciete koppeling; zonder dit valt _getBetalingen terug op tekstmatch
   t.status='gekoppeld';
   if(type==='verkoop'&&parseFloat(t.bedrag)>0){
     const totaal=parseFloat(f.totaalIncl||0);

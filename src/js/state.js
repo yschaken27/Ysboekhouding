@@ -453,10 +453,14 @@ function herstelNaLaatsteGoedeStand(){
 function save(){
   // Balans moet kloppen. Zo niet: draai de laatste handeling volledig terug en sla
   // niets op — een scheve balans mag nooit blijven staan of bewaard worden.
-  if(!checkBalansEvenwicht()){ herstelNaLaatsteGoedeStand(); return; }
+  // Geeft true terug als er echt is opgeslagen, false als de handeling is
+  // teruggedraaid. Aanroepers die "gelukt!" melden moeten dit controleren —
+  // anders zie je een succesmelding terwijl er niets bewaard is.
+  if(!checkBalansEvenwicht()){ herstelNaLaatsteGoedeStand(); return false; }
   localStorage.setItem(storageKey(), JSON.stringify(DB));
   if(USE_CLOUD) saveCloud();
   else toonSyncStatus('lokaal');
+  return true;
 }
 
 let _saveTimer = null;
@@ -1185,11 +1189,30 @@ function eenheidVanOpdrachtgever(naam){
 
 // Zoek alle gekoppelde banktransacties voor een factuur
 function _getBetalingen(factuur){
-  return DB.transacties.filter(t=>
-    t.status==='gekoppeld' &&
-    (t.factuurId===factuur.id ||
-     (factuur.nummer && t.gekoppeldAan && t.gekoppeldAan.includes(factuur.nummer)))
-  );
+  if(!factuur) return [];
+  const nr = String(factuur.nummer||'').trim();
+  // Tekstmatch op het factuurnummer moet op woordgrenzen, niet op deeltekst.
+  // `includes('1')` raakte élke omschrijving met een 1 erin, en `includes('2026-1')`
+  // ook factuur 2026-12. Zo'n valse treffer laat zetFactuurBetaald() denken dat er
+  // al een bankbetaling hangt, waarna hij stilletjes stopt en de factuur nooit
+  // afgeboekt wordt op debiteuren.
+  const nrRe = nr
+    ? new RegExp('(^|[^0-9A-Za-z])' + nr.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '([^0-9A-Za-z]|$)')
+    : null;
+  return DB.transacties.filter(t=>{
+    if(t.status!=='gekoppeld') return false;
+    // Een expliciete koppeling is de waarheid: staat er een factuurId op, dan telt
+    // alleen die. Anders zou een transactie van factuur A ook bij factuur B opduiken.
+    if(t.factuurId) return t.factuurId===factuur.id;
+    // Alleen tekstmatchen op transacties die überhaupt aan een factuur hangen.
+    // Een koppeling aan een grootboekrekening ("Betaling huur, termijn 1") mag
+    // nooit als betaling van factuur 1 gelden. Ontbreekt gekoppeldType helemaal,
+    // dan is het oude data van vóór dat veld en matchen we alsnog — liever een
+    // dubbele betaling voorkomen dan hem missen.
+    const soort = t.gekoppeldType;
+    if(soort && soort!=='verkoop' && soort!=='inkoop') return false;
+    return !!nrRe && !!t.gekoppeldAan && nrRe.test(t.gekoppeldAan);
+  });
 }
 
 // Berekent hoeveel van het factuurtotaal betaald is (ratio 0-1)

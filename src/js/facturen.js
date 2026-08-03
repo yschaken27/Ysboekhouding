@@ -620,17 +620,34 @@ async function slaFactuurOp(){
   // ook bij een bedragwijziging van een al betaalde factuur.
   if(isNieuw || oudeFactuur){
     const wasHandmatigBetaald = !!(oudeFactuur && oudeFactuur.handmatigBetaald);
-    if(wasHandmatigBetaald) boekHandmatigeBetaling(oudeFactuur, DB.editType, -1);
+    // Lukt het terugdraaien niet, dan zou de nieuwe boeking er bovenop komen
+    // (dubbel op bank én debiteuren). Dan liever alles terug naar de laatste
+    // kloppende stand dan half doorgaan.
+    if(wasHandmatigBetaald && !boekHandmatigeBetaling(oudeFactuur, DB.editType, -1)){
+      herstelNaLaatsteGoedeStand();
+      toast('De bestaande betaling kon niet teruggedraaid worden — er is niets gewijzigd.','error',7000);
+      return;
+    }
     if(f.status==='betaald' && !_getBetalingen(f).length){
-      boekHandmatigeBetaling(f, DB.editType, 1);
-      f.betaaldOp = (wasHandmatigBetaald && oudeFactuur.betaaldOp) || today();
-      f.handmatigBetaald = true;
+      if(boekHandmatigeBetaling(f, DB.editType, 1)){
+        f.betaaldOp = (wasHandmatigBetaald && oudeFactuur.betaaldOp) || today();
+        f.handmatigBetaald = true;
+      } else {
+        // Boeking geweigerd (rekening ontbreekt of valt samen met de tegenrekening).
+        // De factuur dan niet als betaald wegschrijven: anders staat de status op
+        // betaald terwijl debiteuren/crediteuren gewoon blijft staan.
+        f.status = DB.editType==='verkoop' ? 'verstuurd' : 'te betalen';
+      }
     }
   }
 
   // Sla direct op zodat factuur altijd bewaard wordt
   const savedType = DB.editType; // bewaar type vóór closeModal
-  save();
+  // Blokkeerde de balanscontrole, dan is alles teruggedraaid en is er niets
+  // bewaard. Modal open laten zodat de invoer niet weg is, en vooral géén
+  // "Factuur opgeslagen" melden — die groene melding vlak na de balansfout-alert
+  // maakte het volstrekt onduidelijk of de factuur er nu wel of niet stond.
+  if(!save()) return;
   closeModal('modal-factuur');
   // Navigeer EERST zodat de pagina actief is, dan pas renderen
   navTo(savedType);
@@ -749,21 +766,37 @@ function draaiFactuurGBTerug(f, type){
 // inkoop betaald  → Debet Crediteuren, Credit Bank
 // De P&L verandert bewust niet: omzet/kosten zijn al geboekt bij het aanmaken
 // van de factuur (factuurstelsel). richting 1 = boeken, -1 = terugdraaien.
+// Geeft true terug als er daadwerkelijk geboekt is. Weigert (met melding) zodra
+// een van de twee rekeningen ontbreekt of ze allebei dezelfde rekening zijn —
+// dan zou de boeking zichzelf opheffen: saldo onveranderd, balans in evenwicht,
+// geen foutmelding. Dat is precies het geval waarin "op betaald zetten" leek te
+// werken terwijl debiteuren nooit afliep.
 function boekHandmatigeBetaling(f, type, richting){
   const incl = (parseFloat(f.totaalIncl)||0) * richting;
-  if(!incl) return;
+  if(!incl) return false;
   const bank = getBankRekening();
-  if(type==='verkoop'){
-    if(bank) bank.saldo = rond((parseFloat(bank.saldo)||0) + incl);
-    const debRek = DB.grootboek.find(g=>g.nummer==='1300')
-                || DB.grootboek.find(g=>g.naam.toLowerCase().includes('debiteuren'));
-    if(debRek) debRek.saldo = rond((parseFloat(debRek.saldo)||0) - incl);
-  } else {
-    if(bank) bank.saldo = rond((parseFloat(bank.saldo)||0) - incl);
-    const credRek = DB.grootboek.find(g=>g.nummer==='2100')
-                 || DB.grootboek.find(g=>g.naam.toLowerCase().includes('crediteur'));
-    if(credRek) credRek.saldo = rond((parseFloat(credRek.saldo)||0) - incl);
+  const isVK = type==='verkoop';
+  const tegen = isVK
+    ? (DB.grootboek.find(g=>g.nummer==='1300') || DB.grootboek.find(g=>(g.naam||'').toLowerCase().includes('debiteuren')))
+    : (DB.grootboek.find(g=>g.nummer==='2100') || DB.grootboek.find(g=>(g.naam||'').toLowerCase().includes('crediteur')));
+
+  if(!bank){
+    toast('Geen bank- of kasrekening gevonden — voeg rekening 1100 (Bank) toe in Grootboek. De betaling is niet geboekt.','error',7000);
+    return false;
   }
+  if(!tegen){
+    toast(`Rekening ${isVK?'1300 Debiteuren':'2100 Crediteuren'} niet gevonden — voeg hem toe in Grootboek. De betaling is niet geboekt.`,'error',7000);
+    return false;
+  }
+  if(bank.id === tegen.id){
+    toast(`De bankrekening en ${isVK?'Debiteuren':'Crediteuren'} zijn dezelfde rekening (${bank.nummer} ${bank.naam}) — de betaling zou zichzelf wegboeken. Corrigeer dit in Grootboek.`,'error',9000);
+    return false;
+  }
+
+  // Verkoop: geld binnen, vordering weg. Inkoop: geld eruit, schuld weg.
+  bank.saldo  = rond((parseFloat(bank.saldo)||0)  + (isVK ? incl : -incl));
+  tegen.saldo = rond((parseFloat(tegen.saldo)||0) - incl);
+  return true;
 }
 
 function zetFactuurBetaald(type, id){
@@ -773,13 +806,16 @@ function zetFactuurBetaald(type, id){
     toast('Deze factuur heeft al een gekoppelde bankbetaling — de status volgt de bank.','warning');
     return;
   }
-  boekHandmatigeBetaling(f, type, 1);
+  // Alleen de status omzetten als de boeking ook echt gelukt is — anders staat de
+  // factuur op "betaald" terwijl debiteuren blijft staan.
+  if(!boekHandmatigeBetaling(f, type, 1)) return;
   f.status = 'betaald';
   f.betaaldOp = today();
   f.handmatigBetaald = true;
-  save();
+  if(!save()) return; // balans blokkeerde; alles is al teruggedraaid en hertekend
   renderFacturen(type); renderDashboard(); updateBankStats();
-  toast('Factuur gemarkeerd als betaald per '+f.betaaldOp+'.','success');
+  const bank = getBankRekening();
+  toast(`Factuur betaald per ${f.betaaldOp} — ${fmt(f.totaalIncl)} van ${type==='verkoop'?'Debiteuren':'Crediteuren'} naar ${bank?bank.naam:'bank'}.`,'success',5000);
 }
 
 async function zetFactuurOnbetaald(type, id){
@@ -791,11 +827,11 @@ async function zetFactuurOnbetaald(type, id){
   }
   const ok = await bevestig('Betaling terugdraaien? De factuur komt weer open te staan.','Betaling terugdraaien','Terugdraaien');
   if(!ok) return;
-  boekHandmatigeBetaling(f, type, -1);
+  if(!boekHandmatigeBetaling(f, type, -1)) return;
   f.status = type==='verkoop' ? 'verstuurd' : 'te betalen';
   delete f.betaaldOp;
   delete f.handmatigBetaald;
-  save();
+  if(!save()) return; // balans blokkeerde; herstel + hertekenen is al gedaan
   renderFacturen(type); renderDashboard(); updateBankStats();
   toast('Betaling teruggedraaid — factuur staat weer open.','info');
 }
@@ -837,7 +873,13 @@ Let op: deze factuur is gekoppeld aan een bankbetaling van ${fmt(gekoppeldeT.bed
 
   // Handmatig geboekte betaling ook terugdraaien (bank ↔ deb/cred);
   // een eventuele bankkoppeling is hierboven al ontkoppeld.
-  if(f.handmatigBetaald) boekHandmatigeBetaling(f, type, -1);
+  // Lukt dit niet, dan zou de factuur verdwijnen terwijl bank en debiteuren de
+  // betaling houden — een restpost die daarna nergens meer aan te koppelen is.
+  if(f.handmatigBetaald && !boekHandmatigeBetaling(f, type, -1)){
+    herstelNaLaatsteGoedeStand();
+    toast('De betaling kon niet teruggedraaid worden — de factuur is niet verwijderd.','error',7000);
+    return;
+  }
 
   if(type==='verkoop') DB.verkoop=DB.verkoop.filter(f=>f.id!==id);
   else DB.inkoop=DB.inkoop.filter(f=>f.id!==id);
@@ -862,7 +904,8 @@ Let op: deze factuur is gekoppeld aan een bankbetaling van ${fmt(gekoppeldeT.bed
     }
   }
 
-  save(); renderFacturen(type);
+  if(!save()) return; // balans blokkeerde: factuur staat er nog, niets melden
+  renderFacturen(type);
   updateBankStats();
   toast('Factuur verwijderd.','info');
 }
