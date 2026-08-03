@@ -959,6 +959,133 @@ function openGrootboekkaart(gbId){
   openModal('modal-grootboekkaart');
 }
 
+// Alle rekeningen met een niet-herleidbaar restsaldo: het deel van g.saldo dat
+// door geen enkele factuur, bankregel of memoriaalboeking verklaard wordt. Dat is
+// dezelfde sluitregel die de grootboekkaart toont, maar dan voor het hele schema.
+function _alleRestposten(){
+  const uit = [];
+  (DB.grootboek||[]).forEach(g=>{
+    const kaart = bouwGrootboekkaart(g.id);
+    if(!kaart) return;
+    const sluit = kaart.posten.find(p=>!p.ref);
+    if(sluit && Math.abs(sluit.effect) > 0.005) uit.push({ g, effect: rond(sluit.effect) });
+  });
+  return uit;
+}
+
+// Zoekt rekeningen waarvan de restpost samen met die van `gbId` de balans WEL
+// laat kloppen. Zo'n paar ontstaat als één foute boeking twee rekeningen raakte:
+// los weggenomen trekt elk de balans scheef, samen heffen ze elkaar op.
+function _paarKandidaten(gbId, effect){
+  const g = DB.grootboek.find(x=>x.id===gbId);
+  if(!g) return [];
+  return _alleRestposten().filter(k=>k.g.id!==gbId).filter(k=>{
+    const oudA = parseFloat(g.saldo)||0, oudB = parseFloat(k.g.saldo)||0;
+    g.saldo   = rond(oudA - effect);
+    k.g.saldo = rond(oudB - k.effect);
+    const na = _balansVerschil().verschil;
+    g.saldo = oudA; k.g.saldo = oudB;   // simulatie altijd terugdraaien
+    return na <= 0.005;
+  });
+}
+
+// Laat zien met welke rekening deze restpost samen weg kan. Bewust een keuze en
+// geen automatische ingreep: welke twee rekeningen bij elkaar horen is een
+// boekhoudkundig oordeel, niet iets om te raden.
+function gbkToonPaarKeuze(i, kandidaten){
+  const p = _gbkPosten[i];
+  const g = DB.grootboek.find(x=>x.id===_gbkGbId);
+  if(!p || !g) return;
+  const bEl = document.getElementById('gbk-body');
+  if(!bEl) return;
+  bEl.innerHTML = `
+    <div style="padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:rgba(234,179,8,.08);margin-bottom:14px;">
+      <div style="font-weight:600;margin-bottom:6px;">Deze restpost kan niet los weg</div>
+      <div style="font-size:13px;line-height:1.6;color:var(--text-mid);">
+        De restpost van <strong>${fmt(p.effect)}</strong> op <strong>${esc(g.nummer+' '+g.naam)}</strong>
+        houdt je balans nu in evenwicht met een even groot bedrag op een andere rekening.
+        Eén oude, foute boeking heeft ze allebei aangemaakt. Ze moeten daarom samen weg —
+        dan sluiten beide rekeningen weer aan op je documenten én blijft de balans kloppen.
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">
+      Samen verwijderen met
+    </div>
+    ${kandidaten.map(k=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;">
+        <div>
+          <div style="font-weight:500;">${esc(k.g.nummer+' '+k.g.naam)}</div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">
+            ${esc(GB_TYPE_LABELS[k.g.type]||k.g.type)} — restpost ${fmt(k.effect)}
+          </div>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="gbkVerwijderPaar(${i},'${k.g.id}')">Allebei verwijderen</button>
+      </div>`).join('')}
+    <button class="btn btn-secondary btn-sm" style="margin-top:6px;" onclick="openGrootboekkaart('${g.id}')">Terug naar de kaart</button>`;
+}
+
+// Haalt twee bij elkaar horende restposten in één keer weg. Zelfde regels als bij
+// een enkele: eerst simuleren, alleen doorgaan als de balans daarna sluit, en één
+// gezamenlijk auditspoor zodat later te zien is dat het om één correctie ging.
+async function gbkVerwijderPaar(i, andereId){
+  const p = _gbkPosten[i];
+  const g = DB.grootboek.find(x=>x.id===_gbkGbId);
+  const h = DB.grootboek.find(x=>x.id===andereId);
+  if(!p || !g || !h){ toast('Rekening niet gevonden.','error'); return; }
+
+  const effectG = rond(p.effect);
+  const kaartH = bouwGrootboekkaart(h.id);
+  const sluitH = kaartH && kaartH.posten.find(x=>!x.ref);
+  if(!sluitH){ toast('De tegenhanger heeft geen restpost meer — open de kaart opnieuw.','warning'); return; }
+  const effectH = rond(sluitH.effect);
+
+  const oudG = parseFloat(g.saldo)||0, oudH = parseFloat(h.saldo)||0;
+  const voor = _balansVerschil().verschil;
+  g.saldo = rond(oudG - effectG); h.saldo = rond(oudH - effectH);
+  const na = _balansVerschil().verschil;
+  g.saldo = oudG; h.saldo = oudH;   // altijd terug, ook als de gebruiker annuleert
+
+  if(na > 0.005){
+    alert(`Deze twee restposten heffen elkaar toch niet op — de balans zou daarna ${fmt(na)} scheef staan. Er is niets gewijzigd.`);
+    return;
+  }
+
+  const ok = await bevestig(
+    `Twee bij elkaar horende restposten verwijderen?\n\n`
+    + `${g.nummer} ${g.naam}: ${fmt(oudG)} → ${fmt(rond(oudG-effectG))}\n`
+    + `${h.nummer} ${h.naam}: ${fmt(oudH)} → ${fmt(rond(oudH-effectH))}\n\n`
+    + `Balansverschil: ${fmt(voor)} → ${fmt(na)}\n\n`
+    + `Beide bedragen zijn niet te herleiden naar een factuur, bankregel of memoriaalboeking. `
+    + `Er wordt één correctie vastgelegd zodat je later kunt terugzien wat je hebt weggehaald.`,
+    'Restposten verwijderen', 'Verwijderen');
+  if(!ok) return;
+
+  g.saldo = rond(oudG - effectG);
+  h.saldo = rond(oudH - effectH);
+  if(!DB.memoriaal) DB.memoriaal = [];
+  DB.memoriaal.push({
+    id: uid(),
+    datum: today(),
+    oms: `Restposten gecorrigeerd — ${g.nummer} ${g.naam} en ${h.nummer} ${h.naam}`,
+    type: 'saldocorrectie',
+    relatie: '',
+    regels: [
+      { gbId:g.id, oms:`Niet-herleidbare restpost verwijderd (saldo ${fmt(oudG)} → ${fmt(g.saldo)})`,
+        bedrag:Math.abs(effectG), dc: effectG>0?'debet':'credit' },
+      { gbId:h.id, oms:`Tegenhanger van dezelfde foute boeking (saldo ${fmt(oudH)} → ${fmt(h.saldo)})`,
+        bedrag:Math.abs(effectH), dc: effectH>0?'debet':'credit' },
+    ],
+    debet: Math.abs(effectG),
+    aangemaakt: new Date().toISOString()
+  });
+
+  if(!save()) return;
+  toast(`Restposten van ${fmt(effectG)} en ${fmt(effectH)} verwijderd — balans en boekhoudcontrole sluiten.`,'success',6000);
+  renderGB();
+  if(typeof renderBalans==='function') renderBalans();
+  openGrootboekkaart(g.id);
+}
+
 // Haalt een niet-herleidbare restpost van een grootboekrekening af.
 //
 // Dit is de ENIGE plek waar de grootboekkaart aan g.saldo komt. #19 verbiedt dat
@@ -991,12 +1118,20 @@ async function gbkVerwijderPost(i){
   g.saldo = oudSaldo;
 
   if(na > 0.005){
-    alert(`Deze restpost kan niet verwijderd worden — de balans zou daarna nog steeds niet kloppen.\n\n`
+    // In je eentje wegnemen zou de balans juist scheeftrekken. Dat betekent bijna
+    // altijd dat deze restpost een TEGENHANGER heeft: één foute boeking van vroeger
+    // zette een bedrag op deze rekening én op een andere, en samen hielden ze de
+    // balans keurig in evenwicht. Dan moeten ze ook samen weg. Zoek die tegenhanger
+    // op in plaats van de gebruiker met een weigering te laten zitten.
+    const kandidaten = _paarKandidaten(g.id, effect);
+    if(kandidaten.length){ gbkToonPaarKeuze(i, kandidaten); return; }
+    alert(`Deze restpost kan niet los verwijderd worden — de balans zou daarna juist scheef komen te staan.\n\n`
         + `Rekening: ${g.nummer} ${g.naam}\n`
         + `Restpost: ${fmt(effect)}\n\n`
         + `Balansverschil nu:     ${fmt(voor)}\n`
         + `Balansverschil daarna: ${fmt(na)}\n\n`
-        + `Er staat dus nog een andere fout open. Zoek eerst de rekening waar het verschil vandaan komt.`);
+        + `Er hoort een tegenhanger van dit bedrag op een andere rekening te staan, maar die is niet gevonden. `
+        + `Er staat dus nog een andere fout open die eerst opgelost moet worden.`);
     return;
   }
 
