@@ -7,16 +7,42 @@
           {
             "type": "agent",
             "if": "Edit(*.js)|Write(*.js)",
-            "prompt": "Een JS-bestand is zojuist gewijzigd: $ARGUMENTS\n\nJij bent de js-checker agent voor YS Boekhouding (C:\\Users\\ymera\\OneDrive\\Documenten\\Bookkeeping\\Ysboekhouding\\src\\). Lees het gewijzigde bestand en controleer op syntaxfouten, niet-gesloten accolades, en ontbrekende functies die in dit bestand worden aangeroepen. Rapporteer alleen echte fouten — geen stijlopmerkingen.",
-            "timeout": 60,
-            "statusMessage": "JS-checker draait..."
+            "agent": "js-checker",
+            "prompt": "Een JS-bestand is zojuist gewijzigd in het YS Boekhouding project (C:\\Users\\ymera\\OneDrive\\Documenten\\Bookkeeping\\Ysboekhouding\\src\\).\n\nGewijzigd bestand: $ARGUMENTS\n\nVolg je instructies als js-checker agent: lees het gewijzigde bestand, controleer op syntax-fouten, ontbrekende functies, undefined variabelen en laadvolgorde. Controleer ook of nieuw toegevoegde functies correct gesloten zijn en of alle functies die zij aanroepen elders gedefinieerd zijn. Rapporteer in het standaard uitvoerformaat.",
+            "timeout": 120,
+            "statusMessage": "JS-checker controleert wijzigingen..."
           },
           {
             "type": "agent",
             "if": "Edit(*.css)|Write(*.css)",
-            "prompt": "Een CSS-bestand is zojuist gewijzigd: $ARGUMENTS\n\nJij bent de css-checker agent voor YS Boekhouding (C:\\Users\\ymera\\OneDrive\\Documenten\\Bookkeeping\\Ysboekhouding\\src\\). Lees het gewijzigde bestand en controleer op ongeldige CSS-properties en niet-gesloten blokken. Rapporteer alleen echte fouten.",
-            "timeout": 60,
-            "statusMessage": "CSS-checker draait..."
+            "agent": "css-checker",
+            "prompt": "Een CSS-bestand is zojuist gewijzigd in het YS Boekhouding project (C:\\Users\\ymera\\OneDrive\\Documenten\\Bookkeeping\\Ysboekhouding\\src\\).\n\nGewijzigd bestand: $ARGUMENTS\n\nVolg je instructies als css-checker agent: lees het gewijzigde bestand, controleer op ongeldige properties, ontbrekende CSS-variabelen en niet-gesloten blokken. Rapporteer in het standaard uitvoerformaat.",
+            "timeout": 120,
+            "statusMessage": "CSS-checker controleert wijzigingen..."
+          },
+          {
+            "type": "agent",
+            "if": "Edit(kassier.js)|Write(kassier.js)",
+            "agent": "factuur-validator",
+            "prompt": "kassier.js is zojuist gewijzigd in het YS Boekhouding project (C:\\Users\\ymera\\OneDrive\\Documenten\\Bookkeeping\\Ysboekhouding\\src\\).\n\nVolg je instructies als factuur-validator agent: controleer of maakUrenFactuur() nog steeds voldoet aan alle Nederlandse wettelijke eisen. Rapporteer in het standaard uitvoerformaat.",
+            "timeout": 120,
+            "statusMessage": "Factuur-validator controleert wettelijke vereisten..."
+          },
+          {
+            "type": "agent",
+            "if": "Edit(firebase-config.js)|Write(firebase-config.js)",
+            "agent": "firebase-checker",
+            "prompt": "firebase-config.js is zojuist gewijzigd in het YS Boekhouding project (C:\\Users\\ymera\\OneDrive\\Documenten\\Bookkeeping\\Ysboekhouding\\src\\).\n\nVolg je instructies als firebase-checker agent: controleer collectienamen, verplichte velden, fbAanroep-gebruik en error-handling. Rapporteer in het standaard uitvoerformaat.",
+            "timeout": 120,
+            "statusMessage": "Firebase-checker controleert Firestore-gebruik..."
+          },
+          {
+            "type": "agent",
+            "if": "Edit(facturen.js)|Write(facturen.js)|Edit(btw-rapport.js)|Write(btw-rapport.js)|Edit(bank.js)|Write(bank.js)",
+            "agent": "boekhoud-checker",
+            "prompt": "Een boekhoudkundig bestand is zojuist gewijzigd in het YS Boekhouding project (C:\\Users\\ymera\\OneDrive\\Documenten\\Bookkeeping\\Ysboekhouding\\src\\).\n\nGewijzigd bestand: $ARGUMENTS\n\nVolg je instructies als boekhoud-checker agent: controleer BTW-tarieven, kasstelsel/factuurstelsel logica, grootboekrekeningen en balans. Rapporteer in het standaard uitvoerformaat.",
+            "timeout": 120,
+            "statusMessage": "Boekhoud-checker controleert boekhoudregels..."
           }
         ]
       }

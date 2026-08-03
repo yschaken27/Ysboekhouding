@@ -1,0 +1,7 @@
+# Oude monoliet-index van vóór de opsplitsing naar src/ (1,7 MB) plus de
+# bijbehorende opdrachtnotitie. Blijft lokaal staan als naslag, hoort niet in git.
+_backup/
+
+# Werkmappen van Claude Code-sessies
+.claude/worktrees/
+.claude/settings.local.json
