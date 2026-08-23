@@ -250,8 +250,8 @@ function mobUrenVulTarieven(){
   mobUrenHerbereken();
 }
 
-// Tarief-invoer accepteert zowel komma als punt als decimaalteken
-function parseTariefInvoer(waarde){
+// Getal-invoer (tarief, uren) accepteert zowel komma als punt als decimaalteken
+function parseDecimaalInvoer(waarde){
   return parseFloat(String(waarde||'').trim().replace(',','.')) || 0;
 }
 
@@ -283,7 +283,7 @@ function _mobUrenGekozenTarief(){
   const t = tarieven[ti] || tarieven[0] || null;
   if(opdr.flexibelTarief){
     // Kassier vult zelf het tarief in; label blijft het vaste tarief als het bedrag gelijk is
-    const eigen = parseTariefInvoer(document.getElementById('mob-uren-eigen-tarief')?.value);
+    const eigen = parseDecimaalInvoer(document.getElementById('mob-uren-eigen-tarief')?.value);
     const label = (t && parseFloat(t.bedrag) === eigen) ? (t.naam || eenheidInfo(eenheid).gewerkt) : 'Eigen tarief';
     return { opdrachtgever: opdr.naam, eenheid, flexibel: true, tarief: { label, bedrag: eigen } };
   }
@@ -292,7 +292,7 @@ function _mobUrenGekozenTarief(){
 }
 
 function mobUrenHerbereken(){
-  const aantal = parseFloat(document.getElementById('mob-uren-aantal')?.value) || 0;
+  const aantal = parseDecimaalInvoer(document.getElementById('mob-uren-aantal')?.value);
   const g = _mobUrenGekozenTarief();
   const el = document.getElementById('mob-uren-bedrag-val');
   if(!el) return;
@@ -303,7 +303,7 @@ function mobUrenHerbereken(){
 
 function mobSlaUrenOp(){
   const datum = document.getElementById('mob-uren-datum')?.value;
-  const aantal = parseFloat(document.getElementById('mob-uren-aantal')?.value) || 0;
+  const aantal = parseDecimaalInvoer(document.getElementById('mob-uren-aantal')?.value);
   const notitie = document.getElementById('mob-uren-notitie')?.value.trim() || '';
   const g = _mobUrenGekozenTarief();
 
@@ -542,7 +542,7 @@ function openEigenaarUrenModal(editId){
   const datumEl = document.getElementById('eu-datum');
   if(isEdit && bestaand){
     if(datumEl) datumEl.value = bestaand.datum || '';
-    document.getElementById('eu-uren').value = bestaand.uren || '';
+    document.getElementById('eu-uren').value = bestaand.uren != null ? String(bestaand.uren).replace('.',',') : '';
     document.getElementById('eu-notitie').value = bestaand.notitie || '';
     // Tarief-optie zoeken op opdrachtgever + label (flexibele entry: val terug op opdrachtgever)
     let matchIdx = opties.findIndex(o=>o.opdrachtgever===bestaand.opdrachtgever && o.tariefLabel===bestaand.tariefLabel);
@@ -583,9 +583,9 @@ function eigenaarUrenHerbereken(){
   const opties = tarSelect?._opties || [];
   const idx = parseInt(tarSelect?.value||'0');
   const tarief = opties[idx] || {};
-  const uren = parseFloat(document.getElementById('eu-uren')?.value) || 0;
+  const uren = parseDecimaalInvoer(document.getElementById('eu-uren')?.value);
   const perEenheid = tarief.flexibel
-    ? parseTariefInvoer(document.getElementById('eu-eigen-tarief')?.value)
+    ? parseDecimaalInvoer(document.getElementById('eu-eigen-tarief')?.value)
     : (tarief.tariefBedrag||0);
   const bedrag = Math.round(uren * perEenheid * 100) / 100;
   const el = document.getElementById('eu-bedrag-preview');
@@ -603,7 +603,7 @@ function eigenaarVoegUrenToe(){
   const wie = isEigenaarView
     ? (kasEl?.value || '')
     : (_actieveKassier?.naam || '');
-  const uren = parseFloat(document.getElementById('eu-uren')?.value) || 0;
+  const uren = parseDecimaalInvoer(document.getElementById('eu-uren')?.value);
   const notitie = document.getElementById('eu-notitie')?.value.trim() || '';
   const tarSelect = document.getElementById('eu-tarief');
   const opties = tarSelect?._opties || [];
@@ -619,7 +619,7 @@ function eigenaarVoegUrenToe(){
   let tariefBedrag = tarief.tariefBedrag;
   let tariefLabel = tarief.tariefLabel;
   if(tarief.flexibel){
-    tariefBedrag = parseTariefInvoer(document.getElementById('eu-eigen-tarief')?.value);
+    tariefBedrag = parseDecimaalInvoer(document.getElementById('eu-eigen-tarief')?.value);
     if(tariefBedrag <= 0){ toast('Vul een tarief in.','error'); return; }
     if(tariefBedrag !== tarief.tariefBedrag) tariefLabel = 'Eigen tarief';
   }
