@@ -238,7 +238,7 @@
     <!-- Eigen tarief (alleen zichtbaar bij flexibel tarief) -->
     <div class="mob-notities-field" id="mob-uren-eigen-tarief-wrap" style="display:none;">
       <label id="mob-uren-eigen-tarief-label">Tarief (€/u)</label>
-      <input type="number" id="mob-uren-eigen-tarief" placeholder="0,00" step="0.01" min="0" inputmode="decimal" oninput="mobUrenHerbereken()">
+      <input type="text" id="mob-uren-eigen-tarief" placeholder="0,00" inputmode="decimal" autocomplete="off" oninput="mobUrenHerbereken()">
     </div>
 
     <!-- Aantal uren/dagen -->
@@ -1030,7 +1030,7 @@
       </div>
       <div id="eu-eigen-tarief-wrap" style="display:none;">
         <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px;">Tarief (€)</label>
-        <input type="number" id="eu-eigen-tarief" min="0" step="0.01" placeholder="0,00" oninput="eigenaarUrenHerbereken()" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);font-size:14px;box-sizing:border-box;">
+        <input type="text" id="eu-eigen-tarief" placeholder="0,00" inputmode="decimal" autocomplete="off" oninput="eigenaarUrenHerbereken()" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);font-size:14px;box-sizing:border-box;">
       </div>
       <div>
         <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px;">Notitie (optioneel)</label>

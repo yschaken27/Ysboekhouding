@@ -250,6 +250,11 @@ function mobUrenVulTarieven(){
   mobUrenHerbereken();
 }
 
+// Tarief-invoer accepteert zowel komma als punt als decimaalteken
+function parseTariefInvoer(waarde){
+  return parseFloat(String(waarde||'').trim().replace(',','.')) || 0;
+}
+
 function _mobUrenVulEigenTarief(){
   const inp = document.getElementById('mob-uren-eigen-tarief');
   if(!inp) return;
@@ -258,7 +263,7 @@ function _mobUrenVulEigenTarief(){
   const tarieven = opdr?.tarieven || [];
   const ti = tarieven.length > 1 ? parseInt(document.getElementById('mob-uren-tarief')?.value||'0') : 0;
   const t = tarieven[ti] || tarieven[0];
-  inp.value = (t && t.bedrag > 0) ? t.bedrag : '';
+  inp.value = (t && t.bedrag > 0) ? String(t.bedrag).replace('.',',') : '';
 }
 
 function mobUrenTariefGewijzigd(){
@@ -278,7 +283,7 @@ function _mobUrenGekozenTarief(){
   const t = tarieven[ti] || tarieven[0] || null;
   if(opdr.flexibelTarief){
     // Kassier vult zelf het tarief in; label blijft het vaste tarief als het bedrag gelijk is
-    const eigen = parseFloat(document.getElementById('mob-uren-eigen-tarief')?.value) || 0;
+    const eigen = parseTariefInvoer(document.getElementById('mob-uren-eigen-tarief')?.value);
     const label = (t && parseFloat(t.bedrag) === eigen) ? (t.naam || eenheidInfo(eenheid).gewerkt) : 'Eigen tarief';
     return { opdrachtgever: opdr.naam, eenheid, flexibel: true, tarief: { label, bedrag: eigen } };
   }
@@ -564,7 +569,7 @@ function _euSyncEigenTarief(bestaandBedrag){
   if(wrap) wrap.style.display = optie.flexibel ? '' : 'none';
   if(inp && optie.flexibel){
     const voorvul = bestaandBedrag != null ? bestaandBedrag : optie.tariefBedrag;
-    inp.value = voorvul > 0 ? voorvul : '';
+    inp.value = voorvul > 0 ? String(voorvul).replace('.',',') : '';
   }
 }
 
@@ -580,7 +585,7 @@ function eigenaarUrenHerbereken(){
   const tarief = opties[idx] || {};
   const uren = parseFloat(document.getElementById('eu-uren')?.value) || 0;
   const perEenheid = tarief.flexibel
-    ? (parseFloat(document.getElementById('eu-eigen-tarief')?.value) || 0)
+    ? parseTariefInvoer(document.getElementById('eu-eigen-tarief')?.value)
     : (tarief.tariefBedrag||0);
   const bedrag = Math.round(uren * perEenheid * 100) / 100;
   const el = document.getElementById('eu-bedrag-preview');
@@ -614,7 +619,7 @@ function eigenaarVoegUrenToe(){
   let tariefBedrag = tarief.tariefBedrag;
   let tariefLabel = tarief.tariefLabel;
   if(tarief.flexibel){
-    tariefBedrag = parseFloat(document.getElementById('eu-eigen-tarief')?.value) || 0;
+    tariefBedrag = parseTariefInvoer(document.getElementById('eu-eigen-tarief')?.value);
     if(tariefBedrag <= 0){ toast('Vul een tarief in.','error'); return; }
     if(tariefBedrag !== tarief.tariefBedrag) tariefLabel = 'Eigen tarief';
   }
