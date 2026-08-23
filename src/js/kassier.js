@@ -238,20 +238,51 @@ function mobUrenVulTarieven(){
     ).join('');
   }
   if(wrap) wrap.style.display = tarieven.length > 1 ? 'block' : 'none';
+  // Flexibel tarief: kassier mag zelf het tarief invullen (voorinvulling = vast tarief)
+  const eigenWrap = document.getElementById('mob-uren-eigen-tarief-wrap');
+  if(eigenWrap) eigenWrap.style.display = opdr?.flexibelTarief ? 'block' : 'none';
+  const eigenLbl = document.getElementById('mob-uren-eigen-tarief-label');
+  if(eigenLbl) eigenLbl.textContent = 'Tarief (€' + info.per + ')';
+  if(opdr?.flexibelTarief) _mobUrenVulEigenTarief();
   // Label van het aantal-veld volgt de eenheid (uren/dagen).
   const lbl = document.getElementById('mob-uren-aantal-label');
   if(lbl) lbl.textContent = 'Aantal ' + info.meervoud;
   mobUrenHerbereken();
 }
 
-function _mobUrenGekozenTarief(){
+function _mobUrenVulEigenTarief(){
+  const inp = document.getElementById('mob-uren-eigen-tarief');
+  if(!inp) return;
   const oi = parseInt(document.getElementById('mob-uren-opdrachtgever')?.value);
   const opdr = _mobUrenOpdrachtgevers()[oi];
   const tarieven = opdr?.tarieven || [];
-  if(!tarieven.length) return null;
   const ti = tarieven.length > 1 ? parseInt(document.getElementById('mob-uren-tarief')?.value||'0') : 0;
   const t = tarieven[ti] || tarieven[0];
-  const eenheid = opdr?.eenheid === 'dag' ? 'dag' : 'uur';
+  inp.value = (t && t.bedrag > 0) ? t.bedrag : '';
+}
+
+function mobUrenTariefGewijzigd(){
+  const oi = parseInt(document.getElementById('mob-uren-opdrachtgever')?.value);
+  const opdr = _mobUrenOpdrachtgevers()[oi];
+  if(opdr?.flexibelTarief) _mobUrenVulEigenTarief();
+  mobUrenHerbereken();
+}
+
+function _mobUrenGekozenTarief(){
+  const oi = parseInt(document.getElementById('mob-uren-opdrachtgever')?.value);
+  const opdr = _mobUrenOpdrachtgevers()[oi];
+  if(!opdr) return null;
+  const tarieven = opdr.tarieven || [];
+  const eenheid = opdr.eenheid === 'dag' ? 'dag' : 'uur';
+  const ti = tarieven.length > 1 ? parseInt(document.getElementById('mob-uren-tarief')?.value||'0') : 0;
+  const t = tarieven[ti] || tarieven[0] || null;
+  if(opdr.flexibelTarief){
+    // Kassier vult zelf het tarief in; label blijft het vaste tarief als het bedrag gelijk is
+    const eigen = parseFloat(document.getElementById('mob-uren-eigen-tarief')?.value) || 0;
+    const label = (t && parseFloat(t.bedrag) === eigen) ? (t.naam || eenheidInfo(eenheid).gewerkt) : 'Eigen tarief';
+    return { opdrachtgever: opdr.naam, eenheid, flexibel: true, tarief: { label, bedrag: eigen } };
+  }
+  if(!t) return null;
   return { opdrachtgever: opdr.naam, eenheid, tarief: { label: t.naam || eenheidInfo(eenheid).gewerkt, bedrag: t.bedrag || 0 } };
 }
 
@@ -274,6 +305,7 @@ function mobSlaUrenOp(){
   if(!datum){ toast('Kies een datum.','error'); return; }
   if(!g){ toast('Kies een opdrachtgever.','error'); return; }
   if(aantal <= 0){ toast('Vul het aantal '+eenheidInfo(g.eenheid).meervoud+' in.','error'); return; }
+  if(g.flexibel && !(g.tarief.bedrag > 0)){ toast('Vul een tarief in.','error'); return; }
 
   const bedrag = aantal * (g.tarief.bedrag || 0);
   const ingave = {
@@ -487,8 +519,12 @@ function openEigenaarUrenModal(editId){
   const opties = [];
   opdrachtgevers.forEach(o=>{
     const eenheid = o.eenheid === 'dag' ? 'dag' : 'uur';
-    (o.tarieven||[{naam:'Standaard',bedrag:o.tarief||0}]).forEach(t=>{
-      opties.push({ opdrachtgever: o.naam, eenheid, tariefLabel: t.naam||t.label||'Standaard', tariefBedrag: parseFloat(t.bedrag||0) });
+    const flexibel = !!o.flexibelTarief;
+    let tarLijst = Array.isArray(o.tarieven) ? o.tarieven : [{naam:'Standaard',bedrag:o.tarief||0}];
+    // Flexibele opdrachtgever zonder vaste tarieven moet toch kiesbaar zijn
+    if(!tarLijst.length && flexibel) tarLijst = [{naam:'Eigen tarief', bedrag:0}];
+    tarLijst.forEach(t=>{
+      opties.push({ opdrachtgever: o.naam, eenheid, flexibel, tariefLabel: t.naam||t.label||'Standaard', tariefBedrag: parseFloat(t.bedrag||0) });
     });
   });
   if(!opties.length){ toast('Geen opdrachtgevers ingesteld. Voeg ze toe via ⚙ Opdrachtgevers.','warning'); return; }
@@ -503,16 +539,38 @@ function openEigenaarUrenModal(editId){
     if(datumEl) datumEl.value = bestaand.datum || '';
     document.getElementById('eu-uren').value = bestaand.uren || '';
     document.getElementById('eu-notitie').value = bestaand.notitie || '';
-    // Tarief-optie zoeken op opdrachtgever + label
-    const matchIdx = opties.findIndex(o=>o.opdrachtgever===bestaand.opdrachtgever && o.tariefLabel===bestaand.tariefLabel);
+    // Tarief-optie zoeken op opdrachtgever + label (flexibele entry: val terug op opdrachtgever)
+    let matchIdx = opties.findIndex(o=>o.opdrachtgever===bestaand.opdrachtgever && o.tariefLabel===bestaand.tariefLabel);
+    if(matchIdx < 0) matchIdx = opties.findIndex(o=>o.opdrachtgever===bestaand.opdrachtgever);
     if(matchIdx >= 0) tarSelect.value = matchIdx;
   } else {
     if(datumEl && !datumEl.value) datumEl.value = new Date().toISOString().slice(0,10);
     document.getElementById('eu-uren').value = '';
     document.getElementById('eu-notitie').value = '';
   }
+  _euSyncEigenTarief(isEdit && bestaand ? bestaand.tariefBedrag : null);
   eigenaarUrenHerbereken();
   openModal('modal-eigenaar-uren');
+}
+
+// Toont/verbergt het eigen-tariefveld en vult het voor met het vaste tarief.
+// bestaandBedrag: tariefBedrag van een entry die bewerkt wordt (anders null).
+function _euSyncEigenTarief(bestaandBedrag){
+  const tarSelect = document.getElementById('eu-tarief');
+  const opties = tarSelect?._opties || [];
+  const optie = opties[parseInt(tarSelect?.value||'0')] || {};
+  const wrap = document.getElementById('eu-eigen-tarief-wrap');
+  const inp = document.getElementById('eu-eigen-tarief');
+  if(wrap) wrap.style.display = optie.flexibel ? '' : 'none';
+  if(inp && optie.flexibel){
+    const voorvul = bestaandBedrag != null ? bestaandBedrag : optie.tariefBedrag;
+    inp.value = voorvul > 0 ? voorvul : '';
+  }
+}
+
+function eigenaarUrenTariefGewijzigd(){
+  _euSyncEigenTarief(null);
+  eigenaarUrenHerbereken();
 }
 
 function eigenaarUrenHerbereken(){
@@ -521,7 +579,10 @@ function eigenaarUrenHerbereken(){
   const idx = parseInt(tarSelect?.value||'0');
   const tarief = opties[idx] || {};
   const uren = parseFloat(document.getElementById('eu-uren')?.value) || 0;
-  const bedrag = Math.round(uren * (tarief.tariefBedrag||0) * 100) / 100;
+  const perEenheid = tarief.flexibel
+    ? (parseFloat(document.getElementById('eu-eigen-tarief')?.value) || 0)
+    : (tarief.tariefBedrag||0);
+  const bedrag = Math.round(uren * perEenheid * 100) / 100;
   const el = document.getElementById('eu-bedrag-preview');
   if(el) el.textContent = '€ ' + bedrag.toFixed(2).replace('.',',');
   // Aantal-label volgt de eenheid van de gekozen opdrachtgever
@@ -549,18 +610,27 @@ function eigenaarVoegUrenToe(){
   if(!tarief){ toast('Kies een opdrachtgever en tarief.','error'); return; }
   if(uren <= 0){ toast('Vul het aantal '+eenheidInfo(tarief.eenheid).meervoud+' in.','error'); return; }
 
-  const bedrag = Math.round(uren * tarief.tariefBedrag * 100) / 100;
+  // Flexibel tarief: het ingevulde bedrag telt; label blijft het vaste tarief als het gelijk is
+  let tariefBedrag = tarief.tariefBedrag;
+  let tariefLabel = tarief.tariefLabel;
+  if(tarief.flexibel){
+    tariefBedrag = parseFloat(document.getElementById('eu-eigen-tarief')?.value) || 0;
+    if(tariefBedrag <= 0){ toast('Vul een tarief in.','error'); return; }
+    if(tariefBedrag !== tarief.tariefBedrag) tariefLabel = 'Eigen tarief';
+  }
+
+  const bedrag = Math.round(uren * tariefBedrag * 100) / 100;
   const eenheid = tarief.eenheid === 'dag' ? 'dag' : 'uur';
 
   if(editId){
     // Bewerken
     const entry = (DB.uren||[]).find(u=>u.id===editId);
     if(!entry){ toast('Uren-entry niet gevonden.','error'); return; }
-    Object.assign(entry, { datum, wie, opdrachtgever: tarief.opdrachtgever, eenheid, tariefLabel: tarief.tariefLabel, tariefBedrag: tarief.tariefBedrag, uren, bedrag, notitie });
+    Object.assign(entry, { datum, wie, opdrachtgever: tarief.opdrachtgever, eenheid, tariefLabel, tariefBedrag, uren, bedrag, notitie });
     localStorage.setItem(storageKey(), JSON.stringify(DB));
     if(checkOnline()){
       toonSyncStatus('opslaan');
-      fbAanroep(fb=>fb.updateUrenItem(huidigBedrijf, editId, JSON.stringify({ datum, wie, opdrachtgever: tarief.opdrachtgever, eenheid, tariefLabel: tarief.tariefLabel, tariefBedrag: tarief.tariefBedrag, uren, bedrag, notitie })))
+      fbAanroep(fb=>fb.updateUrenItem(huidigBedrijf, editId, JSON.stringify({ datum, wie, opdrachtgever: tarief.opdrachtgever, eenheid, tariefLabel, tariefBedrag, uren, bedrag, notitie })))
         .then(()=>toonSyncStatus('opgeslagen'))
         .catch(()=>{ toonSyncStatus('fout'); toast('Opslaan mislukt — probeer opnieuw.','error'); });
     }
@@ -575,8 +645,8 @@ function eigenaarVoegUrenToe(){
     id: uid(), datum, wie,
     opdrachtgever: tarief.opdrachtgever,
     eenheid,
-    tariefLabel: tarief.tariefLabel,
-    tariefBedrag: tarief.tariefBedrag,
+    tariefLabel,
+    tariefBedrag,
     uren, bedrag, notitie,
     status: isEigenaarView ? 'goedgekeurd' : 'ingediend',
     aangemaakt: new Date().toISOString()
