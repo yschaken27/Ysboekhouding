@@ -450,7 +450,7 @@ Wil je toch koppelen?`,
         f.status = f.restBedrag < 0.02 ? 'betaald' : 'gedeeltelijk';
       }
       boekBank(t,bedrag); boekFactuurTegenboeking(t,'verkoop','boek');
-      boekBetalingsverschil(bedrag, f.totaalIncl);
+      if(bedrag>0) boekBetalingsverschil(t, f, 'verkoop');
     } else if(prefix==='ik'){
       const f=DB.inkoop.find(f=>f.id===id); if(!f) return;
       // Bedragvalidatie
@@ -477,7 +477,7 @@ Wil je toch koppelen?`,
         f.status = f.restBedrag < 0.02 ? 'betaald' : 'gedeeltelijk';
       }
       boekBank(t,bedrag); boekFactuurTegenboeking(t,'inkoop','boek');
-      boekBetalingsverschil(bedrag, f.totaalIncl);
+      if(bedrag<0) boekBetalingsverschil(t, f, 'inkoop');
     } else {
       const g=DB.grootboek.find(g=>g.id===id); if(!g) return;
       _boekTegenrekening(g, bedrag, btwTarief);
@@ -502,16 +502,31 @@ Wil je toch koppelen?`,
 
 // ===== DUBBELE BOEKING HELPERS =====
 
-function boekBetalingsverschil(bankBedrag, factuurBedrag){
-  // Boek het verschil tussen bank en factuur naar 8900 Betalingsverschillen
-  const bank = Math.abs(parseFloat(bankBedrag)||0);
-  const factuur = Math.abs(parseFloat(factuurBedrag)||0);
-  const verschil = bank - factuur; // positief = bank meer, negatief = bank minder
-  if(Math.abs(verschil) < 0.02) return; // geen verschil
+// Grens waaronder een tekort als betalingsverschil wordt afgeboekt.
+// Grotere tekorten zijn deelbetalingen: die blijven open staan op de factuur.
+const AFBOEKGRENS_BETALINGSVERSCHIL = 2.00;
+
+function boekBetalingsverschil(t, f, factuurType){
+  // Boekt het verschil tussen betaald en factuurtotaal DUBBELZIJDIG weg naar
+  // 8900 Betalingsverschillen, met debiteuren/crediteuren als tegenrekening
+  // (de oude eenzijdige variant blokkeerde op de balanscontrole).
+  // Te veel betaald wordt altijd afgeboekt (anders blijft de post scheef hangen);
+  // te weinig alleen onder de afboekgrens — daarboven is het een deelbetaling.
+  const totaal = parseFloat(f.totaalIncl)||0;
+  const betaald = parseFloat(f.betaald)||0;
+  const verschil = rond(betaald - totaal); // >0 = te veel betaald, <0 = te weinig
+  if(Math.abs(verschil) < 0.02) return;
+  if(verschil < 0 && Math.abs(verschil) > AFBOEKGRENS_BETALINGSVERSCHIL) return;
   const rek = DB.grootboek.find(g=>g.nummer==='8900'||g.naam==='Betalingsverschillen');
-  if(!rek) return;
-  // Verschil naar betalingsverschillen boeken
-  rek.saldo = (parseFloat(rek.saldo)||0) + verschil;
+  const post = factuurType==='verkoop'
+    ? (DB.grootboek.find(g=>g.nummer==='1300')||DB.grootboek.find(g=>g.naam.toLowerCase().includes('debiteuren')))
+    : (DB.grootboek.find(g=>g.nummer==='2100')||DB.grootboek.find(g=>g.naam.toLowerCase().includes('crediteur')));
+  if(!rek || !post) return;
+  post.saldo = rond((parseFloat(post.saldo)||0) + verschil);
+  rek.saldo  = rond((parseFloat(rek.saldo)||0) + (factuurType==='verkoop' ? -verschil : verschil));
+  t.betalingsverschil = verschil; // voor exacte spiegel bij ontkoppelen (#18)
+  f.restBedrag = 0;
+  f.status = 'betaald';
 }
 
 // Zoek de bankrekening (1100 of eerste activa met 'bank' in naam)
@@ -815,7 +830,7 @@ Wil je toch koppelen?`,
   }
   boekBank(t, t.bedrag);
   boekFactuurTegenboeking(t, fType, 'boek');
-  boekBetalingsverschil(t.bedrag, f.totaalIncl);
+  if((fType==='verkoop'&&parseFloat(t.bedrag)>0)||(fType==='inkoop'&&parseFloat(t.bedrag)<0)) boekBetalingsverschil(t, f, fType);
   save(); updateBankStats();
   toast(`Gekoppeld aan ${f.nummer} — ${f.klant}`,'success');
   renderTransacties(false);
@@ -1145,6 +1160,19 @@ function draaiBoekingTerug(t){
   if(t.gekoppeldType==='verkoop'||t.gekoppeldType==='inkoop'){
     // Draai debiteuren/crediteuren koppeling terug
     boekFactuurTegenboeking(t, t.gekoppeldType, 'draai');
+    // Afgeboekt betalingsverschil exact spiegelen (boekBetalingsverschil, #18)
+    if(t.betalingsverschil){
+      const v = parseFloat(t.betalingsverschil)||0;
+      const rek = DB.grootboek.find(g=>g.nummer==='8900'||g.naam==='Betalingsverschillen');
+      const post = t.gekoppeldType==='verkoop'
+        ? (DB.grootboek.find(g=>g.nummer==='1300')||DB.grootboek.find(g=>g.naam.toLowerCase().includes('debiteuren')))
+        : (DB.grootboek.find(g=>g.nummer==='2100')||DB.grootboek.find(g=>g.naam.toLowerCase().includes('crediteur')));
+      if(rek && post){
+        post.saldo = rond((parseFloat(post.saldo)||0) - v);
+        rek.saldo  = rond((parseFloat(rek.saldo)||0) - (t.gekoppeldType==='verkoop' ? -v : v));
+      }
+      delete t.betalingsverschil;
+    }
     // Factuurstatus terugzetten
     const arr=t.gekoppeldType==='verkoop'?DB.verkoop:DB.inkoop;
     const f=arr.find(f=>(f.nummer+' — '+f.klant)===t.gekoppeldAan||f.id===t.factuurId);
@@ -1168,13 +1196,16 @@ function draaiBoekingTerug(t){
       if(g) g.saldo=rond((parseFloat(g.saldo)||0)-bedrag);
     }
   } else if(t.gekoppeldType==='prive'){
-    // Privéboeking terugdraaien wordt al gedaan via inlineBevestigPrive flow
-    // Bank is al teruggedraaid hierboven, privérekening nog:
-    const priveRek = DB.grootboek.find(g=>g.nummer==='3000')||DB.grootboek.find(g=>g.nummer==='3100');
+    // Bank is al teruggedraaid hierboven, privérekening nog — exacte spiegel van
+    // inlineBevestigPrive (#17: EV is credit-normaal; opname boekte −abs, storting +abs).
+    const priveRek = (t.priveRichting==='opname'
+        ? DB.grootboek.find(g=>g.nummer==='3000')
+        : DB.grootboek.find(g=>g.nummer==='3100'))
+      || DB.grootboek.find(g=>g.naam.toLowerCase().includes('privé'));
     if(priveRek){
       const abs=Math.abs(bedrag);
-      if(t.priveRichting==='opname') priveRek.saldo=(parseFloat(priveRek.saldo)||0)-abs;
-      else priveRek.saldo=(parseFloat(priveRek.saldo)||0)+abs;
+      if(t.priveRichting==='opname') priveRek.saldo=rond((parseFloat(priveRek.saldo)||0)+abs);
+      else priveRek.saldo=rond((parseFloat(priveRek.saldo)||0)-abs);
     }
   }
 }

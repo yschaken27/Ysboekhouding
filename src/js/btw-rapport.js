@@ -58,8 +58,12 @@ function slaGBOp(){
         const evRek = DB.grootboek.find(r=>r.nummer==='3000'&&r.id!==gbEditId)
                    || DB.grootboek.find(r=>r.type==='eigen_vermogen'&&r.id!==gbEditId);
         if(evRek){
+          // Teken van de EV-tegenboeking hangt af van het rekeningtype (#17):
+          // debet-normaal (activa/kosten) +V → Credit EV (+V); credit-normaal +V → Debet EV (−V).
           const isDebet = ['vaste_activa','vlottende_activa','activa','kosten'].includes(g.type);
-          evRek.saldo = (parseFloat(evRek.saldo)||0) - saldoVerschil;
+          const evEffect = isDebet ? saldoVerschil : -saldoVerschil;
+          const rekDC = (isDebet === (saldoVerschil>=0)) ? 'debet' : 'credit';
+          evRek.saldo = rond((parseFloat(evRek.saldo)||0) + evEffect);
           DB.memoriaal.push({
             id:uid(),
             datum:today(),
@@ -67,8 +71,8 @@ function slaGBOp(){
             type:'opening_saldo',
             relatie:'',
             regels:[
-              {dc:isDebet?'debet':'credit', gbId:g.id,     oms:`Opening saldo ${g.naam}`,         bedrag:Math.abs(saldoVerschil), effect:saldoVerschil},
-              {dc:isDebet?'credit':'debet', gbId:evRek.id, oms:`Tegenrekening eigen vermogen`,    bedrag:Math.abs(saldoVerschil), effect:-saldoVerschil},
+              {dc:rekDC, gbId:g.id, oms:`Opening saldo ${g.naam}`, bedrag:Math.abs(saldoVerschil), effect:saldoVerschil},
+              {dc:rekDC==='debet'?'credit':'debet', gbId:evRek.id, oms:`Tegenrekening eigen vermogen`, bedrag:Math.abs(saldoVerschil), effect:evEffect},
             ],
             debet:Math.abs(saldoVerschil),
             aangemaakt:new Date().toISOString()
@@ -86,8 +90,11 @@ function slaGBOp(){
       if(!DB.memoriaal) DB.memoriaal=[];
       const evRek = DB.grootboek.find(r=>r.type==='eigen_vermogen'&&r.id!==nieuwId);
       if(evRek){
+        // Zelfde teken-logica als hierboven (#17)
         const isDebet = ['vaste_activa','vlottende_activa','activa','kosten'].includes(type);
-        evRek.saldo = (parseFloat(evRek.saldo)||0) - saldo;
+        const evEffect = isDebet ? saldo : -saldo;
+        const rekDC = (isDebet === (saldo>=0)) ? 'debet' : 'credit';
+        evRek.saldo = rond((parseFloat(evRek.saldo)||0) + evEffect);
         DB.memoriaal.push({
           id:uid(),
           datum:today(),
@@ -95,8 +102,8 @@ function slaGBOp(){
           type:'opening_saldo',
           relatie:'',
           regels:[
-            {dc:isDebet?'debet':'credit', gbId:nieuwId,   oms:`Opening saldo ${naam}`,         bedrag:Math.abs(saldo), effect:saldo},
-            {dc:isDebet?'credit':'debet', gbId:evRek.id,  oms:`Tegenrekening eigen vermogen`,  bedrag:Math.abs(saldo), effect:-saldo},
+            {dc:rekDC, gbId:nieuwId, oms:`Opening saldo ${naam}`, bedrag:Math.abs(saldo), effect:saldo},
+            {dc:rekDC==='debet'?'credit':'debet', gbId:evRek.id, oms:`Tegenrekening eigen vermogen`, bedrag:Math.abs(saldo), effect:evEffect},
           ],
           debet:Math.abs(saldo),
           aangemaakt:new Date().toISOString()
@@ -1962,15 +1969,16 @@ function inlineBevestigPrive(tId, bedrag){
   if(!priveRek){ toast('Privé rekening (3000/3100) niet gevonden. Voeg hem toe in Grootboek.','error'); return; }
   if(!bankRek){ toast('Bankrekening niet gevonden.','error'); return; }
 
-  // Dubbele boeking:
-  // Privé-opname: Debet 3000 Privé-opnames / Credit Bank
-  // Privé-storting: Debet Bank / Credit 3100 Privé-stortingen
+  // Dubbele boeking (saldo-conventie #17: EV is credit-normaal, positief bewaard —
+  // een debet op een privérekening VERLAAGT dus het saldo):
+  // Privé-opname:   Debet 3000 (EV −abs) / Credit Bank (−abs)
+  // Privé-storting: Debet Bank (+abs) / Credit 3100 (EV +abs)
   if(type==='opname'){
-    priveRek.saldo = (parseFloat(priveRek.saldo)||0) + abs;
-    bankRek.saldo  = (parseFloat(bankRek.saldo)||0) - abs;
+    priveRek.saldo = rond((parseFloat(priveRek.saldo)||0) - abs);
+    bankRek.saldo  = rond((parseFloat(bankRek.saldo)||0) - abs);
   } else {
-    bankRek.saldo  = (parseFloat(bankRek.saldo)||0) + abs;
-    priveRek.saldo = (parseFloat(priveRek.saldo)||0) - abs;
+    bankRek.saldo  = rond((parseFloat(bankRek.saldo)||0) + abs);
+    priveRek.saldo = rond((parseFloat(priveRek.saldo)||0) + abs);
   }
 
   // Markeer transactie
@@ -2280,6 +2288,29 @@ function voegBankToe(){
   }
   const id = uid();
   DB.grootboek.push({id, nummer, naam, type:'activa', subtype:'bank', iban, saldo});
+  // Beginsaldo dubbelzijdig boeken: Debet bank / Credit eigen vermogen, mét
+  // memoriaal-audit — zonder tegenboeking blokkeerde de balanscontrole elke
+  // bank met een beginsaldo (zelfde patroon als opening saldi in slaGBOp).
+  if(Math.abs(saldo) > 0.005){
+    const evRek = DB.grootboek.find(r=>r.type==='eigen_vermogen'&&r.id!==id);
+    if(evRek){
+      evRek.saldo = rond((parseFloat(evRek.saldo)||0) + saldo);
+      if(!DB.memoriaal) DB.memoriaal=[];
+      DB.memoriaal.push({
+        id:uid(),
+        datum:today(),
+        oms:`Opening saldo — ${naam}`,
+        type:'opening_saldo',
+        relatie:'',
+        regels:[
+          {dc:saldo>=0?'debet':'credit', gbId:id, oms:`Opening saldo ${naam}`, bedrag:Math.abs(saldo), effect:saldo},
+          {dc:saldo>=0?'credit':'debet', gbId:evRek.id, oms:`Tegenrekening eigen vermogen`, bedrag:Math.abs(saldo), effect:saldo},
+        ],
+        debet:Math.abs(saldo),
+        aangemaakt:new Date().toISOString()
+      });
+    }
+  }
   // Eerste bank automatisch actief maken
   if(!DB.huidigeBankId) DB.huidigeBankId = id;
   save();
