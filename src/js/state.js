@@ -985,6 +985,11 @@ function _tekenCentraalOpdrachtgevers(){
             onchange="_cpOpdrachtgevers[${i}].flexibelTarief=this.checked">
           Flexibel tarief — kassier mag zelf het tarief invullen
         </label>
+        <label style="display:flex;gap:6px;align-items:center;font-size:11px;color:var(--text-dim);cursor:pointer;">
+          <input type="checkbox" ${o.regelPerDienst?'checked':''}
+            onchange="_cpOpdrachtgevers[${i}].regelPerDienst=this.checked">
+          Aparte factuurregel per dienst — notitie van de kassier komt op de factuur
+        </label>
         <div style="margin-top:6px;">
           <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">Tarieven</div>
           ${(o.tarieven||[]).map((t,ti)=>`
@@ -1016,7 +1021,7 @@ function _cpVerwijderTarief(i,ti){
 }
 
 function voegCentraalOpdrachtgeverToe(){
-  _cpOpdrachtgevers.push({ naam:'', straat:'', postcode:'', stad:'', btwNummer:'', email:'', eenheid:'uur', flexibelTarief:false, tarieven:[{naam:'', bedrag:null}] });
+  _cpOpdrachtgevers.push({ naam:'', straat:'', postcode:'', stad:'', btwNummer:'', email:'', eenheid:'uur', flexibelTarief:false, regelPerDienst:false, tarieven:[{naam:'', bedrag:null}] });
   _tekenCentraalOpdrachtgevers();
 }
 
@@ -1036,6 +1041,7 @@ function slaCentraalOpdrachtgeversOp(){
       email: (o.email||'').trim(),
       eenheid: o.eenheid === 'dag' ? 'dag' : 'uur',
       flexibelTarief: !!o.flexibelTarief,
+      regelPerDienst: !!o.regelPerDienst,
       tarieven: (o.tarieven||[]).map(t=>({naam:(t.naam||'').trim(), bedrag:parseFloat(t.bedrag)||0})).filter(t=>t.bedrag>0||t.naam),
     }))
     .filter(o=>o.naam);
@@ -1108,6 +1114,11 @@ function _tekenOpdrachtgeversModal(){
             onchange="_cpOpdrachtgevers[${i}].flexibelTarief=this.checked">
           Flexibel tarief — kassier mag zelf het tarief invullen
         </label>
+        <label style="display:flex;gap:6px;align-items:center;font-size:11px;color:var(--text-dim);cursor:pointer;">
+          <input type="checkbox" ${o.regelPerDienst?'checked':''}
+            onchange="_cpOpdrachtgevers[${i}].regelPerDienst=this.checked">
+          Aparte factuurregel per dienst — notitie van de kassier komt op de factuur
+        </label>
         <div style="margin-top:6px;">
           <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">Tarieven</div>
           ${(o.tarieven||[]).map((t,ti)=>`
@@ -1139,7 +1150,7 @@ function _opmVerwijderTarief(i,ti){
 }
 
 function voegOpdrachtgeverModalToe(){
-  _cpOpdrachtgevers.push({ naam:'', straat:'', postcode:'', stad:'', btwNummer:'', email:'', eenheid:'uur', flexibelTarief:false, tarieven:[{naam:'', bedrag:null}] });
+  _cpOpdrachtgevers.push({ naam:'', straat:'', postcode:'', stad:'', btwNummer:'', email:'', eenheid:'uur', flexibelTarief:false, regelPerDienst:false, tarieven:[{naam:'', bedrag:null}] });
   _tekenOpdrachtgeversModal();
 }
 
@@ -1159,6 +1170,7 @@ function slaOpdrachtgeversModalOp(){
       email: (o.email||'').trim(),
       eenheid: o.eenheid === 'dag' ? 'dag' : 'uur',
       flexibelTarief: !!o.flexibelTarief,
+      regelPerDienst: !!o.regelPerDienst,
       tarieven: (o.tarieven||[]).map(t=>({naam:(t.naam||'').trim(), bedrag:parseFloat(t.bedrag)||0})).filter(t=>t.bedrag>0||t.naam),
     }))
     .filter(o=>o.naam);

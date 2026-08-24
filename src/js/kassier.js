@@ -696,6 +696,13 @@ function urenKeur(id, status){
   renderUrenoverzicht();
 }
 
+// Datum voor een factuurregel: 2026-08-01 → 01-08-2026 (leeg blijft leeg)
+function _factuurDatumKort(iso){
+  if(!iso) return '';
+  const d = String(iso).slice(0,10).split('-');
+  return d.length===3 ? `${d[2]}-${d[1]}-${d[0]}` : String(iso);
+}
+
 async function maakUrenFactuur(opdrEnc){
   const opdr = decodeURIComponent(opdrEnc);
   const maand = _urenMaandFilter();
@@ -739,17 +746,34 @@ async function maakUrenFactuur(opdrEnc){
   const opdrEenheid = items.find(u=>u.eenheid)?.eenheid || eenheidVanOpdrachtgever(opdr);
   const eInfo = eenheidInfo(opdrEenheid);
 
-  // Groepeer per tarieftype (aantal = uren óf dagen, afhankelijk van eenheid)
-  const groepen = {};
-  items.forEach(u=>{
-    const lbl = u.tariefLabel || eInfo.gewerkt;
-    const tarief = parseFloat(u.tariefBedrag)||0;
-    const key = lbl + '|' + tarief;
-    if(!groepen[key]) groepen[key] = { label:lbl, tarief, uren:0, bedrag:0 };
-    groepen[key].uren += parseFloat(u.uren)||0;
-    groepen[key].bedrag += parseFloat(u.bedrag)||0;
-  });
-  const regelLijst = Object.values(groepen);
+  // Twee factuurindelingen (per opdrachtgever in te stellen):
+  // - regelPerDienst: elke ingave een eigen regel met datum en notitie — voor klanten
+  //   die per dienst gespecificeerd willen zien;
+  // - standaard: samengevoegd per tarieftype, één regel per tarief.
+  const perDienst = !!opdrObj.regelPerDienst;
+  let regelLijst;
+  if(perDienst){
+    regelLijst = items.map(u=>({
+      label: u.notitie || u.tariefLabel || eInfo.gewerkt,
+      datum: u.datum || '',
+      wie: u.wie || '',
+      tarief: parseFloat(u.tariefBedrag)||0,
+      uren: parseFloat(u.uren)||0,
+      bedrag: parseFloat(u.bedrag)||0
+    }));
+  } else {
+    // Groepeer per tarieftype (aantal = uren óf dagen, afhankelijk van eenheid)
+    const groepen = {};
+    items.forEach(u=>{
+      const lbl = u.tariefLabel || eInfo.gewerkt;
+      const tarief = parseFloat(u.tariefBedrag)||0;
+      const key = lbl + '|' + tarief;
+      if(!groepen[key]) groepen[key] = { label:lbl, tarief, uren:0, bedrag:0 };
+      groepen[key].uren += parseFloat(u.uren)||0;
+      groepen[key].bedrag += parseFloat(u.bedrag)||0;
+    });
+    regelLijst = Object.values(groepen);
+  }
 
   const zonderBtw = !!p.urenZonderBtw;
   const btwPct = 21;
@@ -772,11 +796,15 @@ async function maakUrenFactuur(opdrEnc){
     factuurdatumFmt: vandaagFmt,
     vervaldatumFmt: betaaldatumFmt,
     termijnLabel: '30 dagen',
-    kolommen: ['Omschrijving','Periode','Aantal',eInfo.tariefLabel,'Bedrag'],
+    kolommen: perDienst
+      ? ['Omschrijving','Datum','Aantal',eInfo.tariefLabel,'Bedrag']
+      : ['Omschrijving','Periode','Aantal',eInfo.tariefLabel,'Bedrag'],
     rijen: regelLijst.map(r=>[
-      `${eInfo.gewerkt} — ${r.label}`,
-      maandLabel,
-      String(Math.round(r.uren*100)/100).replace('.',','),
+      perDienst
+        ? `${r.label}${r.wie?' ('+r.wie+')':''}`
+        : `${eInfo.gewerkt} — ${r.label}`,
+      perDienst ? _factuurDatumKort(r.datum) : maandLabel,
+      String(Math.round(r.uren*100)/100).replace('.',',')+' '+eInfo.kort,
       '€ '+r.tarief.toFixed(2)+eInfo.per,
       '€ '+r.bedrag.toFixed(2)
     ]),
