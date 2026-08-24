@@ -646,6 +646,23 @@ function vulJaarDropdowns(){
   });
 }
 
+// Deelboekingen van een bank-grootboekkoppeling: de splitsregels, of anders één
+// regel uit de transactie-velden zelf. Gedeeld door P&L, BTW-aangifte en jaaropgave
+// zodat alle rapportages dezelfde bronregels hanteren (CLAUDE.md #20/#21.5).
+function _bankGbDelen(t){
+  return Array.isArray(t.splitsRegels) && t.splitsRegels.length
+    ? t.splitsRegels
+    : [{ gbId: t.tegenrekeningId || null, bedrag: parseFloat(t.bedrag)||0, btwTarief: parseFloat(t.btwTarief)||0 }];
+}
+
+// Grootboekrekening van zo'n deelboeking: bij voorkeur via gbId (nieuw),
+// anders via de tekst in gekoppeldAan (oude data).
+function _bankGbRekening(d, t){
+  return (d.gbId && DB.grootboek.find(x=>x.id===d.gbId))
+      || DB.grootboek.find(x=>(x.nummer+' — '+x.naam)===t.gekoppeldAan)
+      || null;
+}
+
 function berekenPLVoorPeriode(maand, jaar){
   // Bereken omzet en kosten voor een specifieke maand/jaar combinatie
   // maand: 1-12 of '' voor heel jaar, jaar: '2025' of ''
@@ -713,12 +730,8 @@ function berekenPLVoorPeriode(maand, jaar){
   // Excl. BTW via t.btwTarief; oude bankregels zonder tarief tellen als 0% (bruto).
   DB.transacties.filter(t=>inPeriode(t.datum) && t.gekoppeldType==='grootboek').forEach(t=>{
     // Gesplitste koppeling → elke deelregel apart; anders de hele transactie op één rekening.
-    const delen = Array.isArray(t.splitsRegels) && t.splitsRegels.length
-      ? t.splitsRegels
-      : [{ gbId: t.tegenrekeningId || null, bedrag: parseFloat(t.bedrag)||0, btwTarief: parseFloat(t.btwTarief)||0 }];
-    delen.forEach(d=>{
-      const g = (d.gbId && DB.grootboek.find(x=>x.id===d.gbId))
-             || DB.grootboek.find(x=>(x.nummer+' — '+x.naam)===t.gekoppeldAan);
+    _bankGbDelen(t).forEach(d=>{
+      const g = _bankGbRekening(d, t);
       if(!g) return;
       const bedrag = parseFloat(d.bedrag)||0;
       const tarief = parseFloat(d.btwTarief)||0;
@@ -1392,6 +1405,19 @@ async function verwijderMemoriaal(id){
 }
 
 // ===== BTW AANGIFTE =====
+// BTW-tarief van een regel-loze factuur (bv. uren-factuur): opgeslagen tarief als
+// dat er is, anders afgeleid uit btwBedrag/totaalExcl (gesnapt op 21/9, anders 0).
+function _factuurBtwPct(f){
+  if(f.btwTarief!==undefined && f.btwTarief!==null && f.btwTarief!=='') return parseInt(f.btwTarief)||0;
+  const excl = parseFloat(f.totaalExcl)||0;
+  const btw = parseFloat(f.btwBedrag)||0;
+  if(excl<=0 || btw<=0) return 0;
+  const p = btw/excl*100;
+  if(Math.abs(p-21)<1) return 21;
+  if(Math.abs(p-9)<1) return 9;
+  return 0;
+}
+
 function renderBTWAangifte(){
   // Vul jaar dropdown
   const jaarSel=document.getElementById('btw-jaar');
@@ -1426,14 +1452,25 @@ function renderBTWAangifte(){
     const btwDatum = getBtwDatum(f);
     if(!btwDatum || !inPeriode(btwDatum)) return;
     const ratio = _getBetaaldRatio(f);
-    (f.regels||[]).forEach(r=>{
-      const exclVolledig=(parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0);
-      const excl = exclVolledig * ratio;
-      const pct=parseInt(r.btw||f.btwTarief||21);
+    const regels = f.regels||[];
+    if(regels.length){
+      regels.forEach(r=>{
+        const exclVolledig=(parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0);
+        const excl = exclVolledig * ratio;
+        const pct=parseInt(r.btw||f.btwTarief||21);
+        if(pct===21){ gs1a+=excl; btw1a+=Math.round(excl*21)/100; }
+        else if(pct===9){ gs1b+=excl; btw1b+=Math.round(excl*9)/100; }
+        else if(pct===0){ gs1d+=excl; }
+      });
+    } else {
+      // Regel-loze factuur (bv. uren-factuur): heel totaalExcl onder het factuurtarief,
+      // anders ontbreekt deze omzet in de aangifte terwijl 1510 de BTW wél bevat.
+      const excl = (parseFloat(f.totaalExcl)||0) * ratio;
+      const pct = _factuurBtwPct(f);
       if(pct===21){ gs1a+=excl; btw1a+=Math.round(excl*21)/100; }
       else if(pct===9){ gs1b+=excl; btw1b+=Math.round(excl*9)/100; }
-      else if(pct===0){ gs1d+=excl; }
-    });
+      else { gs1d+=excl; }
+    }
   });
 
   // RUBRIEK 5b — voorbelasting inkoop (per factuurregel)
@@ -1444,15 +1481,26 @@ function renderBTWAangifte(){
     if(!btwDatum || !inPeriode(btwDatum)) return;
     // Gebruik centrale helper — voorkomt dubbele ratio toepassing
     const ratio = _getBetaaldRatio(f);
-    (f.regels||[]).forEach(r=>{
-      const exclVolledig=(parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0);
-      const exclBetaald = exclVolledig * ratio;
-      const pct=parseInt(r.btw||f.btwTarief||21);
+    const regels = f.regels||[];
+    if(regels.length){
+      regels.forEach(r=>{
+        const exclVolledig=(parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0);
+        const exclBetaald = exclVolledig * ratio;
+        const pct=parseInt(r.btw||f.btwTarief||21);
+        if(pct>0){
+          gs5b += exclBetaald;
+          btw5b += Math.round(exclBetaald * pct) / 100; // correct: ratio al verwerkt in exclBetaald
+        }
+      });
+    } else {
+      // Regel-loze inkoopfactuur: zelfde fallback als verkoop
+      const exclBetaald = (parseFloat(f.totaalExcl)||0) * ratio;
+      const pct = _factuurBtwPct(f);
       if(pct>0){
         gs5b += exclBetaald;
-        btw5b += Math.round(exclBetaald * pct) / 100; // correct: ratio al verwerkt in exclBetaald
+        btw5b += Math.round(exclBetaald * pct) / 100;
       }
-    });
+    }
   });
 
   // KASSALIJSTEN — goedgekeurde kassalijsten tellen mee in BTW aangifte
@@ -1466,16 +1514,27 @@ function renderBTWAangifte(){
     else if(tarief===0){ gs1d+=omzetExcl; }
   });
 
-  // Banktransacties met BTW die niet via factuur lopen — tellen mee in 5b
+  // Banktransacties die niet via factuur lopen — tarief uit t.btwTarief/splitsregels
+  // (het wérkelijk geboekte tarief, #20/#25). Uitgaven met BTW → 5b (voorbelasting,
+  // gespiegeld aan de 1500-boeking); ontvangsten met BTW → 1a/1b (gespiegeld aan de
+  // 1510-boeking van _boekTegenrekening); 0%-ontvangsten op een omzetrekening → 1d.
   DB.transacties.filter(t=>inPeriode(t.datum)&&t.status==='gekoppeld'&&t.gekoppeldType==='grootboek').forEach(t=>{
-    const bedrag = parseFloat(t.bedrag)||0;
-    const btwTarief = (window.inlineBTW||{})[t.id]||0;
-    if(btwTarief>0 && bedrag<0){
+    _bankGbDelen(t).forEach(d=>{
+      const bedrag = parseFloat(d.bedrag)||0;
+      const tarief = parseFloat(d.btwTarief)||0;
+      if(!bedrag) return;
       const abs = Math.abs(bedrag);
-      const exclBTW = abs/((100+btwTarief)/100);
-      gs5b += exclBTW;
-      btw5b += abs - exclBTW;
-    }
+      const excl = tarief>0 ? abs/((100+tarief)/100) : abs;
+      const btw = abs - excl;
+      if(bedrag<0){
+        if(tarief>0){ gs5b += excl; btw5b += btw; }
+      } else if(tarief===21){ gs1a += excl; btw1a += btw; }
+      else if(tarief===9){ gs1b += excl; btw1b += btw; }
+      else {
+        const g = _bankGbRekening(d, t);
+        if(g && g.type==='omzet') gs1d += abs;
+      }
+    });
   });
 
   // Update rubrieken
@@ -1562,7 +1621,6 @@ function renderJaaropgave(){
   const kassaOmzetJaar = (DB.kassalijsten||[])
     .filter(k=>k.status==='goedgekeurd'&&inJaar(k.datum))
     .reduce((a,k)=>a+parseFloat(k.totaalOmzet||0), 0);
-  const omzet = factuurOmzetJaar + kassaOmzetJaar;
   const inkoopKosten = DB.inkoop.reduce((a,f)=>{
     const d = _kasstelsel ? getBtwDatum(f) : f.datum;
     if(!d || !inJaar(d)) return a;
@@ -1570,19 +1628,21 @@ function renderJaaropgave(){
   }, 0);
   // Afschrijvingen uit memoriaal van dit jaar — niet uit grootboeksaldo (dat is cumulatief)
   const afschrijvingen = (DB.memoriaal||[]).filter(m=>inJaar(m.datum)&&m.type==='afschrijving').reduce((a,m)=>a+parseFloat(m.debet||0),0);
-  // Directe kostenboekingen via bank die niet via factuur lopen (grootboektype=kosten, dit jaar)
-  const directeKosten = DB.transacties
-    .filter(t=>inJaar(t.datum)&&t.status==='gekoppeld'&&t.gekoppeldType==='grootboek'&&parseFloat(t.bedrag)<0)
-    .filter(t=>{
-      const g = DB.grootboek.find(g=>(g.nummer+' — '+g.naam)===t.gekoppeldAan);
-      return g && g.type==='kosten';
-    })
-    .reduce((a,t)=>{
-      const bedrag = Math.abs(parseFloat(t.bedrag)||0);
-      const btwTarief = (window.inlineBTW||{})[t.id]||0;
-      // Trek BTW eraf om excl. bedrag te krijgen
-      return a + (btwTarief>0 ? bedrag/((100+btwTarief)/100) : bedrag);
-    }, 0);
+  // Directe omzet- en kostenboekingen via bank die niet via factuur lopen.
+  // Zelfde bronregels als de P&L (#20): deelboekingen via _bankGbDelen, rekening via
+  // _bankGbRekening, excl. BTW via het wérkelijk geboekte tarief (t.btwTarief/splitsregels).
+  let directeOmzet = 0, directeKosten = 0;
+  DB.transacties.filter(t=>inJaar(t.datum)&&t.status==='gekoppeld'&&t.gekoppeldType==='grootboek').forEach(t=>{
+    _bankGbDelen(t).forEach(d=>{
+      const g = _bankGbRekening(d, t); if(!g) return;
+      const bedrag = parseFloat(d.bedrag)||0;
+      const tarief = parseFloat(d.btwTarief)||0;
+      const excl = tarief>0 ? Math.abs(bedrag)/((100+tarief)/100) : Math.abs(bedrag);
+      if(g.type==='omzet' && bedrag>0) directeOmzet += excl;
+      else if(g.type==='kosten' && bedrag<0) directeKosten += excl;
+    });
+  });
+  const omzet = factuurOmzetJaar + kassaOmzetJaar + directeOmzet;
   const totaalKosten = inkoopKosten + afschrijvingen + directeKosten;
   const winstVoorAftrek = omzet - totaalKosten;
 
@@ -1618,7 +1678,8 @@ function renderJaaropgave(){
   if(winstEl) winstEl.innerHTML = `
     ${factuurOmzetJaar>0?`<div class="report-row"><span class="indent">Omzet facturen (excl. BTW)</span><span class="mono amount-pos">${fmt(factuurOmzetJaar)}</span></div>`:''}
     ${kassaOmzetJaar>0?`<div class="report-row"><span class="indent">Omzet kassalijsten (excl. BTW)</span><span class="mono amount-pos">${fmt(kassaOmzetJaar)}</span></div>`:''}
-    ${factuurOmzetJaar===0&&kassaOmzetJaar===0?`<div class="report-row"><span class="indent">Omzet (excl. BTW)</span><span class="mono amount-pos">${fmt(omzet)}</span></div>`:''}
+    ${directeOmzet>0?`<div class="report-row"><span class="indent">Directe omzetboekingen bank (excl. BTW)</span><span class="mono amount-pos">${fmt(directeOmzet)}</span></div>`:''}
+    ${factuurOmzetJaar===0&&kassaOmzetJaar===0&&directeOmzet===0?`<div class="report-row"><span class="indent">Omzet (excl. BTW)</span><span class="mono amount-pos">${fmt(omzet)}</span></div>`:''}
     <div class="report-row"><span class="indent">Inkoopkosten (facturen)</span><span class="mono amount-neg">- ${fmt(inkoopKosten)}</span></div>
     ${directeKosten>0?`<div class="report-row"><span class="indent">Directe kostenboekingen (bank)</span><span class="mono amount-neg">- ${fmt(directeKosten)}</span></div>`:''}
     ${afschrijvingen>0?`<div class="report-row"><span class="indent">Afschrijvingen</span><span class="mono amount-neg">- ${fmt(afschrijvingen)}</span></div>`:''}

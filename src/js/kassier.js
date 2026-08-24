@@ -798,6 +798,7 @@ async function maakUrenFactuur(opdrEnc){
     totaalIncl: totaalIncl,
     totaal: totaalIncl,
     btwBedrag: btwBedrag,
+    btwTarief: zonderBtw ? 0 : btwPct,
     status: 'verstuurd',
     type: 'uren'
   });
