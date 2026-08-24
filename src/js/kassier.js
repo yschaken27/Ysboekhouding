@@ -410,9 +410,50 @@ function _urenMaandFilter(){
   return document.getElementById('uren-filter-maand')?.value || '';
 }
 
+// Periode van het urenoverzicht: één maand, of een reeks maanden als
+// "Meerdere maanden" aanstaat (bv. juli t/m augustus op één factuur).
+// Geeft {van, tot} als 'YYYY-MM'; tot === van bij een enkele maand.
+function _urenPeriode(){
+  const van = _urenMaandFilter();
+  const aan = document.getElementById('uren-filter-periode')?.checked;
+  const totRaw = document.getElementById('uren-filter-maand-tot')?.value || '';
+  const tot = (aan && totRaw && totRaw >= van) ? totRaw : van;
+  return { van, tot, meerdere: tot !== van };
+}
+
+function toggleUrenPeriode(){
+  const aan = document.getElementById('uren-filter-periode')?.checked;
+  const wrap = document.getElementById('uren-filter-tm');
+  if(wrap) wrap.style.display = aan ? 'inline-flex' : 'none';
+  const totEl = document.getElementById('uren-filter-maand-tot');
+  // Standaard: t/m dezelfde maand, zodat het overzicht niet leeg springt
+  if(aan && totEl && !totEl.value) totEl.value = _urenMaandFilter();
+  renderUrenoverzicht();
+}
+
 function _urenVanMaand(){
-  const m = _urenMaandFilter(); // 'YYYY-MM'
-  return (DB.uren||[]).filter(u=> (u.datum||'').slice(0,7) === m);
+  const { van, tot } = _urenPeriode();
+  if(!van) return [];
+  return (DB.uren||[]).filter(u=>{
+    const m = (u.datum||'').slice(0,7);
+    return m >= van && m <= tot;
+  });
+}
+
+// Leesbaar label voor de gekozen periode: "augustus 2026" of "juli t/m augustus 2026"
+function _urenPeriodeLabel(){
+  const { van, tot, meerdere } = _urenPeriode();
+  const naam = m => {
+    if(!m) return '';
+    const [j,mm] = m.split('-');
+    return new Date(j, parseInt(mm)-1, 1).toLocaleDateString('nl-NL',{month:'long',year:'numeric'});
+  };
+  if(!meerdere) return naam(van);
+  // Zelfde jaar → jaartal alleen achteraan ("juli t/m augustus 2026")
+  const kort = m => { const [j,mm]=m.split('-'); return new Date(j,parseInt(mm)-1,1).toLocaleDateString('nl-NL',{month:'long'}); };
+  return van.slice(0,4)===tot.slice(0,4)
+    ? `${kort(van)} t/m ${naam(tot)}`
+    : `${naam(van)} t/m ${naam(tot)}`;
 }
 
 function renderUrenoverzicht(){
@@ -431,7 +472,7 @@ function renderUrenoverzicht(){
   const el = document.getElementById('uren-overzicht-lijst');
   if(!el) return;
   if(!lijst.length){
-    el.innerHTML = '<div style="color:var(--text-dim);padding:24px 0;text-align:center;">Geen uren in deze maand.</div>';
+    el.innerHTML = `<div style="color:var(--text-dim);padding:24px 0;text-align:center;">Geen uren in ${esc(_urenPeriodeLabel()||'deze periode')}.</div>`;
     return;
   }
 
@@ -705,7 +746,6 @@ function _factuurDatumKort(iso){
 
 async function maakUrenFactuur(opdrEnc){
   const opdr = decodeURIComponent(opdrEnc);
-  const maand = _urenMaandFilter();
   const items = _urenVanMaand()
     .filter(u=>u.opdrachtgever===opdr && u.status!=='afgewezen')
     .sort((a,b)=>(a.datum||'').localeCompare(b.datum||''));
@@ -739,7 +779,8 @@ async function maakUrenFactuur(opdrEnc){
   const betaaldatumISO = (()=>{ const d=new Date(); d.setDate(d.getDate()+30); return d.toISOString().slice(0,10); })();
   const betaaldatumFmt = new Date(betaaldatumISO).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
 
-  const maandLabel = (()=>{ const [j,m]=maand.split('-'); return new Date(j,parseInt(m)-1,1).toLocaleDateString('nl-NL',{month:'long',year:'numeric'}); })();
+  // Periode op de factuur: één maand, of de hele reeks bij "Meerdere maanden"
+  const maandLabel = _urenPeriodeLabel();
 
   // Eenheid van deze opdrachtgever (uur/dag) — bepaalt de factuurregels.
   // Uit de ingaves zelf, met het opdrachtgever-register als fallback.

@@ -3,6 +3,14 @@
         <div><h2>Urenoverzicht</h2><p>Ingevulde uren per opdrachtgever — nakijken, goedkeuren en factureren</p></div>
         <div style="display:flex;gap:8px;align-items:center;">
           <input type="month" id="uren-filter-maand" onchange="renderUrenoverzicht()" style="font-size:13px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);">
+          <span id="uren-filter-tm" style="display:none;align-items:center;gap:8px;">
+            <span style="font-size:12px;color:var(--text-dim);">t/m</span>
+            <input type="month" id="uren-filter-maand-tot" onchange="renderUrenoverzicht()" style="font-size:13px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);">
+          </span>
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-dim);cursor:pointer;white-space:nowrap;">
+            <input type="checkbox" id="uren-filter-periode" onchange="toggleUrenPeriode()">
+            Meerdere maanden
+          </label>
           <button class="btn btn-primary btn-sm" onclick="openEigenaarUrenModal()">+ Uren toevoegen</button>
           <button class="btn btn-secondary btn-sm" onclick="openOpdrachtgeversModal()">⚙ Opdrachtgevers</button>
         </div>
