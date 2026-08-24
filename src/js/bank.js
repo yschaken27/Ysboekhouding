@@ -489,7 +489,9 @@ Wil je toch koppelen?`,
         const alBestaand=(DB.vasteActiva||[]).some(a=>a.factuurId===t.id);
         if(!alBestaand){
           const fakeFactuur={id:t.id,datum:t.datum,klant:t.omschrijving,
-            nummer:'BANK-'+t.id.slice(-6),totaalExcl:Math.abs(bedrag),
+            nummer:'BANK-'+t.id.slice(-6),
+            // Aanschafwaarde EXCL. BTW — het bankbedrag is incl. (audit R7)
+            totaalExcl:rond(btwTarief>0?Math.abs(bedrag)/((100+btwTarief)/100):Math.abs(bedrag)),
             regels:[{omschrijving:t.omschrijving}]};
           setTimeout(()=>openDeprVraagModal(fakeFactuur,g),400);
         }
@@ -816,6 +818,7 @@ Wil je toch koppelen?`,
   t.gekoppeldAan=f.nummer+' — '+f.klant;
   t.gekoppeldType=fType;
   t.status='gekoppeld';
+  t.factuurId=f.id; // expliciete koppeling — kasstelsel-ratio en terugdraai leunen anders op tekstmatch (audit R4)
   if(fType==='verkoop'&&parseFloat(t.bedrag)>0){
     const totaal=parseFloat(f.totaalIncl||0);
     const nieuwBetaald=rond((parseFloat(f.betaald||0))+Math.abs(parseFloat(t.bedrag)));
@@ -864,7 +867,10 @@ function snelKoppelGB(tId, gId, suggestie){
     const alBestaand=(DB.vasteActiva||[]).some(a=>a.factuurId===t.id);
     if(!alBestaand){
       const fakeFactuur={id:t.id,datum:t.datum,klant:t.omschrijving,
-        nummer:'BANK-'+t.id.slice(-6),totaalExcl:Math.abs(bedrag),
+        nummer:'BANK-'+t.id.slice(-6),
+        // Aanschafwaarde EXCL. BTW — het bankbedrag is incl.; het volle bedrag
+        // gaf een afschrijvingsschema over de BTW heen (audit R7)
+        totaalExcl:rond(btwTarief>0?Math.abs(bedrag)/((100+btwTarief)/100):Math.abs(bedrag)),
         regels:[{omschrijving:t.omschrijving}]};
       setTimeout(()=>openDeprVraagModal(fakeFactuur,g),400);
     }
@@ -1173,10 +1179,20 @@ function draaiBoekingTerug(t){
       }
       delete t.betalingsverschil;
     }
-    // Factuurstatus terugzetten
+    // Factuur-betaalstand herberekenen: deze betaling gaat eraf (audit R1) —
+    // bleven betaald/restBedrag staan, dan telde f.betaald bij een nieuwe
+    // koppeling dubbel door en stond de factuur te vroeg op 'betaald'.
     const arr=t.gekoppeldType==='verkoop'?DB.verkoop:DB.inkoop;
     const f=arr.find(f=>(f.nummer+' — '+f.klant)===t.gekoppeldAan||f.id===t.factuurId);
-    if(f&&f.status==='betaald') f.status=t.gekoppeldType==='verkoop'?'verstuurd':'te betalen';
+    if(f){
+      const totaal = parseFloat(f.totaalIncl)||0;
+      const nieuwBetaald = rond(Math.max(0,(parseFloat(f.betaald)||0) - Math.abs(bedrag)));
+      f.betaald = nieuwBetaald;
+      f.restBedrag = rond(Math.max(0, totaal - nieuwBetaald));
+      f.status = nieuwBetaald < 0.02
+        ? (t.gekoppeldType==='verkoop'?'verstuurd':'te betalen')
+        : (f.restBedrag < 0.02 ? 'betaald' : 'gedeeltelijk');
+    }
   } else if(t.gekoppeldType==='grootboek'){
     // Draai de tegenboeking EXACT terug zoals _boekTegenrekening hem maakte
     // (excl. op de rekening + BTW apart), via mult=-1.
@@ -1314,7 +1330,7 @@ function bevestigKoppeling(){
   if(type==='verkoop'){
     const f=DB.verkoop.find(f=>f.id===document.getElementById('koppel-vk-sel').value);
     if(f){
-      t.gekoppeldAan=f.nummer+' — '+f.klant; t.gekoppeldType='verkoop';
+      t.gekoppeldAan=f.nummer+' — '+f.klant; t.gekoppeldType='verkoop'; t.factuurId=f.id;
       if(parseFloat(t.bedrag)>0){
         const totaal=parseFloat(f.totaalIncl||0);
         const nieuwBetaald=rond((parseFloat(f.betaald||0))+Math.abs(parseFloat(t.bedrag)));
@@ -1327,7 +1343,7 @@ function bevestigKoppeling(){
   } else if(type==='inkoop'){
     const f=DB.inkoop.find(f=>f.id===document.getElementById('koppel-ik-sel').value);
     if(f){
-      t.gekoppeldAan=f.nummer+' — '+f.klant; t.gekoppeldType='inkoop';
+      t.gekoppeldAan=f.nummer+' — '+f.klant; t.gekoppeldType='inkoop'; t.factuurId=f.id;
       if(parseFloat(t.bedrag)<0){
         const totaal=parseFloat(f.totaalIncl||0);
         const nieuwBetaald=rond((parseFloat(f.betaald||0))+Math.abs(parseFloat(t.bedrag)));

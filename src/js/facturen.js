@@ -869,30 +869,36 @@ async function verwijderFactuur(type,id){
   const f = arr.find(f=>f.id===id);
   if(!f) return;
 
-  // Controleer of er een gekoppelde banktransactie is
-  const gekoppeldeT = DB.transacties.find(t=>
+  // Controleer of er gekoppelde banktransacties zijn — kunnen er MEERDERE zijn
+  // (deelbetalingen); alleen de eerste terugdraaien liet de rest scheef staan (audit R2)
+  const gekoppeldeTs = DB.transacties.filter(t=>
     t.status==='gekoppeld' &&
     (t.factuurId===id || (f.nummer && t.gekoppeldAan?.includes(f.nummer)))
   );
 
   let bevestigTekst = 'Factuur permanent verwijderen?';
-  if(gekoppeldeT){
+  if(gekoppeldeTs.length===1){
     bevestigTekst = `Factuur permanent verwijderen?
 
-Let op: deze factuur is gekoppeld aan een bankbetaling van ${fmt(gekoppeldeT.bedrag)} op ${gekoppeldeT.datum}. Die koppeling wordt ook ongedaan gemaakt.`;
+Let op: deze factuur is gekoppeld aan een bankbetaling van ${fmt(gekoppeldeTs[0].bedrag)} op ${gekoppeldeTs[0].datum}. Die koppeling wordt ook ongedaan gemaakt.`;
+  } else if(gekoppeldeTs.length>1){
+    const totaalBedrag = gekoppeldeTs.reduce((a,t)=>a+(parseFloat(t.bedrag)||0),0);
+    bevestigTekst = `Factuur permanent verwijderen?
+
+Let op: deze factuur is gekoppeld aan ${gekoppeldeTs.length} bankbetalingen (samen ${fmt(totaalBedrag)}). Die koppelingen worden ook ongedaan gemaakt.`;
   }
 
   const ok=await bevestig(bevestigTekst,'Factuur verwijderen','Verwijderen');
   if(!ok) return;
 
-  // Ontkoppel gekoppelde transactie eerst
-  if(gekoppeldeT){
-    draaiBoekingTerug(gekoppeldeT);
-    gekoppeldeT.status = 'ongekoppeld';
-    gekoppeldeT.gekoppeldAan = null;
-    gekoppeldeT.gekoppeldType = null;
-    gekoppeldeT.factuurId = null;
-  }
+  // Ontkoppel ALLE gekoppelde transacties eerst
+  gekoppeldeTs.forEach(gt=>{
+    draaiBoekingTerug(gt);
+    gt.status = 'ongekoppeld';
+    gt.gekoppeldAan = null;
+    gt.gekoppeldType = null;
+    gt.factuurId = null;
+  });
 
   await verwijderAlleBijlagen(id);
 
