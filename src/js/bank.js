@@ -244,9 +244,18 @@ function resetCSV(){
 }
 
 // ===== INLINE KOPPELEN =====
-const inlineBTW={};  // tId -> tarief
+const inlineBTW={};           // tId -> tarief
+const inlineBTWHandmatig={};  // tId -> true als de gebruiker zelf een BTW-knop klikte
 
-function setBTW(tId, tarief){
+// Standaard BTW-tarief van een rekening (Grootboek → bewerken → "Standaard BTW").
+// Retourneert null als er geen standaard is ingesteld.
+function _gbBtwStandaard(g){
+  return (g && g.btwStandaard!=null && g.btwStandaard!=='') ? parseInt(g.btwStandaard) : null;
+}
+
+// auto=true: voorinvulling vanuit de rekening-standaard — mag een handmatige klik nooit overschrijven
+function setBTW(tId, tarief, auto){
+  if(!auto) inlineBTWHandmatig[tId]=true;
   inlineBTW[tId]=tarief;
   // Highlight actieve knop
   [0,9,21].forEach(t=>{
@@ -266,6 +275,16 @@ function setBTW(tId, tarief){
     const el=document.getElementById(`iw-btw-bedrag-${tId}`);
     if(el) el.textContent=tarief>0?`BTW: ${fmt(btwBedrag)}`:'';
   }
+}
+
+// Bij het kiezen van een grootboekrekening in het inline-formulier: standaard BTW voorzetten
+function iwGbGekozen(tId){
+  if(inlineBTWHandmatig[tId]) return; // handmatige keuze wint altijd
+  const val=document.getElementById(`iw-gb-${tId}`)?.value||'';
+  if(!val.startsWith('gb:')) return;
+  const g=DB.grootboek.find(g=>g.id===val.slice(3));
+  const std=_gbBtwStandaard(g);
+  if(std!=null) setBTW(tId, std, true);
 }
 
 function toggleSplits(tId){
@@ -292,7 +311,7 @@ function addSplitsRow(tId){
   div.style.cssText='background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:8px;margin-bottom:6px;';
   div.innerHTML=`
     <div style="display:grid;grid-template-columns:1fr 90px 24px;gap:6px;margin-bottom:6px;">
-      <select style="font-size:12px;"><option value="">— Rekening —</option>${gbOpts}</select>
+      <select style="font-size:12px;" onchange="splitsGbGekozen('${rowId}')"><option value="">— Rekening —</option>${gbOpts}</select>
       <input type="number" placeholder="Bedrag" step="0.01" style="font-size:12px;" oninput="herbereken('${tId}')">
       <button class="btn-icon" onclick="document.getElementById('${rowId}').remove();herbereken('${tId}')" style="color:var(--danger);">✕</button>
     </div>
@@ -306,9 +325,22 @@ function addSplitsRow(tId){
   container.appendChild(div);
 }
 
-function setSplitsBTW(rowId, tarief){
+// Bij het kiezen van een rekening in een splitsregel: standaard BTW voorzetten
+function splitsGbGekozen(rowId){
+  const row=document.getElementById(rowId);
+  if(!row || row.dataset.btwHandmatig==='1') return; // handmatige keuze wint altijd
+  const val=row.querySelector('select')?.value||'';
+  if(!val.startsWith('gb:')) return;
+  const g=DB.grootboek.find(g=>g.id===val.slice(3));
+  const std=_gbBtwStandaard(g);
+  if(std!=null) setSplitsBTW(rowId, std, true);
+}
+
+// auto=true: voorinvulling vanuit de rekening-standaard — mag een handmatige klik nooit overschrijven
+function setSplitsBTW(rowId, tarief, auto){
   const row=document.getElementById(rowId);
   if(!row) return;
+  if(!auto) row.dataset.btwHandmatig='1';
   // Highlight knoppen
   row.querySelectorAll('[data-btw]').forEach(btn=>{
     const t=parseInt(btn.dataset.btw);
@@ -693,16 +725,17 @@ function bevestigBulkKoppeling(){
   if(!ids.length){toast('Selecteer eerst transacties.','error');return;}
   const g=DB.grootboek.find(g=>g.id===gid);
   if(!g) return;
+  // Bulk kent geen BTW-knoppen → gebruik de standaard BTW van de rekening (anders 0)
+  const bulkTarief=_gbBtwStandaard(g)??0;
   ids.forEach(id=>{
     const t=DB.transacties.find(t=>t.id===id);
     if(!t||t.status==='gekoppeld') return;
-    // Tegenboeking op gekozen rekening (bulk kent geen BTW-tarief → 0)
-    _boekTegenrekening(g, parseFloat(t.bedrag), 0);
+    _boekTegenrekening(g, parseFloat(t.bedrag), bulkTarief);
     // Bankboeking
     boekBank(t, t.bedrag);
     t.gekoppeldAan=g.nummer+' — '+g.naam;
     t.gekoppeldType='grootboek';
-    t.tegenrekeningId=g.id; t.btwTarief=0;
+    t.tegenrekeningId=g.id; t.btwTarief=bulkTarief;
     t.status='gekoppeld';
   });
   save();
@@ -800,8 +833,9 @@ function snelKoppelGB(tId, gId, suggestie){
   // Pas contact en omschrijving toe als meegegeven via regel
   if(suggestie?.contact) t.omschrijving=suggestie.contact+(suggestie.omschrijving?' — '+suggestie.omschrijving:' — '+t.omschrijving);
   else if(suggestie?.omschrijving) t.omschrijving=suggestie.omschrijving;
-  // BTW verwerking
-  const btwTarief=suggestie?.btw||0;
+  // BTW verwerking: expliciet tarief uit de regel-suggestie wint, anders de
+  // standaard BTW van de rekening (Grootboek → bewerken), anders 0.
+  const btwTarief=(suggestie&&suggestie.btw)?suggestie.btw:(_gbBtwStandaard(g)??0);
   _boekTegenrekening(g, bedrag, btwTarief);
   boekBank(t, bedrag);
   t.gekoppeldAan=g.nummer+' — '+g.naam;
@@ -964,7 +998,7 @@ function renderTransacties(resetPagina){
           </div>
           <div>
             <div class="rec-label" style="margin-bottom:4px;">Wat</div>
-            <select id="iw-gb-${t.id}" style="width:100%;font-size:12px;">
+            <select id="iw-gb-${t.id}" style="width:100%;font-size:12px;" onchange="iwGbGekozen('${t.id}')">
               <option value="">— Kies —</option>
               <optgroup label="Verkoopfacturen">${vkOpts||'<option disabled>Geen openstaande</option>'}</optgroup>
               <optgroup label="Inkoopfacturen">${ikOpts||'<option disabled>Geen openstaande</option>'}</optgroup>
@@ -1275,10 +1309,12 @@ function bevestigKoppeling(){
   } else {
     const g=DB.grootboek.find(g=>g.id===document.getElementById('koppel-gb-sel').value);
     if(g){
-      _boekTegenrekening(g, parseFloat(t.bedrag), inlineBTW[t.id]||0);
+      // Geen expliciete BTW-keuze in deze modal → standaard BTW van de rekening als fallback
+      const kopTarief=inlineBTW[t.id]??(_gbBtwStandaard(g)??0);
+      _boekTegenrekening(g, parseFloat(t.bedrag), kopTarief);
       boekBank(t, t.bedrag);
       t.gekoppeldAan=g.nummer+' — '+g.naam; t.gekoppeldType='grootboek';
-      t.tegenrekeningId=g.id; t.btwTarief=(inlineBTW[t.id]||0); // voor exacte P&L/grootboekkaart
+      t.tegenrekeningId=g.id; t.btwTarief=kopTarief; // voor exacte P&L/grootboekkaart
     }
   }
   t.status='gekoppeld';

@@ -309,6 +309,29 @@ Grootboek → bewerken verkeerd gezet. Fix = types goedzetten, niet de boekingsc
 
 Zie boekhoud-checker Check 11 voor de verplichte nummer↔type-koppeling.
 
+### 25. Standaard BTW per grootboekrekening (`g.btwStandaard`) is een VOORINVULLING, geen boekregel
+Elke grootboekrekening kan een standaard BTW-tarief hebben voor het bank verwerken (aug 2026,
+gebouwd omdat de eigenaar de BTW-knop bij omzet vergat aan te klikken):
+- **Veld**: `g.btwStandaard` = `null`/afwezig (geen standaard) of `0`/`9`/`21`. Ingesteld via
+  Grootboek → rekening bewerken (`#gb-btw-standaard` in index.html, gelezen/geschreven in
+  `openGBModal`/`slaGBOp`, btw-rapport.js). Zit ín de grootboek-objecten, dus synct automatisch
+  mee met `DB.grootboek` — géén aparte sync-uitbreiding nodig (#22 geldt hier niet).
+- **Toepassing in bank.js** via helper `_gbBtwStandaard(g)` (null = geen standaard) op:
+  het inline-koppelformulier (`iwGbGekozen` → `setBTW(tId,std,true)` zodra een rekening
+  gekozen wordt), splitsregels (`splitsGbGekozen` → `setSplitsBTW(rowId,std,true)`),
+  `snelKoppelGB` (suggestie-kliks: expliciete regel-BTW > 0 wint, anders rekening-standaard,
+  anders 0), `bevestigBulkKoppeling` en `bevestigKoppeling` (fallback als er geen
+  inlineBTW-keuze is).
+- **Handmatige keuze wint ALTIJD**: `setBTW`/`setSplitsBTW` hebben een derde parameter `auto`.
+  Zonder `auto` (knop-klik) wordt de keuze gemarkeerd (`inlineBTWHandmatig[tId]` /
+  `row.dataset.btwHandmatig='1'`) en de auto-toepassing slaat gemarkeerde transacties/regels
+  over. Die volgorde nooit omdraaien — de standaard mag een bewuste klik niet overschrijven.
+- **Boeken blijft altijd via `_boekTegenrekening()`** (#18). `btwStandaard` verandert alleen
+  wélk tarief wordt doorgegeven, nooit de boekingslogica. `t.btwTarief` moet het wérkelijk
+  geboekte tarief bevatten, ook als dat uit de standaard kwam (voor P&L/grootboekkaart #19/#20).
+- **Nieuwe grootboek-koppel-flows in bank.js** moeten `_gbBtwStandaard(g)` als fallback
+  toepassen i.p.v. stilzwijgend 0 — zie boekhoud-checker Check 12.
+
 ## Losse eindjes (geen risico)
 - (Verwijderd 2026-07-22: de twee oude "regel ~3976 / ~1751"-notities verwezen naar de
   inmiddels opgesliste monoliet-`index.html` en klopten niet meer met de `src/`-structuur.)

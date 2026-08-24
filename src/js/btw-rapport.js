@@ -10,10 +10,12 @@ function openGBModal(editId){
     document.getElementById('gb-naam').value=g.naam;
     document.getElementById('gb-type').value=g.type;
     document.getElementById('gb-saldo').value=parseFloat(g.saldo||0).toFixed(2);
+    document.getElementById('gb-btw-standaard').value=(g.btwStandaard==null?'':String(g.btwStandaard));
     document.querySelector('#modal-gb .modal-header h3').textContent='Rekening bewerken';
   } else {
     ['gb-nr','gb-naam','gb-saldo'].forEach(i=>document.getElementById(i).value='');
     document.getElementById('gb-type').value='activa';
+    document.getElementById('gb-btw-standaard').value='';
     document.querySelector('#modal-gb .modal-header h3').textContent='Nieuwe Grootboekrekening';
   }
   openModal('modal-gb');
@@ -28,6 +30,9 @@ function slaGBOp(){
   const bestaandNr = DB.grootboek.find(g=>g.nummer===nr && g.id!==gbEditId);
   if(bestaandNr){ toast(`Rekeningnummer ${nr} bestaat al — ${bestaandNr.naam}.`,'error'); return; }
   const saldo=parseFloat(document.getElementById('gb-saldo').value)||0;
+  // Standaard BTW-tarief voor bank verwerken: null = geen standaard, anders 0/9/21
+  const btwStdRaw=document.getElementById('gb-btw-standaard').value;
+  const btwStandaard=btwStdRaw===''?null:parseInt(btwStdRaw);
   if(!nr||!naam){toast('Vul nummer en naam in.','error');return;}
 
   // Standaardnummers hebben een VAST type. Boekingen zoeken de rekening op nummer,
@@ -44,7 +49,7 @@ function slaGBOp(){
     if(g){
       const oudSaldo = parseFloat(g.saldo)||0;
       const saldoVerschil = saldo - oudSaldo;
-      g.nummer=nr; g.naam=naam; g.type=type; g.saldo=saldo;
+      g.nummer=nr; g.naam=naam; g.type=type; g.saldo=saldo; g.btwStandaard=btwStandaard;
 
       // Maak memoriaalboeking als saldo veranderd is — audit trail
       if(Math.abs(saldoVerschil) > 0.005){
@@ -71,12 +76,12 @@ function slaGBOp(){
         }
       }
     } else {
-      DB.grootboek.push({id:uid(),nummer:nr,naam:naam,type,saldo});
+      DB.grootboek.push({id:uid(),nummer:nr,naam:naam,type,saldo,btwStandaard});
     }
   } else {
     // Nieuwe rekening met opening saldo
     const nieuwId = uid();
-    DB.grootboek.push({id:nieuwId,nummer:nr,naam:naam,type,saldo});
+    DB.grootboek.push({id:nieuwId,nummer:nr,naam:naam,type,saldo,btwStandaard});
     if(Math.abs(saldo) > 0.005){
       if(!DB.memoriaal) DB.memoriaal=[];
       const evRek = DB.grootboek.find(r=>r.type==='eigen_vermogen'&&r.id!==nieuwId);

@@ -303,6 +303,33 @@ verwisseld. `DEFAULT_GB` was correct; de fix zat in de data, niet in `facturen.j
 ⚠️  btw-rapport.js slaGBOp: type wordt vrij gekozen, geen validatie tegen de nummer→type-tabel; een verkeerd type geeft een balansfout die als codebug oogt
 ```
 
+## Check 12 — Standaard BTW per grootboekrekening (`g.btwStandaard`) is een VOORINVULLING
+
+Elke grootboekrekening kan een standaard BTW-tarief hebben voor het bank verwerken:
+`g.btwStandaard` = `null` (geen standaard) of `0`/`9`/`21`. Ingesteld via Grootboek →
+rekening bewerken (`#gb-btw-standaard`, `slaGBOp` in btw-rapport.js). Toegepast in
+bank.js via helper `_gbBtwStandaard(g)`.
+
+Controleer bij elke wijziging aan bank.js of btw-rapport.js:
+
+1. **Voorinvulling, nooit dwang.** De standaard bepaalt alleen wélk tarief wordt
+   doorgegeven aan `_boekTegenrekening()` — de boekingslogica zelf (excl. op rekening,
+   BTW-deel richting-juist, teken op rekeningtype, Check 5/#18) verandert er NOOIT door.
+2. **Handmatige keuze wint altijd.** `setBTW(tId, tarief, auto)` en
+   `setSplitsBTW(rowId, tarief, auto)`: zonder `auto`-flag (knop-klik) wordt de keuze
+   gemarkeerd als handmatig (`inlineBTWHandmatig[tId]` / `row.dataset.btwHandmatig`).
+   De auto-toepassing (`iwGbGekozen`, `splitsGbGekozen`) MOET die markering respecteren
+   en mag een handmatige klik nooit overschrijven.
+3. **Prioriteit bij suggesties** (`snelKoppelGB`): expliciet tarief uit een regel-suggestie
+   (`suggestie.btw > 0`) wint; anders `_gbBtwStandaard(g)`; anders 0.
+4. **Elke koppel-flow past de fallback toe.** `inlineBevestig` (via inlineBTW, gevuld door
+   iwGbGekozen), splits-regels, `snelKoppelGB`, `bevestigBulkKoppeling` en
+   `bevestigKoppeling` gebruiken de rekening-standaard i.p.v. stilzwijgend 0. Een NIEUWE
+   grootboek-koppel-flow in bank.js zonder `_gbBtwStandaard`-fallback is een fout.
+5. **`t.btwTarief` moet het wérkelijk geboekte tarief bevatten** (ook als dat uit de
+   standaard kwam), anders lopen P&L-reconstructie en grootboekkaart (Check-punten in
+   CLAUDE.md #19/#20) uit de pas met het geboekte bedrag.
+
 ## Uitvoer formaat
 
 ```
