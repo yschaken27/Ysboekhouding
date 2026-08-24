@@ -49,21 +49,27 @@ Controleer op veelvoorkomende typefouten in CSS:
 
 ## Check 3 — CSS variabelen die gebruikt worden maar niet gedefinieerd zijn
 
-De app gebruikt CSS variabelen. Controleer of alle `var(--naam)`
-verwijzingen ook gedefinieerd staan in `:root { }` in `css/base.css`.
+De app gebruikt CSS variabelen uit TWEE `:root`-blokken — zoek altijd in allebei
+voordat je iets als ontbrekend meldt:
+- `src/css/base.css` — layout, kleuren, typografie
+- `src/css/branding.css` — het YS-kleurschema (`--ys-navy`, `--ys-blue`, `--ys-light`, `--ys-gold`)
 
-Bekende variabelen die MOETEN bestaan:
+Bekende variabelen die MOETEN bestaan (base.css tenzij anders vermeld):
 ```
---accent, --accent2, --accent-dim
---danger, --warning, --success
---surface, --surface2
+--bg, --surface, --surface2, --surface3
+--accent, --accent2, --accent-dim, --accent2-dim
+--danger, --danger-dim, --warning, --warning-dim, --success
 --border, --border-light
 --text, --text-mid, --text-dim
 --radius, --radius-lg
---shadow-lg
+--shadow, --shadow-lg
 --sans, --mono
---ys-navy, --ys-blue, --ys-light, --ys-gold
+--ys-navy, --ys-blue, --ys-light, --ys-gold   (branding.css)
 ```
+
+Bouw de lijst bij voorkeur dynamisch op: grep alle `--naam:` definities uit beide bestanden
+en vergelijk die met alle `var(--naam)`-verwijzingen in CSS én in de inline styles in
+`index.html`, `src/pages/*.html` en de JS-template-literals.
 
 Als een bestand `var(--iets-nieuws)` gebruikt dat niet in de lijst staat:
 ```

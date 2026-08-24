@@ -22,9 +22,9 @@
           },
           {
             "type": "agent",
-            "if": "Edit(kassier.js)|Write(kassier.js)",
+            "if": "Edit(kassier.js)|Write(kassier.js)|Edit(facturen.js)|Write(facturen.js)",
             "agent": "factuur-validator",
-            "prompt": "kassier.js is zojuist gewijzigd in het YS Boekhouding project (C:\\Users\\ymera\\OneDrive\\Documenten\\Bookkeeping\\Ysboekhouding\\src\\).\n\nVolg je instructies als factuur-validator agent: controleer of maakUrenFactuur() nog steeds voldoet aan alle Nederlandse wettelijke eisen. Rapporteer in het standaard uitvoerformaat.",
+            "prompt": "Een bestand met factuurlogica is zojuist gewijzigd in het YS Boekhouding project (C:\\Users\\ymera\\OneDrive\\Documenten\\Bookkeeping\\Ysboekhouding\\src\\).\n\nGewijzigd bestand: $ARGUMENTS\n\nVolg je instructies als factuur-validator agent: controleer of maakUrenFactuur() (kassier.js) en de gedeelde factuurtemplate bouwFactuurHtml() (facturen.js) nog steeds voldoen aan alle Nederlandse wettelijke eisen. Rapporteer in het standaard uitvoerformaat.",
             "timeout": 120,
             "statusMessage": "Factuur-validator controleert wettelijke vereisten..."
           },
@@ -38,11 +38,27 @@
           },
           {
             "type": "agent",
-            "if": "Edit(facturen.js)|Write(facturen.js)|Edit(btw-rapport.js)|Write(btw-rapport.js)|Edit(bank.js)|Write(bank.js)",
+            "if": "Edit(facturen.js)|Write(facturen.js)|Edit(btw-rapport.js)|Write(btw-rapport.js)|Edit(bank.js)|Write(bank.js)|Edit(kassier.js)|Write(kassier.js)|Edit(activa.js)|Write(activa.js)|Edit(state.js)|Write(state.js)",
             "agent": "boekhoud-checker",
-            "prompt": "Een boekhoudkundig bestand is zojuist gewijzigd in het YS Boekhouding project (C:\\Users\\ymera\\OneDrive\\Documenten\\Bookkeeping\\Ysboekhouding\\src\\).\n\nGewijzigd bestand: $ARGUMENTS\n\nVolg je instructies als boekhoud-checker agent: controleer BTW-tarieven, kasstelsel/factuurstelsel logica, grootboekrekeningen en balans. Rapporteer in het standaard uitvoerformaat.",
+            "prompt": "Een boekhoudkundig bestand is zojuist gewijzigd in het YS Boekhouding project (C:\\Users\\ymera\\OneDrive\\Documenten\\Bookkeeping\\Ysboekhouding\\src\\).\n\nGewijzigd bestand: $ARGUMENTS\n\nVolg je instructies als boekhoud-checker agent: controleer BTW-tarieven, kasstelsel/factuurstelsel logica, grootboekrekeningen en balans. Let extra op de kerninvarianten uit CLAUDE.md #21: elke boeking sluit op nul, teken op rekeningtype, BTW-splitsing en exacte spiegel bij terugdraaien. Rapporteer in het standaard uitvoerformaat.",
             "timeout": 120,
             "statusMessage": "Boekhoud-checker controleert boekhoudregels..."
+          },
+          {
+            "type": "agent",
+            "if": "Edit(state.js)|Write(state.js)|Edit(auth.js)|Write(auth.js)|Edit(firebase-config.js)|Write(firebase-config.js)",
+            "agent": "sync-checker",
+            "prompt": "Een bestand uit de save/load/sync-flow is zojuist gewijzigd in het YS Boekhouding project (C:\\Users\\ymera\\OneDrive\\Documenten\\Bookkeeping\\Ysboekhouding\\src\\).\n\nGewijzigd bestand: $ARGUMENTS\n\nVolg je instructies als sync-checker agent: controleer de Firebase-localStorage sync-flow, de bevestigde seriële cloud-save (CLAUDE.md #15) en de veld-voor-veld gelijkheid van schrijf- en lees-set (#22). Rapporteer in het standaard uitvoerformaat.",
+            "timeout": 120,
+            "statusMessage": "Sync-checker controleert save/load-flow..."
+          },
+          {
+            "type": "agent",
+            "if": "Edit(*.html)|Write(*.html)",
+            "agent": "html-checker",
+            "prompt": "Een HTML-bestand is zojuist gewijzigd in het YS Boekhouding project (C:\\Users\\ymera\\OneDrive\\Documenten\\Bookkeeping\\Ysboekhouding\\).\n\nGewijzigd bestand: $ARGUMENTS\n\nVolg je instructies als html-checker agent: controleer of alle inline event-handlers naar bestaande JS-functies wijzen en of elk element-id dat JS opvraagt ook echt bestaat. Rapporteer in het standaard uitvoerformaat.",
+            "timeout": 120,
+            "statusMessage": "HTML-checker controleert handlers en id's..."
           }
         ]
       }

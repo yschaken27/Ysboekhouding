@@ -1,6 +1,6 @@
 ---
 name: boekhoud-checker
-description: Controleert of de boekhoudkundige logica in YS Boekhouding klopt — BTW-tarieven, grootboekrekeningen, kasstelsel vs factuurstelsel, debet/credit balans en Nederlandse boekhoudregels voor zzp. Roep aan na wijzigingen aan facturen.js, btw-rapport.js, bank.js of state.js.
+description: Controleert of de boekhoudkundige logica in YS Boekhouding klopt — BTW-tarieven, grootboekrekeningen, kasstelsel vs factuurstelsel, debet/credit balans en Nederlandse boekhoudregels voor zzp. Roep aan na wijzigingen aan facturen.js, btw-rapport.js, bank.js, state.js, kassier.js of activa.js.
 tools: Read, Grep, Glob
 model: sonnet
 ---
@@ -329,6 +329,48 @@ Controleer bij elke wijziging aan bank.js of btw-rapport.js:
 5. **`t.btwTarief` moet het wérkelijk geboekte tarief bevatten** (ook als dat uit de
    standaard kwam), anders lopen P&L-reconstructie en grootboekkaart (Check-punten in
    CLAUDE.md #19/#20) uit de pas met het geboekte bedrag.
+
+## Check 13 — Kassa-flow: boeken en terugdraaien door één functie
+
+`keurKassaGoed`/`trekKassaGBTerug`/`verwijderKassalijst` (kassier.js) boeken via
+`_boekKassalijst(lijst, ±1)`, zodat terugdraaien altijd een exacte spiegel is. Controleer:
+
+1. **Nooit losse saldo-mutaties** naast `_boekKassalijst` — dat verbreekt de spiegel.
+2. **Memoriaalregels krijgen `r.effect` mee** bij het aanmaken. Ontbreekt `effect`, dan valt
+   elke reconstructie terug op `_memSaldoEffect` — en een naïeve `dc==='debet'?+:−` geeft
+   credit-normale rekeningen (omzet, 1510) het verkeerde teken (CLAUDE.md #20, KRITIEK).
+3. **`verwijderMemoriaal` blokkeert type `kassalijst`** — die boeking hoort via het
+   Kassaoverzicht teruggedraaid te worden, niet via de Memoriaal-pagina.
+4. **Rekeningtypes van auto-aangemaakte rekeningen** komen uit DEFAULT_GB. Een verzonnen type
+   als `'schuld'` bestaat niet en telt aan géén enkele kant van de balans mee (zie Check 11).
+5. **Oud kassalijst-formaat** (`totContant`/`totUitgaven`/`verschil`): het kasverschil hoort
+   met het juiste teken geboekt te worden (overschot = credit/opbrengst) en uitgaven hebben
+   een tegenboeking nodig. Ontbreekt dat, dan blokkeert de balanscontrole het goedkeuren.
+
+## Check 14 — Rapportages kennen ALLE boekingsbronnen
+
+Een nieuwe boekingsflow moet in élke reconstructie opgenomen worden, anders ontstaan stille
+afwijkingen (CLAUDE.md #21.5). Controleer bij elke nieuwe of gewijzigde boekingsflow of hij
+verwerkt is in:
+
+1. `balansAudit` (btw-rapport.js)
+2. `berekenPLVoorPeriode` — de drie bronnen: facturen, bankkoppelingen, memoriaal (#20)
+3. `bouwGrootboekkaart` (#19)
+4. `renderBTWAangifte` — rubriek 1a/1b/1d en 5b
+5. `renderJaaropgave` — omzet en kosten
+
+En specifiek:
+- **Bank-deelboekingen** lopen via `_bankGbDelen(t)` / `_bankGbRekening(d,t)` (btw-rapport.js).
+  Nieuwe code die zelf `t.splitsRegels`/`t.tegenrekeningId` uitpluist, loopt uit de pas —
+  gebruik de helpers.
+- **Nooit `window.inlineBTW` lezen**: dat is een lokale variabele in bank.js en bestaat niet
+  op `window`; het tarief staat persistent in `t.btwTarief` / `d.btwTarief`.
+- **Regel-loze facturen** (uren-facturen hebben geen `regels`, alleen `totaalExcl`) moeten
+  overal een fallback hebben, anders verdwijnt die omzet uit P&L en BTW-aangifte.
+- **`saldocorrectie` uitsluiten** in elke nieuwe memoriaal-doorloop (#19b).
+
+Aansluitcontrole die je altijd kunt doen: rubriek 1a+1b van de aangifte moet aansluiten op
+wat er in dezelfde periode op 1510 geboekt is, en 5b op 1500.
 
 ## Uitvoer formaat
 

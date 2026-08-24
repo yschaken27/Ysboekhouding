@@ -23,30 +23,22 @@ Rapporteer: bestand, regelnummer, wat er mis is.
 
 ## Check 2 — Ontbrekende functies
 
-De volgende functies MOETEN ergens gedefinieerd zijn in de codebase.
-Controleer met Grep of ze allemaal bestaan:
+De volgende kernfuncties MOETEN bestaan, in het genoemde bestand.
+Controleer met Grep of ze allemaal aanwezig zijn:
 
-**Gedefinieerd in `js/ui.js`:**
-- `toast`
-- `bevestig`
-- `openModal`
-- `closeModal`
-- `toonPagina`
-- `renderTabel`
+**Gedefinieerd in `src/js/state.js`** (let op: de UI-helpers staan hier, NIET in ui.js):
+- `toast`, `bevestig`, `openModal`, `closeModal`
+- `save`, `saveCloud`, `load`, `loadLokaal`, `flushSave`
+- `fbAanroep`, `wisselBedrijf`, `rond`, `fmt`, `esc`, `uid`
 
-**Gedefinieerd in `js/state.js`:**
-- `save`
-- `saveCloud`
-- `load`
-- `loadCloud`
+**Gedefinieerd in `src/js/ui.js`:**
+- `showPage`, `heeftToegang`, `laadAllePaginas`
 
-**Gedefinieerd in `js/auth.js`:**
-- `inloggen`
-- `uitloggen`
-- `wisselBedrijf`
+**Gedefinieerd in `src/js/activa.js`:**
+- `navTo`
 
-**Gedefinieerd in `firebase-config.js`:**
-- `fbAanroep`
+**Gedefinieerd in `src/js/auth.js`:**
+- `inloggen`, `uitloggen`, `toonBedrijfsKiezer`, `verrijkActieveKassier`
 
 Controleer ook: als een functie in bestand A wordt **aangeroepen**, bestaat
 ze dan ook ergens in de codebase? Gebruik Grep om aanroepen te vinden
@@ -54,43 +46,46 @@ en kruis ze af met de definities.
 
 Fout-voorbeeld:
 ```
-❌ js/bank.js regel 47: toast() aangeroepen maar niet gevonden in ui.js
+❌ src/js/bank.js regel 47: toast() aangeroepen maar nergens gedefinieerd
 ```
 
 ## Check 3 — Undefined variabelen en globals
 
-Controleer of deze globals beschikbaar zijn voordat ze gebruikt worden:
-- `S` — het state object, gedefinieerd in `state.js`
-- `db` — Firebase Firestore instantie, uit `firebase-config.js`
-- `firebase` — Firebase app, uit `firebase-config.js`
-- `storage` — Firebase Storage, uit `firebase-config.js`
+De echte globals van deze app zijn:
+- `DB` — het state-object, gedefinieerd in `state.js` (heet **`DB`**, niet `S`)
+- `window.FB` / `window.FBAuth` — de Firebase-API-wrappers uit `src/firebase-config.js`
+- `fbAanroep` — de veilige wrapper om FB-aanroepen, staat in `state.js`
+- `huidigBedrijf`, `_actieveKassier`, `_loginRol` — sessie-state
 
-Controleer per bestand: gebruikt het `S`, `db`, `firebase` of `storage`
-zonder dat het bestand zelf die dingen definieert? Dan moet het later
-in `index.html` geladen worden dan het bestand dat ze definieert.
+`db`, `firebase` en `storage` zitten binnen een IIFE in `firebase-config.js` en zijn
+GEEN globals — code buiten dat bestand hoort ze niet te gebruiken. Rapporteer het als
+fout wanneer een ander bestand ze direct aanspreekt (moet via `window.FB`/`fbAanroep`).
+
+Controleer per bestand: gebruikt het een global zonder die zelf te definiëren? Dan moet
+het later in `index.html` geladen worden dan het bestand dat hem definieert.
 
 ## Check 4 — Laadvolgorde in index.html
 
 Lees `index.html` en zoek alle `<script src="...">` tags.
-De verplichte volgorde is:
+`src/firebase-config.js` laadt in de `<head>`; de app-JS onderaan de body in deze volgorde:
 
 ```
-1. firebase SDK (CDN of lokaal)
-2. firebase-config.js
-3. js/state.js
-4. js/ui.js
-5. js/auth.js
-6. js/facturen.js
-7. js/bank.js
-8. js/btw-rapport.js
-9. js/activa.js
-10. js/kassier.js
+1. firebase SDK (CDN)
+2. src/firebase-config.js        (in <head>)
+3. src/js/state.js               (DB, save/load, alle helpers — moet als eerste)
+4. src/js/ui.js
+5. src/js/auth.js
+6. src/js/facturen.js            (bouwFactuurHtml — vóór kassier.js)
+7. src/js/bank.js                (_boekTegenrekening — vóór btw-rapport.js)
+8. src/js/btw-rapport.js
+9. src/js/kassier.js
+10. src/js/activa.js
 ```
 
 Als een bestand eerder geladen wordt dan zijn afhankelijkheden:
 ```
-❌ Laadvolgorde: js/kassier.js staat op positie 3,
-   maar heeft ui.js nodig (positie 6). Verplaats kassier.js naar na ui.js.
+❌ Laadvolgorde: src/js/kassier.js staat vóór facturen.js,
+   maar gebruikt bouwFactuurHtml() daaruit.
 ```
 
 ## Check 5 — Bekende datastructuur-valkuilen
@@ -114,10 +109,29 @@ Controleer: als `toonBedrijfsKiezer` wordt aangepast, blijft de "ontbrekende nam
 ❌ auth.js toonBedrijfsKiezer: ontbrekende namen-laad-stap verwijderd — kassier ziet interne sleutel
 ```
 
+**Komma-invoer bij bedragen en aantallen**
+Nederlandse gebruikers typen `7,5` — een `<input type="number">` weigert dat op de telefoon.
+Velden voor bedragen/aantallen horen `type="text"` met `inputmode="decimal"` te zijn, en de
+JS moet ze uitlezen via `parseDecimaalInvoer()` (kassier.js), niet via kaal `parseFloat`.
+Controleer bij nieuwe invoervelden of dat patroon gevolgd is.
+```
+⚠️ index.html: <input type="number" id="xx-bedrag"> — accepteert geen komma op mobiel
+```
+
 ## Check 6 — Ongebruikte functies (waarschuwing, geen fout)
 
 Zoek functies die wél gedefinieerd zijn maar nergens aangeroepen worden.
+Let op: functies die alléén vanuit een inline `onclick`/`onchange` in HTML worden
+aangeroepen, tellen NIET als ongebruikt — zoek dus ook in `index.html` en `src/pages/*.html`
+(en in JS-template-literals die HTML genereren) voordat je iets als ongebruikt meldt.
 Rapporteer als ⚠️ waarschuwing, niet als fout — ze kunnen expres staan.
+
+## Check 7 — Service worker cache-versie
+
+`sw.js` heeft een `CACHE_NAME` (bv. `ysboekhouding-v5`). Wordt er een bestand gewijzigd dat
+de service worker cachet, dan moet die versie omhoog — anders blijven gebruikers de oude
+versie zien en helpt "hard refresh" niet (CLAUDE.md #6). Controleer bij wijzigingen aan
+gecachete bestanden of `CACHE_NAME` is opgehoogd; zo niet, meld als ⚠️.
 
 ## Uitvoer formaat
 

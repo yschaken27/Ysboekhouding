@@ -11,49 +11,48 @@ Rapporteer elke fout met bestandsnaam, regelnummer en uitleg.
 
 Projectmap: `C:\Users\ymera\OneDrive\Documenten\Bookkeeping\Ysboekhouding\src\`
 
-## Check 1 — Collectienamen
+## Check 1 — Firestore-structuur
 
-De enige toegestane Firestore collectienamen zijn:
-
-```
-data/main          — boekhouding per bedrijf (via save())
-gebruikers         — kassiers en eigenaar-accounts
-mail               — uitgaande mails via Trigger Email extensie
-uren               — urenregistratie per bedrijf
-kassalijsten       — kassa-afslagen per bedrijf
-```
-
-Zoek met Grep naar `.collection(` en `.doc(` aanroepen in alle JS bestanden.
-Rapporteer elke collectienaam die niet in de lijst staat:
+De werkelijke structuur (alles staat in `src/firebase-config.js`):
 
 ```
-❌ js/kassier.js regel 88: .collection('users') — moet 'gebruikers' zijn
+bedrijven/{bedrijf}/data/main            — profiel, grootboek, memoriaal, vasteActiva,
+                                            kassiers, imports, btwNotities
+bedrijven/{bedrijf}/data/verkoop         — { items: [...] }
+bedrijven/{bedrijf}/data/inkoop          — { items: [...] }
+bedrijven/{bedrijf}/data/transacties     — { items: [...] }
+bedrijven/{bedrijf}/data/kassalijsten    — { items: [...] }
+bedrijven/{bedrijf}/data/uren            — { items: [...] }
+bedrijven/{bedrijf}/uploads/{id}         — bonnen (base64 in Firestore)
+bedrijven/{bedrijf}/toegang/lijst        — gastenlijst per bedrijf
+bedrijven_toegang                        — top-level, welke bedrijven een gebruiker mag zien
 ```
 
-## Check 2 — Verplichte velden per document-type
+Let op: er is **géén** top-level `gebruikers`-collectie en **géén** `mail`-collectie
+(mailflow staat nog op de planning). Kassiers staan in het `kassiers`-veld van `data/main`
+en worden geschreven via `slaKassiersOp`; toegang loopt via `getGastenlijst`/`setGastenlijst`.
+`uren` en `kassalijsten` zijn documenten met een `items`-array, geen collecties.
 
-### `mail`-collectie (Firebase Trigger Email)
-Elk document dat naar `mail` geschreven wordt MOET deze velden hebben:
-- `to` — string of array, e-mailadres ontvanger
-- `message.subject` — string, onderwerp
-- `message.html` — string, HTML-body
+Zoek met Grep naar `.collection(` en `.doc(` in alle JS-bestanden. Rapporteer elk pad dat
+niet in dit schema past.
 
-Zoek alle writes naar de `mail` collectie en controleer of alle drie aanwezig zijn.
+## Check 2 — Sharded save mag nooit velden verliezen
 
-```
-❌ js/kassier.js regel 210: schrijft naar 'mail' maar 'message.subject' ontbreekt
-```
+`slaAllesOp()` schrijft met `.set()` **zonder merge** naar zes losse documenten. Elk veld dat
+in `_bouwSaveData()` (state.js) zit, moet ook in `slaAllesOp` geschreven én in `laadAlles`/
+`luisterAlles`/`verwerkCloudData` gelezen worden — anders overschrijft een apparaat dat het
+veld niet kent de echte data met een lege standaardwaarde (CLAUDE.md #22, zo ging `imports`
+ooit verloren).
 
-### `gebruikers`-collectie
-Elk gebruikersdocument MOET hebben:
-- `naam` — string
-- `email` — string
-- `bedrijven` — array
-- `modules` — array
+Controleer bij elke wijziging: is de schrijf-set nog gelijk aan de lees-set? Vergelijk veld
+voor veld en rapporteer verschillen. Voor de diepere sync-garanties (#15) is de
+`sync-checker` agent verantwoordelijk — verwijs daarnaar bij twijfel.
 
-### `uren`-collectie
-Elk uren-document MOET hebben:
-- `datum` — string (YYYY-MM-DD formaat)
+## Check 2b — Verplichte velden per record-type
+
+### uren-items (`data/uren`)
+Elk uren-item MOET hebben:
+- `datum` — string (YYYY-MM-DD)
 - `opdrachtgever` — string
 - `uren` — number
 - `tariefLabel` — string
@@ -61,11 +60,18 @@ Elk uren-document MOET hebben:
 - `bedrag` — number
 - `status` — string ('ingediend', 'goedgekeurd' of 'afgewezen')
 - `wie` — string (naam kassier)
+- `eenheid` — 'uur' of 'dag'
+
+### kassiers (veld in `data/main`)
+Elk kassier-record MOET hebben: `naam`, `email`, `bedrijven` (array), `modules` (array).
 
 ## Check 3 — Gebruik van fbAanroep()
 
 De app gebruikt een wrapper `fbAanroep(fb => fb.methode())` voor alle Firebase-calls.
 Directe aanroepen van `db.collection()`, `firebase.firestore()` of `storage.ref()` buiten `firebase-config.js` zijn NIET toegestaan.
+
+`fbAanroep` zelf staat in **`src/js/state.js`**, niet in firebase-config.js; de API-objecten
+`window.FB` en `window.FBAuth` komen wél uit firebase-config.js.
 
 Zoek in alle JS bestanden buiten `firebase-config.js` naar:
 - `db.collection(`
@@ -98,6 +104,14 @@ Zoek naar `storage.ref(` of `storageRef` aanroepen en controleer of het pad dit 
 ```
 ❌ js/activa.js regel 77: storage pad 'uploads/bestand.pdf' — moet '${bedrijf}/facturen/${id}/${naam}' zijn
 ```
+
+## Check 6 — uploadBon slaat base64 op in Firestore
+
+`uploadBon` (firebase-config.js) schrijft bonnen als base64-string naar
+`bedrijven/{bedrijf}/uploads/{id}` — niet naar Storage. Een Firestore-document is gelimiteerd
+tot ~1 MB, dus base64 (≈ +33% overhead) mag hooguit ~700 KB ruwe bestandsgrootte zijn.
+Controleer of er een grootte-check vóór de write staat en of de gebruiker een nette melding
+krijgt in plaats van een harde Firestore-fout.
 
 ## Uitvoer formaat
 

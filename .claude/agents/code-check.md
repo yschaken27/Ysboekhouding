@@ -29,42 +29,52 @@ Voer elke ronde deze stappen uit in volgorde:
 |---|---|
 | `js-checker` | Na elke edit aan een `.js` bestand |
 | `css-checker` | Na elke edit aan een `.css` bestand |
+| `html-checker` | Na elke edit aan `index.html` of `src/pages/*.html` — controleert of onclick/onchange-handlers naar bestaande functies wijzen |
 | `firebase-checker` | Na edit aan `firebase-config.js` of bestanden die `fbAanroep` gebruiken |
-| `factuur-validator` | Na edit aan `kassier.js` (factuurgeneratie) |
-| `boekhoud-checker` | Na edit aan `facturen.js`, `btw-rapport.js`, `bank.js`, `state.js` **of `kassier.js`** — want `maakUrenFactuur()` maakt grootboekboekingen |
+| `factuur-validator` | Na edit aan `kassier.js` of `facturen.js` (factuurgeneratie + gedeelde template `bouwFactuurHtml`) |
+| `boekhoud-checker` | Na edit aan `facturen.js`, `btw-rapport.js`, `bank.js`, `state.js`, `kassier.js` of `activa.js` — die raken allemaal grootboeksaldi |
+| `sync-checker` | Na edit aan `state.js`, `auth.js` of `firebase-config.js` — save/load/sync-flow (CLAUDE.md #15/#22) |
 
 **Verplichte combinaties per bestand:**
 
 | Bestand gewijzigd | Verplichte agents |
 |---|---|
 | `kassier.js` | js-checker + factuur-validator + boekhoud-checker |
-| `facturen.js` | js-checker + boekhoud-checker |
+| `facturen.js` | js-checker + factuur-validator + boekhoud-checker |
 | `btw-rapport.js` | js-checker + boekhoud-checker |
 | `bank.js` | js-checker + boekhoud-checker |
-| `state.js` | js-checker + boekhoud-checker |
-| `firebase-config.js` | js-checker + firebase-checker |
+| `activa.js` | js-checker + boekhoud-checker |
+| `state.js` | js-checker + boekhoud-checker + sync-checker |
+| `auth.js` | js-checker + sync-checker |
+| `firebase-config.js` | js-checker + firebase-checker + sync-checker |
 | Overige `.js` | js-checker |
 | `.css` | css-checker |
+| `.html` | html-checker |
 
 Roep altijd de relevante subagents aan — nooit de checks zelf uitvoeren.
+
+**Wijzig je een functienaam of verwijder je HTML?** Draai dan altijd óók de `html-checker`,
+ook als je geen HTML hebt aangeraakt: knoppen roepen JS aan via inline handlers, en die
+koppeling breekt stil (zo wees "+ Opdrachtgever" jarenlang naar een niet-bestaande functie).
 
 ## Bestanden die gecontroleerd worden
 
 ```
-js/state.js
-js/auth.js
-js/ui.js
-js/facturen.js
-js/bank.js
-js/btw-rapport.js
-js/activa.js
-js/kassier.js
-firebase-config.js
-css/base.css
-css/components.css
-css/pages.css
-css/branding.css
+src/js/state.js
+src/js/auth.js
+src/js/ui.js
+src/js/facturen.js
+src/js/bank.js
+src/js/btw-rapport.js
+src/js/activa.js
+src/js/kassier.js
+src/firebase-config.js      (let op: in src/, niet src/js/)
+src/css/base.css
+src/css/components.css
+src/css/pages.css
+src/css/branding.css
 index.html
+src/pages/*.html
 ```
 
 ## Rapportageformaat
