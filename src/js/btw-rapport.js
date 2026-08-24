@@ -1574,11 +1574,116 @@ function renderBTWAangifte(){
     <div style="display:flex;justify-content:space-between;padding:4px 0;"><span>Voorbelasting inkoop</span><strong style="color:var(--accent);">${fmt(btw5b)}</strong></div>
     <div style="display:flex;justify-content:space-between;padding:8px 0 0;border-top:2px solid var(--border);margin-top:4px;"><span style="font-weight:600;">${saldo>=0?'Te betalen':'Te ontvangen'}</span><strong style="color:${saldo>=0?'var(--danger)':'var(--accent)'};">${fmt(Math.abs(saldo))}</strong></div>`;
 
+  // Aansluitcontrole: aangifte ↔ grootboek (zie _renderBtwAansluiting)
+  _renderBtwAansluiting({ btw1a, btw1b, btw5b, inPeriode, kasstelsel });
+
   // Laad notities
   const periodeKey=`btw_notities_${jaar}_${periode}`;
   const notities=(DB.btwNotities||{})[periodeKey]||'';
   const notEl=document.getElementById('btw-notities');
   if(notEl) notEl.value=notities;
+}
+
+// ===== AANSLUITCONTROLE BTW-AANGIFTE ↔ GROOTBOEK =====
+// Reconstrueert wat er in deze periode op de BTW-rekeningen geboekt is en vergelijkt
+// dat met de aangifte. Wijken ze af, dan mist de aangifte een bron of is er een boeking
+// scheefgelopen — precies het type stille fout dat de balanscontrole NIET vangt
+// (CLAUDE.md #26). Bij kasstelsel is een verschil normaal: het grootboek volgt de
+// factuurdatum, de aangifte de betaaldatum. Dan tonen we het als toelichting, niet als fout.
+function _btwGeboektInPeriode(inPeriode){
+  let teBetalen = 0;   // 1510 — BTW over omzet
+  let teVorderen = 0;  // 1500 — voorbelasting
+
+  const isTeBetalen = g => g && (g.nummer==='1510' || g.nummer==='1530');
+  const isTeVorderen = g => g && (g.nummer==='1500' || g.nummer==='1520');
+
+  // 1) Facturen: BTW valt op de factuurdatum (factuurstelsel-boeking)
+  (DB.verkoop||[]).forEach(f=>{ if(inPeriode(f.datum)) teBetalen += parseFloat(f.btwBedrag)||0; });
+  (DB.inkoop||[]).forEach(f=>{ if(inPeriode(f.datum)) teVorderen += parseFloat(f.btwBedrag)||0; });
+
+  // 2) Bankkoppelingen op een grootboekrekening: _boekTegenrekening splitst het BTW-deel af
+  (DB.transacties||[]).filter(t=>inPeriode(t.datum) && t.gekoppeldType==='grootboek').forEach(t=>{
+    _bankGbDelen(t).forEach(d=>{
+      const bedrag = parseFloat(d.bedrag)||0;
+      const tarief = parseFloat(d.btwTarief)||0;
+      if(!bedrag || tarief<=0) return;
+      const abs = Math.abs(bedrag);
+      const btw = abs - abs/((100+tarief)/100);
+      if(bedrag>0) teBetalen += btw; else teVorderen += btw;
+    });
+  });
+
+  // 3) Kassalijsten: omzet-BTW op de kassadatum
+  (DB.kassalijsten||[]).filter(k=>k.status==='goedgekeurd' && inPeriode(k.datum)).forEach(k=>{
+    teBetalen += parseFloat(k.omzetBtw)||0;
+  });
+
+  // 4) Memoriaalboekingen rechtstreeks op een BTW-rekening (handmatige correcties)
+  (DB.memoriaal||[]).filter(m=>inPeriode(m.datum||'') && m.type!=='jaarafsluiting' && m.type!=='saldocorrectie').forEach(m=>{
+    (m.regels||[]).forEach(r=>{
+      const g = (DB.grootboek||[]).find(x=>x.id===r.gbId); if(!g) return;
+      const eff = (r.effect!==undefined) ? r.effect : _memSaldoEffect(g, r.dc, r.bedrag);
+      if(isTeBetalen(g)) teBetalen += eff;
+      else if(isTeVorderen(g)) teVorderen -= eff; // 1500 is activa: debet = positief effect
+    });
+  });
+
+  return { teBetalen: rond(teBetalen), teVorderen: rond(teVorderen) };
+}
+
+function _renderBtwAansluiting(o){
+  const el = document.getElementById('btw-aansluiting');
+  if(!el) return;
+  const geboekt = _btwGeboektInPeriode(o.inPeriode);
+  const aangifteOmzet = rond(o.btw1a + o.btw1b);
+  const aangifteVoor  = rond(o.btw5b);
+  const vOmzet = rond(aangifteOmzet - geboekt.teBetalen);
+  const vVoor  = rond(aangifteVoor - geboekt.teVorderen);
+  const grens = 0.02;
+  const klopt = Math.abs(vOmzet) <= grens && Math.abs(vVoor) <= grens;
+
+  // Bij kasstelsel loopt de aangifte bewust achter op het grootboek (betaaldatum vs.
+  // factuurdatum) — een verschil is dan verwacht en geen signaal van een fout.
+  if(o.kasstelsel && !klopt){
+    el.innerHTML = `
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:11px;color:var(--text-dim);line-height:1.6;">
+        <strong style="color:var(--text-mid);">Aansluiting grootboek</strong><br>
+        Je werkt met het kasstelsel: de aangifte volgt de betaaldatum, het grootboek de factuurdatum.
+        Een verschil is dus normaal. Geboekt in deze periode: ${fmt(geboekt.teBetalen)} op BTW te betalen,
+        ${fmt(geboekt.teVorderen)} op BTW te vorderen.
+      </div>`;
+    return;
+  }
+
+  if(klopt){
+    el.innerHTML = `
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:11px;color:var(--text-dim);">
+        ✓ <strong style="color:var(--accent);">Aangifte sluit aan op het grootboek</strong> —
+        rubriek 1a+1b komt overeen met BTW te betalen, 5b met BTW te vorderen.
+      </div>`;
+    return;
+  }
+
+  const rij = (label, aangifte, geb, verschil) => `
+    <div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;">
+      <span>${label}</span>
+      <span style="font-family:var(--mono);">${fmt(aangifte)} vs ${fmt(geb)}
+        <strong style="color:${Math.abs(verschil)>grens?'var(--danger)':'var(--text-dim)'};">
+          (${verschil>0?'+':''}${fmt(verschil)})</strong></span>
+    </div>`;
+
+  el.innerHTML = `
+    <div style="background:var(--warning-dim);border:1px solid var(--warning);border-radius:8px;padding:12px 14px;font-size:11px;line-height:1.6;">
+      <strong style="color:var(--warning);font-size:12px;">⚠ Aangifte sluit niet aan op het grootboek</strong>
+      <div style="color:var(--text-dim);margin:6px 0 8px;">Aangifte vs. geboekt in deze periode:</div>
+      ${rij('Omzet-BTW (1a+1b ↔ 1510)', aangifteOmzet, geboekt.teBetalen, vOmzet)}
+      ${rij('Voorbelasting (5b ↔ 1500)', aangifteVoor, geboekt.teVorderen, vVoor)}
+      <div style="color:var(--text-dim);margin-top:8px;">
+        Een verschil betekent meestal dat een boeking niet in de aangifte meetelt (of andersom).
+        Controleer facturen zonder BTW-tarief, bankregels waar geen BTW is aangeklikt, en
+        handmatige memoriaalboekingen op 1500/1510 in deze periode.
+      </div>
+    </div>`;
 }
 
 function slaBANotitiesOp(){
