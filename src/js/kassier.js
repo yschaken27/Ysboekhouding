@@ -878,6 +878,16 @@ async function maakUrenFactuur(opdrEnc){
     regelLijst = Object.values(groepen);
   }
 
+  // Regelbedrag is altijd exact aantal × tarief. Bij groeperen per tarieftype werden
+  // de per ingave al afgeronde bedragen opgeteld, waardoor de som een cent kon afwijken
+  // van (totaal aantal × tarief) — precies de rekensom die de klant maakt én die de
+  // BTW-aangifte per factuurregel doet (btw-rapport.js, rubriek 1a). Zo sluiten de
+  // factuur, de opgeslagen regels, de geboekte BTW en de aangifte op de cent aan.
+  regelLijst.forEach(r=>{
+    r.uren = Math.round((parseFloat(r.uren)||0)*100)/100;
+    r.bedrag = Math.round(r.uren * (parseFloat(r.tarief)||0) * 100)/100;
+  });
+
   const zonderBtw = !!p.urenZonderBtw;
   const btwPct = 21;
   const subtotaalExcl = regelLijst.reduce((a,r)=>a+r.bedrag,0);
@@ -942,7 +952,7 @@ async function maakUrenFactuur(opdrEnc){
     omschrijving: perDienst
       ? `${r.label}${r.wie?' ('+r.wie+')':''}${r.datum?' — '+_factuurDatumKort(r.datum):''}`
       : `${eInfo.gewerkt} — ${r.label} (${maandLabel})`,
-    aantal: Math.round((parseFloat(r.uren)||0)*100)/100,
+    aantal: r.uren,          // al afgerond op 2 decimalen, en r.bedrag = aantal × tarief
     prijs: parseFloat(r.tarief)||0,
     // Expliciet de omzetrekening waarop hieronder ook geboekt wordt. Leeg laten zou
     // deze omzet in de P&L onder "overig" laten vallen (btw-rapport.js, verdeelFactuur).
