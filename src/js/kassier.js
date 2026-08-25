@@ -744,33 +744,22 @@ function _factuurDatumKort(iso){
   return d.length===3 ? `${d[2]}-${d[1]}-${d[0]}` : String(iso);
 }
 
-// Maand na een 'YYYY-MM'-string: 2026-12 → 2027-01 (ongeldige invoer blijft ongewijzigd)
-function _maandErna(maand){
-  const [j,m] = String(maand||'').split('-').map(Number);
-  if(!j || !m) return maand;
-  const d = new Date(j, m, 1); // m is 1-based, als 0-based index = de maand erna
-  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
-}
-
 // Zoekt een eerder gemaakte uren-/dagfactuur voor dezelfde opdrachtgever én periode,
 // zodat maakUrenFactuur() die kan vervangen i.p.v. er een tweede naast te zetten.
-// Facturen van vóór aug 2026 hebben geen periodeVan/periodeTot; voor die vallen we
-// terug op de maand van de factuurdatum, met een maand speling omdat een periode
-// meestal pas ná afloop gefactureerd wordt.
+//
+// Matcht ALLEEN op een exact vastgelegde periode. Er heeft hier eerst een terugval
+// op de maand van de factuurdatum gezeten voor facturen van vóór aug 2026 (die geen
+// periodeVan/periodeTot hebben), maar die gokte ernaast: een factuur over juni die
+// begin juli verstuurd was, werd aangezien voor de julifactuur en aangeboden om te
+// overschrijven. Een misser kost hier een al verstuurde factuur, dus liever geen
+// match dan een verkeerde — het nummer is in de factuurgegevens-dialoog alsnog
+// met de hand te kiezen.
 function _zoekBestaandeUrenFactuur(opdr, van, tot){
   if(!van) return null;
-  const kandidaten = (DB.verkoop||[]).filter(f=>f && f.type==='uren' && f.klant===opdr);
-  if(!kandidaten.length) return null;
-  const exact = kandidaten.find(f=>f.periodeVan===van && f.periodeTot===tot);
-  if(exact) return exact;
-  const totPlus = _maandErna(tot);
-  // Alleen facturen zónder periodevelden: heeft een factuur ze wél en matcht hij
-  // hierboven niet, dan gaat het aantoonbaar om een andere periode.
-  return kandidaten.find(f=>{
-    if(f.periodeVan) return false;
-    const m = (f.datum||'').slice(0,7);
-    return m >= van && m <= totPlus;
-  }) || null;
+  return (DB.verkoop||[]).find(f=>
+    f && f.type==='uren' && f.klant===opdr &&
+    f.periodeVan===van && f.periodeTot===tot
+  ) || null;
 }
 
 async function maakUrenFactuur(opdrEnc){
