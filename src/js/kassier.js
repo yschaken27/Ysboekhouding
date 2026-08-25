@@ -904,20 +904,26 @@ async function maakUrenFactuur(opdrEnc){
     regelLijst = Object.values(groepen);
   }
 
-  // Regelbedrag is altijd exact aantal × tarief. Bij groeperen per tarieftype werden
-  // de per ingave al afgeronde bedragen opgeteld, waardoor de som een cent kon afwijken
-  // van (totaal aantal × tarief) — precies de rekensom die de klant maakt én die de
-  // BTW-aangifte per factuurregel doet (btw-rapport.js, rubriek 1a). Zo sluiten de
-  // factuur, de opgeslagen regels, de geboekte BTW en de aangifte op de cent aan.
+  // Regelbedrag is exact aantal × tarief. De uren worden eerst op 2 decimalen
+  // gezet, want dat aantal komt zo op de factuur én in de opgeslagen regel te
+  // staan; het bedrag mag daarna NIET afgerond worden.
   regelLijst.forEach(r=>{
     r.uren = Math.round((parseFloat(r.uren)||0)*100)/100;
-    r.bedrag = Math.round(r.uren * (parseFloat(r.tarief)||0) * 100)/100;
+    r.bedrag = r.uren * (parseFloat(r.tarief)||0);
   });
 
   const zonderBtw = !!p.urenZonderBtw;
   const btwPct = 21;
+  // Exact dezelfde twee formules als slaFactuurOp() in facturen.js: subtotaal is de
+  // ongeronde som van aantal × prijs, BTW wordt PER REGEL afgerond. Dat is geen
+  // detail — draaiFactuurGBTerug() en de BTW-aangifte herberekenen deze bedragen
+  // uit de opgeslagen regels. Rondde je hier anders af, dan haalde de terugdraai
+  // een iets ander bedrag van de omzetrekening dan er ooit op geboekt is, bleef er
+  // na het vervangen van een factuur een restje staan, en gaf rubriek 1a een ander
+  // BTW-bedrag dan er op 1510 staat.
   const subtotaalExcl = regelLijst.reduce((a,r)=>a+r.bedrag,0);
-  const btwBedrag = zonderBtw ? 0 : Math.round(subtotaalExcl * btwPct) / 100;
+  const btwBedrag = zonderBtw ? 0
+    : regelLijst.reduce((a,r)=>a+Math.round(r.bedrag*btwPct)/100,0);
   const totaalIncl = subtotaalExcl + btwBedrag;
 
   // ── Factuurnummer, factuurdatum en vervaldatum: de app stelt voor, de eigenaar
@@ -1073,7 +1079,13 @@ async function maakUrenFactuur(opdrEnc){
     if(gbBtw) gbBtw.saldo = (parseFloat(gbBtw.saldo)||0) + btwBedrag;
   }
 
-  save();
+  // save() draait de hele handeling terug zodra de balans niet klopt. Dat resultaat
+  // MOET gecontroleerd worden (zie state.js), anders volgt hieronder een
+  // succesmelding en een factuurvenster terwijl er niets bewaard is.
+  if(!save()){
+    toast('De factuur is niet aangemaakt: de balans zou er niet meer door kloppen. Er is niets gewijzigd.','error',9000);
+    return;
+  }
 
   // Verkooplijst en dashboard bijwerken — bij vervangen verandert een bestaande
   // rij, en die blijft anders de oude bedragen tonen tot de pagina herladen wordt.
