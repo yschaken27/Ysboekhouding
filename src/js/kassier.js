@@ -744,6 +744,35 @@ function _factuurDatumKort(iso){
   return d.length===3 ? `${d[2]}-${d[1]}-${d[0]}` : String(iso);
 }
 
+// Maand na een 'YYYY-MM'-string: 2026-12 → 2027-01 (ongeldige invoer blijft ongewijzigd)
+function _maandErna(maand){
+  const [j,m] = String(maand||'').split('-').map(Number);
+  if(!j || !m) return maand;
+  const d = new Date(j, m, 1); // m is 1-based, als 0-based index = de maand erna
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+
+// Zoekt een eerder gemaakte uren-/dagfactuur voor dezelfde opdrachtgever én periode,
+// zodat maakUrenFactuur() die kan vervangen i.p.v. er een tweede naast te zetten.
+// Facturen van vóór aug 2026 hebben geen periodeVan/periodeTot; voor die vallen we
+// terug op de maand van de factuurdatum, met een maand speling omdat een periode
+// meestal pas ná afloop gefactureerd wordt.
+function _zoekBestaandeUrenFactuur(opdr, van, tot){
+  if(!van) return null;
+  const kandidaten = (DB.verkoop||[]).filter(f=>f && f.type==='uren' && f.klant===opdr);
+  if(!kandidaten.length) return null;
+  const exact = kandidaten.find(f=>f.periodeVan===van && f.periodeTot===tot);
+  if(exact) return exact;
+  const totPlus = _maandErna(tot);
+  // Alleen facturen zónder periodevelden: heeft een factuur ze wél en matcht hij
+  // hierboven niet, dan gaat het aantoonbaar om een andere periode.
+  return kandidaten.find(f=>{
+    if(f.periodeVan) return false;
+    const m = (f.datum||'').slice(0,7);
+    return m >= van && m <= totPlus;
+  }) || null;
+}
+
 async function maakUrenFactuur(opdrEnc){
   const opdr = decodeURIComponent(opdrEnc);
   const items = _urenVanMaand()
@@ -772,11 +801,44 @@ async function maakUrenFactuur(opdrEnc){
     if(!ok) return;
   }
 
-  // Factuurnummer - eigen teller in profiel, losgekoppeld van verkooplijst
-  const factuurNr = nextFactuurNummer('uren');
-  const datumISO = new Date().toISOString().slice(0,10);
-  const vandaagFmt = new Date().toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
-  const betaaldatumISO = (()=>{ const d=new Date(); d.setDate(d.getDate()+30); return d.toISOString().slice(0,10); })();
+  // ── Bestaat er al een factuur voor deze opdrachtgever + periode? ──────────
+  // Zonder deze check maakte elke klik op "Maak factuur" een NIEUWE factuur met
+  // een nieuw (hoger) nummer én boekte hij debiteuren/omzet/BTW er nog eens
+  // bovenop. Een teruggestuurde factuur corrigeren gaf dus een nummer dat niet
+  // meer overeenkwam met wat de klant al in handen had.
+  const { van: perVan, tot: perTot } = _urenPeriode();
+  const bestaande = _zoekBestaandeUrenFactuur(opdr, perVan, perTot);
+  let vervangen = null;
+  if(bestaande){
+    // Betaling eerst laten ontkoppelen: de terugdraai hieronder raakt alleen de
+    // factuurboeking, niet de betaling — die zou anders los in de bank blijven hangen.
+    if(bestaande.status==='betaald' || _getBetalingen(bestaande).length){
+      toast(`Factuur ${bestaande.nummer} is al betaald of gekoppeld aan een banktransactie. Draai die betaling eerst terug bij Verkoopfacturen voordat je hem opnieuw genereert.`,'error',9000);
+      return;
+    }
+    const okVervang = await bevestig(
+      `Er bestaat al factuur ${bestaande.nummer} voor ${opdr} (${bestaande.periodeLabel || _urenPeriodeLabel()}, ${fmt(bestaande.totaalIncl)}).\n\nVervangen met behoud van hetzelfde factuurnummer en dezelfde factuurdatum? De oude boeking wordt teruggedraaid.`,
+      'Factuur vervangen', 'Vervangen'
+    );
+    if(okVervang){
+      vervangen = bestaande;
+    } else {
+      const okNieuw = await bevestig(
+        `Toch een extra factuur aanmaken met een nieuw nummer? ${bestaande.nummer} blijft dan gewoon staan.`,
+        'Extra factuur', 'Nieuwe factuur'
+      );
+      if(!okNieuw) return;
+    }
+  }
+
+  // Factuurnummer - eigen teller in profiel, losgekoppeld van verkooplijst.
+  // Bij vervangen: nummer, factuurdatum én vervaldatum van de oude factuur
+  // overnemen, zodat de klant exact dezelfde factuur terugkrijgt.
+  const factuurNr = vervangen ? vervangen.nummer : nextFactuurNummer('uren');
+  const datumISO = vervangen?.datum || new Date().toISOString().slice(0,10);
+  const vandaagFmt = new Date(datumISO).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
+  const betaaldatumISO = vervangen?.vervaldatum
+    || (()=>{ const d=new Date(datumISO); d.setDate(d.getDate()+30); return d.toISOString().slice(0,10); })();
   const betaaldatumFmt = new Date(betaaldatumISO).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
 
   // Periode op de factuur: één maand, of de hele reeks bij "Meerdere maanden"
@@ -855,26 +917,11 @@ async function maakUrenFactuur(opdrEnc){
     zonderBtw
   });
 
-  // Sla op als verkoop-entry zodat factuurnummer-teller klopt en factuur in dashboard verschijnt
-  if(!DB.verkoop) DB.verkoop=[];
-  DB.verkoop.push({
-    id: uid(),
-    nummer: factuurNr,
-    datum: datumISO,
-    vervaldatum: betaaldatumISO,
-    klant: opdr,
-    totaalExcl: subtotaalExcl,
-    totaalIncl: totaalIncl,
-    totaal: totaalIncl,
-    btwBedrag: btwBedrag,
-    btwTarief: zonderBtw ? 0 : btwPct,
-    status: 'verstuurd',
-    type: 'uren'
-  });
-
   // Grootboekboekingen (factuurstelsel): Debiteuren D / Omzet C / BTW te betalen C
   if(!DB.grootboek) DB.grootboek = [];
-  // Zorg dat benodigde rekeningen bestaan — voeg toe uit DEFAULT_GB als ze ontbreken
+  // Zorg dat benodigde rekeningen bestaan — voeg toe uit DEFAULT_GB als ze ontbreken.
+  // Dit moet vóór de verkoop-entry, want de factuurregels hieronder verwijzen naar
+  // de omzetrekening waar de boeking straks ook echt op landt.
   [
     {nummer:'1300', naam:'Debiteuren',              type:'activa'},
     {nummer:'4000', naam:'Omzet diensten',           type:'omzet'},
@@ -883,6 +930,61 @@ async function maakUrenFactuur(opdrEnc){
     const bestaat = DB.grootboek.find(g=>g.nummer===def.nummer);
     if(!bestaat) DB.grootboek.push({id:'gb_auto_'+def.nummer, ...def, saldo:0});
   });
+
+  // Sla op als verkoop-entry zodat factuurnummer-teller klopt en factuur in dashboard verschijnt.
+  // De factuurregels gaan MEE: zonder `regels` toonde de knop "📄 Factuur" bij
+  // Verkoopfacturen een lege regeltabel en maakte "Bewerk" er één regel van met
+  // aantal 1 en omschrijving "Factuur UF-…" — de urenspecificatie was dan weg.
+  if(!DB.verkoop) DB.verkoop=[];
+  const gbOmzetRek = DB.grootboek.find(g=>g.type==='omzet')
+                  || DB.grootboek.find(g=>(g.naam||'').toLowerCase().includes('omzet'));
+  const verkoopRegels = regelLijst.map(r=>({
+    omschrijving: perDienst
+      ? `${r.label}${r.wie?' ('+r.wie+')':''}${r.datum?' — '+_factuurDatumKort(r.datum):''}`
+      : `${eInfo.gewerkt} — ${r.label} (${maandLabel})`,
+    aantal: Math.round((parseFloat(r.uren)||0)*100)/100,
+    prijs: parseFloat(r.tarief)||0,
+    // Expliciet de omzetrekening waarop hieronder ook geboekt wordt. Leeg laten zou
+    // deze omzet in de P&L onder "overig" laten vallen (btw-rapport.js, verdeelFactuur).
+    gbId: gbOmzetRek?.id || '',
+    btw: zonderBtw ? '0' : String(btwPct)
+  }));
+  const klantAdres = [
+    opdrObj.straat || opdrObj.adres || '',
+    (String(opdrObj.postcode||'')+' '+String(opdrObj.stad||'')).trim()
+  ].filter(Boolean).join('\n');
+
+  const verkoopEntry = {
+    id: vervangen?.id || uid(),
+    nummer: factuurNr,
+    datum: datumISO,
+    vervaldatum: betaaldatumISO,
+    klant: opdr,
+    adres: klantAdres,
+    btwnr: opdrObj.btwNummer || '',
+    regels: verkoopRegels,
+    omschrijving: `${eInfo.gewerkt} ${maandLabel}`,
+    totaalExcl: subtotaalExcl,
+    totaalIncl: totaalIncl,
+    totaal: totaalIncl,
+    btwBedrag: btwBedrag,
+    btwTarief: zonderBtw ? 0 : btwPct,
+    status: 'verstuurd',
+    type: 'uren',
+    // Periode vastleggen zodat een volgende generatie deze factuur terugvindt
+    periodeVan: perVan,
+    periodeTot: perTot,
+    periodeLabel: maandLabel
+  };
+
+  if(vervangen){
+    // Oude boeking eerst spiegelen, anders komt de nieuwe er bovenop (#21.4)
+    draaiFactuurGBTerug(vervangen, 'verkoop');
+    const i = DB.verkoop.findIndex(f=>f.id===vervangen.id);
+    if(i>=0) DB.verkoop[i] = verkoopEntry; else DB.verkoop.push(verkoopEntry);
+  } else {
+    DB.verkoop.push(verkoopEntry);
+  }
 
   const gbDebiteuren = DB.grootboek.find(g=>g.nummer==='1300')
                     || DB.grootboek.find(g=>(g.naam||'').toLowerCase().includes('debiteuren'));
@@ -900,6 +1002,15 @@ async function maakUrenFactuur(opdrEnc){
   }
 
   save();
+
+  // Verkooplijst en dashboard bijwerken — bij vervangen verandert een bestaande
+  // rij, en die blijft anders de oude bedragen tonen tot de pagina herladen wordt.
+  if(typeof renderFacturen==='function') renderFacturen('verkoop');
+  if(typeof renderDashboard==='function') renderDashboard();
+
+  toast(vervangen
+    ? `Factuur ${factuurNr} vervangen — zelfde factuurnummer en factuurdatum behouden.`
+    : `Factuur ${factuurNr} aangemaakt.`, 'success', 6000);
 
   openFactuurVenster(html);
 }
