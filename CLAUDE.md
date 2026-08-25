@@ -418,6 +418,54 @@ Elke saldo-mutatie hoort een tegenboeking te hebben:
 - **Vast activum via bankkoppeling**: de `fakeFactuur.totaalExcl` moet EXCL. BTW zijn
   (`bedrag/((100+btwTarief)/100)`), anders schrijft het schema af over de BTW heen.
 
+### 29. Nooit GOKKEN welk document de gebruiker bedoelt — laat hem kiezen
+Bij het opnieuw genereren van een uren-factuur (aug 2026) zocht `_zoekBestaandeUrenFactuur()`
+zelf uit wélke bestaande factuur bij de gekozen periode hoorde. Facturen van vóór die wijziging
+hebben geen `periodeVan`/`periodeTot`, dus viel de code terug op de maand van de **factuurdatum**,
+met een maand speling "omdat je meestal ná afloop factureert". Gevolg: een factuur over juni die
+begin juli verstuurd was, viel binnen het venster [juli t/m augustus] en werd aangeboden om
+overschreven te worden — inclusief het overnemen van háár factuurnummer en factuurdatum. Eén klik
+verder was een al verstuurde factuur weg.
+
+De regel: zodra een heuristiek kan aanwijzen wélk bestaand document overschreven/vervangen wordt,
+mag hij niet gokken. Alleen een exacte, expliciet vastgelegde sleutel telt (hier `periodeVan` +
+`periodeTot`); geen match = geen match, en dan een nieuw document. Wil de gebruiker tóch een
+bestaand document raken, dan wijst hij het zelf aan.
+- `_zoekBestaandeUrenFactuur()` matcht daarom alleen exact. Bouw daar nooit een terugval in
+  op datum, naam-gelijkenis of bedrag.
+- De keuze ligt in de dialoog `modal-uren-factuurnr` (index.html) + `vraagUrenFactuurGegevens()`
+  / `_ufnControleer()` (kassier.js): factuurnummer, factuurdatum en vervaldatum, voorgevuld maar
+  vrij te wijzigen. `_ufnControleer()` geeft live terug wat het ingetypte nummer betekent —
+  onbekend = nieuwe factuur, bestaande uren-factuur = expliciete waarschuwing dát die vervangen
+  wordt, nummer van een handmatige verkoopfactuur of een al betaalde factuur = knop geblokkeerd.
+- Een Promise-dialoog moet ALTIJD resolven. De globale Escape-handler in `state.js` sluit elke
+  open modal maar kent je Promise niet; zonder eigen Escape-afhandeling blijft de aanroeper
+  eeuwig hangen. Zie de keydown-listener bij `_ufnAnnuleer()`.
+
+### 30. Een nieuwe boekingsflow moet de rekenformules van `slaFactuurOp()` kopiëren
+Terugdraaien is alleen een exacte spiegel (#21.4) als het terugdraaien dezelfde som maakt als het
+boeken. `draaiFactuurGBTerug()` (facturen.js) herberekent het excl.-bedrag uit de opgeslagen regels
+als **ongeronde** `aantal × prijs`. Boek je zelf iets anders op de omzetrekening, dan blijft er na
+elke terugdraai een restje staan. `maakUrenFactuur()` rondde het regelbedrag eerst per regel af:
+gemeten restje tot €0,065 bij 30 regels — ruim boven de balanstolerantie van 0,005.
+
+Neem dus letterlijk de twee formules uit `slaFactuurOp()` (facturen.js) over:
+- `totaalExcl` = **ongeronde** som van `aantal × prijs`;
+- `btwBedrag`  = som van **per regel** afgeronde BTW (`Math.round(excl*pct)/100` per regel).
+
+Die tweede is niet cosmetisch: `renderBTWAangifte` rondt de BTW óók per regel af, dus rond je het
+totaal in één keer af, dan wijkt rubriek 1a af van wat er op 1510 staat — een stille fout die de
+aansluitcontrole van #26 pas boven de €0,02 ziet.
+
+Sla `aantal` wél afgerond op (2 decimalen): dat getal staat op de factuur én in de regel, en moet
+overal hetzelfde zijn.
+
+**En controleer `save()`.** Die draait bij een scheve balans de héle handeling terug
+(`herstelNaLaatsteGoedeStand()`) en geeft `false`. `maakUrenFactuur()` negeerde dat en meldde
+"Factuur vervangen" plus een geopend factuurvenster terwijl er niets bewaard was en de oude
+factuur nog stond. Altijd `if(!save()){ toast(...); return; }` vóór elke succesmelding, render
+of vervolgactie — precies zoals `slaFactuurOp()` het doet.
+
 ## Losse eindjes (geen risico)
 - (Verwijderd 2026-07-22: de twee oude "regel ~3976 / ~1751"-notities verwezen naar de
   inmiddels opgesliste monoliet-`index.html` en klopten niet meer met de `src/`-structuur.)
