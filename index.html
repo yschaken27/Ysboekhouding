@@ -924,6 +924,27 @@
   </div>
 </div>
 
+<!-- UREN-FACTUURGEGEVENS MODAL -->
+<!-- Laatste stap voor het genereren van een uren-/dagfactuur. Bestaat zodat een
+     teruggestuurde factuur opnieuw gemaakt kan worden met HETZELFDE nummer en
+     dezelfde factuurdatum: de app vult voor, de eigenaar beslist. -->
+<div class="modal-overlay" id="modal-uren-factuurnr">
+  <div class="modal" style="width:460px;max-width:96vw;">
+    <div class="modal-header"><h3>Factuurgegevens</h3><button class="modal-close" onclick="_ufnAnnuleer()">✕</button></div>
+    <div id="ufn-context" style="padding:0 20px;color:var(--text-mid);font-size:13px;"></div>
+    <div class="form-grid">
+      <div class="form-group"><label>Factuurnummer</label><input id="ufn-nummer" type="text" oninput="_ufnControleer()"></div>
+      <div class="form-group"><label>Factuurdatum</label><input id="ufn-datum" type="date" oninput="_ufnControleer()"></div>
+      <div class="form-group"><label>Vervaldatum</label><input id="ufn-vervaldatum" type="date"></div>
+    </div>
+    <div id="ufn-melding" style="display:none;margin:0 20px 4px;padding:10px 12px;border-radius:8px;font-size:13px;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="_ufnAnnuleer()">Annuleren</button>
+      <button class="btn btn-primary" id="ufn-ok" onclick="_ufnBevestig()">Factuur aanmaken</button>
+    </div>
+  </div>
+</div>
+
 <!-- HANDMATIG MODAL -->
 <div class="modal-overlay" id="modal-handmatig">
   <div class="modal" style="width:460px;">

@@ -762,6 +762,79 @@ function _zoekBestaandeUrenFactuur(opdr, van, tot){
   ) || null;
 }
 
+// ── Factuurgegevens-dialoog (modal-uren-factuurnr in index.html) ──────────────
+// Geeft een Promise die {nummer, datum, vervaldatum} teruggeeft, of null bij
+// annuleren. Bestaat zodat de eigenaar een teruggestuurde factuur opnieuw kan
+// maken met hetzelfde nummer en dezelfde factuurdatum als de klant al heeft.
+let _ufnResolve = null;
+
+function vraagUrenFactuurGegevens(voorstel){
+  return new Promise(resolve=>{
+    _ufnResolve = resolve;
+    document.getElementById('ufn-context').innerHTML   = voorstel.context || '';
+    document.getElementById('ufn-nummer').value        = voorstel.nummer || '';
+    document.getElementById('ufn-datum').value         = voorstel.datum || '';
+    document.getElementById('ufn-vervaldatum').value   = voorstel.vervaldatum || '';
+    openModal('modal-uren-factuurnr');
+    _ufnControleer();
+  });
+}
+
+// Live terugkoppeling op het ingetypte nummer: bestaat het al, dan moet zichtbaar
+// zijn DÁT er een bestaande factuur vervangen wordt, en welke.
+function _ufnControleer(){
+  const nr  = (document.getElementById('ufn-nummer').value||'').trim();
+  const mld = document.getElementById('ufn-melding');
+  const ok  = document.getElementById('ufn-ok');
+  const zet = (tekst, kleur)=>{
+    mld.style.display    = tekst ? 'block' : 'none';
+    mld.innerHTML        = tekst;
+    mld.style.background = kleur==='rood' ? 'rgba(220,38,38,.1)' : 'rgba(234,179,8,.12)';
+    mld.style.color      = kleur==='rood' ? '#dc2626' : '#a16207';
+  };
+
+  if(!nr){ zet('Vul een factuurnummer in.','rood'); ok.disabled = true; return; }
+
+  const bestaand = (DB.verkoop||[]).find(f=>f && (f.nummer||'').trim()===nr);
+  if(!bestaand){
+    zet('',''); ok.disabled = false; ok.textContent = 'Factuur aanmaken'; return;
+  }
+  if(bestaand.type!=='uren'){
+    zet(`Nummer ${esc(nr)} is al in gebruik door een handmatige verkoopfactuur (${esc(bestaand.klant||'')}). Kies een ander nummer.`,'rood');
+    ok.disabled = true; return;
+  }
+  if(bestaand.status==='betaald' || _getBetalingen(bestaand).length){
+    zet(`Factuur ${esc(nr)} is al betaald of gekoppeld aan een banktransactie. Draai die betaling eerst terug bij Verkoopfacturen.`,'rood');
+    ok.disabled = true; return;
+  }
+  zet(`Let op: factuur ${esc(nr)} (${esc(bestaand.klant||'')}, ${fmt(bestaand.totaalIncl)}) bestaat al en wordt vervángen. De oude boeking wordt teruggedraaid.`,'geel');
+  ok.disabled = false; ok.textContent = 'Factuur vervangen';
+}
+
+function _ufnBevestig(){
+  const nr     = (document.getElementById('ufn-nummer').value||'').trim();
+  const datum  = document.getElementById('ufn-datum').value;
+  const verval = document.getElementById('ufn-vervaldatum').value;
+  if(!nr)    { toast('Vul een factuurnummer in.','error'); return; }
+  if(!datum) { toast('Vul een factuurdatum in.','error'); return; }
+  if(verval && verval < datum){ toast('De vervaldatum ligt vóór de factuurdatum.','error'); return; }
+  closeModal('modal-uren-factuurnr');
+  const r = _ufnResolve; _ufnResolve = null;
+  if(r) r({ nummer:nr, datum, vervaldatum: verval || datum });
+}
+
+function _ufnAnnuleer(){
+  closeModal('modal-uren-factuurnr');
+  const r = _ufnResolve; _ufnResolve = null;
+  if(r) r(null);
+}
+
+// De globale Escape-handler (state.js) sluit élke open modal, maar weet niets van
+// onze Promise — zonder dit bleef maakUrenFactuur() na een Escape eeuwig wachten.
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape' && _ufnResolve) _ufnAnnuleer();
+});
+
 async function maakUrenFactuur(opdrEnc){
   const opdr = decodeURIComponent(opdrEnc);
   const items = _urenVanMaand()
@@ -790,45 +863,9 @@ async function maakUrenFactuur(opdrEnc){
     if(!ok) return;
   }
 
-  // ── Bestaat er al een factuur voor deze opdrachtgever + periode? ──────────
-  // Zonder deze check maakte elke klik op "Maak factuur" een NIEUWE factuur met
-  // een nieuw (hoger) nummer én boekte hij debiteuren/omzet/BTW er nog eens
-  // bovenop. Een teruggestuurde factuur corrigeren gaf dus een nummer dat niet
-  // meer overeenkwam met wat de klant al in handen had.
+  // Periode van deze factuur — legt ook vast welke eerdere factuur bij dezelfde
+  // periode hoort, zodat de dialoog verderop die kan voorstellen om te vervangen.
   const { van: perVan, tot: perTot } = _urenPeriode();
-  const bestaande = _zoekBestaandeUrenFactuur(opdr, perVan, perTot);
-  let vervangen = null;
-  if(bestaande){
-    // Betaling eerst laten ontkoppelen: de terugdraai hieronder raakt alleen de
-    // factuurboeking, niet de betaling — die zou anders los in de bank blijven hangen.
-    if(bestaande.status==='betaald' || _getBetalingen(bestaande).length){
-      toast(`Factuur ${bestaande.nummer} is al betaald of gekoppeld aan een banktransactie. Draai die betaling eerst terug bij Verkoopfacturen voordat je hem opnieuw genereert.`,'error',9000);
-      return;
-    }
-    const okVervang = await bevestig(
-      `Er bestaat al factuur ${bestaande.nummer} voor ${opdr} (${bestaande.periodeLabel || _urenPeriodeLabel()}, ${fmt(bestaande.totaalIncl)}).\n\nVervangen met behoud van hetzelfde factuurnummer en dezelfde factuurdatum? De oude boeking wordt teruggedraaid.`,
-      'Factuur vervangen', 'Vervangen'
-    );
-    if(okVervang){
-      vervangen = bestaande;
-    } else {
-      const okNieuw = await bevestig(
-        `Toch een extra factuur aanmaken met een nieuw nummer? ${bestaande.nummer} blijft dan gewoon staan.`,
-        'Extra factuur', 'Nieuwe factuur'
-      );
-      if(!okNieuw) return;
-    }
-  }
-
-  // Factuurnummer - eigen teller in profiel, losgekoppeld van verkooplijst.
-  // Bij vervangen: nummer, factuurdatum én vervaldatum van de oude factuur
-  // overnemen, zodat de klant exact dezelfde factuur terugkrijgt.
-  const factuurNr = vervangen ? vervangen.nummer : nextFactuurNummer('uren');
-  const datumISO = vervangen?.datum || new Date().toISOString().slice(0,10);
-  const vandaagFmt = new Date(datumISO).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
-  const betaaldatumISO = vervangen?.vervaldatum
-    || (()=>{ const d=new Date(datumISO); d.setDate(d.getDate()+30); return d.toISOString().slice(0,10); })();
-  const betaaldatumFmt = new Date(betaaldatumISO).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
 
   // Periode op de factuur: één maand, of de hele reeks bij "Meerdere maanden"
   const maandLabel = _urenPeriodeLabel();
@@ -883,6 +920,40 @@ async function maakUrenFactuur(opdrEnc){
   const btwBedrag = zonderBtw ? 0 : Math.round(subtotaalExcl * btwPct) / 100;
   const totaalIncl = subtotaalExcl + btwBedrag;
 
+  // ── Factuurnummer, factuurdatum en vervaldatum: de app stelt voor, de eigenaar
+  // beslist. Automatisch bepalen ging mis zodra een factuur gecorrigeerd moest
+  // worden: dan kreeg de klant een nieuw, hoger nummer terwijl hij het oude al
+  // op zijn bureau had liggen.
+  const bestaande = _zoekBestaandeUrenFactuur(opdr, perVan, perTot);
+  const standaardDatum = bestaande?.datum || new Date().toISOString().slice(0,10);
+  const standaardVerval = bestaande?.vervaldatum
+    || (()=>{ const d=new Date(standaardDatum); d.setDate(d.getDate()+30); return d.toISOString().slice(0,10); })();
+
+  const keuze = await vraagUrenFactuurGegevens({
+    context: bestaande
+      ? `Er staat al een factuur voor ${esc(opdr)} over ${esc(maandLabel)}. Laat het nummer staan om die te vervangen, of geef een ander nummer op.`
+      : `Factuur voor ${esc(opdr)} over ${esc(maandLabel)} — ${fmt(totaalIncl)} incl. BTW.`,
+    nummer: bestaande?.nummer || nextFactuurNummer('uren'),
+    datum: standaardDatum,
+    vervaldatum: standaardVerval
+  });
+  if(!keuze) return;
+
+  const factuurNr      = keuze.nummer;
+  const datumISO       = keuze.datum;
+  const betaaldatumISO = keuze.vervaldatum;
+  const vandaagFmt     = new Date(datumISO).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
+  const betaaldatumFmt = new Date(betaaldatumISO).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
+
+  // Hoort het gekozen nummer al bij een uren-factuur, dan vervangen we die. De
+  // dialoog heeft dat zichtbaar gemaakt; hier nog een keer de betaal-/bankcheck,
+  // want de data kan tussentijds via de cloud gewijzigd zijn.
+  const vervangen = (DB.verkoop||[]).find(f=>f && f.type==='uren' && (f.nummer||'').trim()===factuurNr) || null;
+  if(vervangen && (vervangen.status==='betaald' || _getBetalingen(vervangen).length)){
+    toast(`Factuur ${factuurNr} is al betaald of gekoppeld aan een banktransactie. Draai die betaling eerst terug bij Verkoopfacturen.`,'error',9000);
+    return;
+  }
+
   // Opmaak komt uit de gedeelde bouwFactuurHtml() in facturen.js — dezelfde
   // template als de "Factuur"-knop bij verkoopfacturen, zodat er maar een
   // factuurontwerp te onderhouden is (zie CLAUDE.md, geen dubbele code).
@@ -897,7 +968,9 @@ async function maakUrenFactuur(opdrEnc){
     factuurNr,
     factuurdatumFmt: vandaagFmt,
     vervaldatumFmt: betaaldatumFmt,
-    termijnLabel: '30 dagen',
+    // Uit de datums zelf: de vervaldatum is nu vrij te kiezen, dus een vaste
+    // "30 dagen" op de factuur zou een onwaarheid kunnen worden.
+    termijnLabel: berekenTermijnLabel(datumISO, betaaldatumISO),
     kolommen: perDienst
       ? ['Omschrijving','Datum','Aantal',eInfo.tariefLabel,'Bedrag']
       : ['Omschrijving','Periode','Aantal',eInfo.tariefLabel,'Bedrag'],
@@ -1008,7 +1081,7 @@ async function maakUrenFactuur(opdrEnc){
   if(typeof renderDashboard==='function') renderDashboard();
 
   toast(vervangen
-    ? `Factuur ${factuurNr} vervangen — zelfde factuurnummer en factuurdatum behouden.`
+    ? `Factuur ${factuurNr} vervangen — de oude boeking is teruggedraaid.`
     : `Factuur ${factuurNr} aangemaakt.`, 'success', 6000);
 
   openFactuurVenster(html);
