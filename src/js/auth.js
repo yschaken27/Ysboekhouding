@@ -40,8 +40,33 @@ function verrijkActieveKassier(){
     email: k.email || email,
     bedrijven: k.bedrijven || _actieveKassier.bedrijven || [],
     modules: k.modules || ['dashboard','kassa','uploads'],
+    // Per bedrijf welke opdrachtgevers deze kassier mag zien in de Facturen-tab.
+    // Vorm: { bedrijfsnaam: ['Klant A','Klant B'] }. Opdrachtgevers staan per
+    // bedrijf in DB.profiel, kassiers zijn globaal — vandaar de map en niet één
+    // platte lijst: een naam uit bedrijf A zegt niets over bedrijf B.
+    // ONTBREEKT de sleutel voor een bedrijf, dan is er niets ingesteld en mag
+    // de kassier alles zien (bestaande kassiers verliezen zo geen toegang).
+    opdrachtgevers: k.opdrachtgevers || {},
   };
   return true;
+}
+
+// Welke opdrachtgevers mag de ingelogde kassier zien in het HUIDIGE bedrijf?
+// null = geen beperking ingesteld (alles zichtbaar). Een lege array betekent
+// wél een beperking: de eigenaar heeft expliciet niets aangevinkt.
+function kassierOpdrachtgeverFilter(){
+  if(_loginRol !== 'kassier') return null;
+  const map = _actieveKassier?.opdrachtgevers;
+  if(!map || !huidigBedrijf) return null;
+  const lijst = map[huidigBedrijf];
+  return Array.isArray(lijst) ? lijst : null;
+}
+
+// Mag de ingelogde kassier deze klantnaam zien? Zonder filter altijd ja.
+function kassierMagOpdrachtgever(naam){
+  const toegestaan = kassierOpdrachtgeverFilter();
+  if(!toegestaan) return true;
+  return toegestaan.some(o=>String(o||'').toLowerCase() === String(naam||'').toLowerCase());
 }
 
 async function laadKassiersVoorLogin(){
@@ -263,7 +288,11 @@ async function kiesBedrijfNaLogin(bedrijf){
 
   if(_loginRol === 'kassier'){
     const email = (window.FBAuth && FBAuth.currentEmail && FBAuth.currentEmail()) || 'Gebruiker';
-    _actieveKassier = { naam: email, bedrijven: [bedrijf] };
+    // .email meteen vullen, niet pas bij verrijkActieveKassier(): het is de sleutel
+    // waarop een betaalmelding aan een medewerker gekoppeld wordt (en waarop de
+    // terugdraai-knop bepaalt of dit zijn eigen melding is). Staat de gebruiker
+    // nog niet in DB.kassiers, dan blijft dat veld anders leeg.
+    _actieveKassier = { naam: email, email: String(email).toLowerCase(), bedrijven: [bedrijf] };
   } else {
     _actieveKassier = null;
   }
@@ -638,6 +667,30 @@ function openGebruikerDetail(id){
       ${m.l}
     </label>`).join('');
 
+  // Opdrachtgevers — PER BEDRIJF. De lijst hieronder is die van het bedrijf dat
+  // nu open staat; voor een ander bedrijf open je de gebruiker daar opnieuw.
+  const opdrEl = document.getElementById('gd-opdrachtgevers');
+  const opdrKopEl = document.getElementById('gd-opdrachtgevers-kop');
+  if(opdrKopEl) opdrKopEl.textContent = 'Opdrachtgevers in ' + getBedrijfWeergavenaam(huidigBedrijf);
+  if(opdrEl){
+    const alle = (DB.profiel?.opdrachtgevers || []).map(o=>o.naam).filter(Boolean);
+    // undefined = niets ingesteld = alles mag. Dan alles aanvinken, zodat de
+    // eigenaar ziet wat er nu geldt en bewust kan uitvinken.
+    const huidig = Array.isArray(k.opdrachtgevers?.[huidigBedrijf])
+      ? k.opdrachtgevers[huidigBedrijf]
+      : null;
+    if(!alle.length){
+      opdrEl.innerHTML = '<div style="font-size:12px;color:var(--text-dim);">Nog geen opdrachtgevers in dit bedrijf — voeg ze toe via ⚙ Opdrachtgevers.</div>';
+    } else {
+      opdrEl.innerHTML = alle.map(naam=>`
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;
+          background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;">
+          <input type="checkbox" value="${esc(naam)}" style="width:auto;" ${(!huidig || huidig.includes(naam))?'checked':''}>
+          ${esc(naam)}
+        </label>`).join('');
+    }
+  }
+
   openModal('modal-gebruiker-detail');
 }
 
@@ -660,6 +713,17 @@ async function slaGebruikerDetailOp(){
   k.naam = naam;
   k.bedrijven = gekozenBedrijven;
   k.modules = gekozenModules;
+
+  // Opdrachtgevers alleen voor het bedrijf dat nu open staat bijwerken — de
+  // checkboxes tonen ook alleen dit bedrijf. Andere bedrijven ongemoeid laten,
+  // anders wist een bewerking hier stilletjes de instelling daar.
+  const alleOpdr = (DB.profiel?.opdrachtgevers || []).map(o=>o.naam).filter(Boolean);
+  if(alleOpdr.length && huidigBedrijf){
+    const opdrChecks = document.querySelectorAll('#gd-opdrachtgevers input[type="checkbox"]:checked');
+    const gekozenOpdr = [...opdrChecks].map(c=>c.value);
+    if(!k.opdrachtgevers || typeof k.opdrachtgevers !== 'object') k.opdrachtgevers = {};
+    k.opdrachtgevers[huidigBedrijf] = gekozenOpdr;
+  }
 
   save();
   await slaKassiersOpCloud();

@@ -331,6 +331,70 @@ let _pendingSaveData = null;
 let _saveInFlight = null;
 function _heeftOnbevestigdeSave(){ return !!(_pendingSaveData || _saveInFlight); }
 
+// ============================================================
+// CONTROLE OP VERLOREN KASSIER-BOEKINGEN (alleen eigenaar)
+// ============================================================
+// Een kassier boekt via één Firestore-transactie (markeerFactuurBetaald) recht in
+// de cloud. Jouw eigen save() schrijft data/verkoop en data/main met .set() zonder
+// merge vanuit het geheugen van DIT toestel. Boekt een kassier precies terwijl jij
+// een save open hebt staan, dan negeert verwerkCloudData() die snapshot (de gate
+// hieronder) en overschrijft jouw save de boeking alsnog — de melding is dan weg
+// zonder dat iemand het merkt.
+//
+// Herstellen kan niet automatisch: op dat moment is de cloudversie al verdwenen.
+// Wat wél kan is het zichtbaar maken. Het logboek data/kassierboekingen staat
+// buiten de zes documenten die save() overschrijft en blijft dus staan. Wijkt de
+// laatste logregel van een factuur af van wat de factuur zelf laat zien, dan is
+// er iets verloren gegaan en zeggen we dat — met factuurnummer, zodat je het in
+// één klik kunt rechtzetten.
+let _kassierCheckBezig = false;
+let _kassierCheckLaatst = 0;
+async function controleerKassierBoekingen(){
+  if(_loginRol !== 'eigenaar' || !USE_CLOUD || !huidigBedrijf) return;
+  if(_kassierCheckBezig) return;
+  // Hoogstens één keer per halve minuut; dit draait na elke geslaagde save.
+  if(Date.now() - _kassierCheckLaatst < 30000) return;
+  _kassierCheckBezig = true;
+  try {
+    const json = await fbAanroep(fb=>fb.laadKassierBoekingen(huidigBedrijf));
+    const items = (JSON.parse(json||'{}').items) || [];
+    _kassierCheckLaatst = Date.now();
+
+    // Alleen de laatste regel per factuur telt: een boeking die daarna is
+    // teruggedraaid hoort niet meer terug te zien te zijn.
+    const laatste = new Map();
+    items.forEach(e=>{ if(e && e.factuurId) laatste.set(e.factuurId, e); });
+
+    const grens = Date.now() - 7*24*60*60*1000; // ouder dan een week: laat rusten
+    const kwijt = [];
+    laatste.forEach(e=>{
+      if(new Date(e.op).getTime() < grens) return;
+      const f = (DB.verkoop||[]).find(x=>x && x.id===e.factuurId);
+      if(!f) return; // factuur verwijderd — dat was een bewuste actie
+      // Door jou teruggedraaid? Dan klopt het dat de melding weg is.
+      if(f.kassierBoekingTeruggedraaid === e.op) return;
+      const opFactuur = f.betaaldDoorKassier?.op || null;
+      if(e.richting > 0 && opFactuur !== e.op) kwijt.push(e);
+      if(e.richting < 0 && opFactuur) kwijt.push(e);
+    });
+
+    if(kwijt.length){
+      const namen = kwijt.slice(0,3).map(e=>e.factuurNr||e.factuurId).join(', ');
+      toast(
+        `Let op: ${kwijt.length} betaalmelding${kwijt.length===1?'':'en'} van een medewerker `
+        + `staat niet meer op de factuur (${namen}${kwijt.length>3?'…':''}). `
+        + `Controleer die factu${kwijt.length===1?'ur':'ren'} en zet hem zo nodig zelf op betaald.`,
+        'warning', 12000);
+      console.warn('[kassierboekingen] niet terug te vinden op de factuur:', kwijt);
+    }
+  } catch(e){
+    // Geen logboek of geen verbinding: stil laten gaan, dit is een controle.
+    console.debug('[controleerKassierBoekingen]', e);
+  } finally {
+    _kassierCheckBezig = false;
+  }
+}
+
 function toonSyncStatus(status){
   let el = document.getElementById('sync-status');
   if(!el){
@@ -503,6 +567,9 @@ function _kickSave(){
       _saveInFlight = null;
       // Kwam er tijdens het schrijven een nieuwere wijziging binnen? Direct wegschrijven.
       if(_pendingSaveData && navigator.onLine) _kickSave();
+      // Deze save kan een kassier-boeking overschreven hebben die tijdens de
+      // listener-gate binnenkwam. Pas als alles weggeschreven is controleren.
+      else if(typeof controleerKassierBoekingen === 'function') controleerKassierBoekingen();
     })
     .catch(err=>{
       _saveInFlight = null;

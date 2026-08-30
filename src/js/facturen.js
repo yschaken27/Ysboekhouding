@@ -796,7 +796,15 @@ function draaiFactuurGBTerug(f, type){
 function boekHandmatigeBetaling(f, type, richting){
   const incl = (parseFloat(f.totaalIncl)||0) * richting;
   if(!incl) return false;
-  const bank = getBankRekening();
+  // Terugdraaien MOET op dezelfde rekening als waarop geboekt is — daarvoor staat
+  // betaaldGbId op de factuur. getBankRekening() kan inmiddels iets anders geven:
+  // DB.huidigeBankId is een keuze per toestel, en een kassier boekt altijd op
+  // 1100/subtype bank ongeacht wat de eigenaar geselecteerd heeft. Zonder deze
+  // regel haalt de terugdraai het bedrag van de verkeerde rekening af en staan er
+  // twee rekeningen scheef terwijl de balans netjes blijft kloppen.
+  const bank = (richting < 0 && f.betaaldGbId)
+    ? (DB.grootboek.find(g=>g.id===f.betaaldGbId) || getBankRekening())
+    : getBankRekening();
   const isVK = type==='verkoop';
   const tegen = isVK
     ? (DB.grootboek.find(g=>g.nummer==='1300') || DB.grootboek.find(g=>(g.naam||'').toLowerCase().includes('debiteuren')))
@@ -857,6 +865,11 @@ async function zetFactuurOnbetaald(type, id){
   if(!ok) return;
   if(!boekHandmatigeBetaling(f, type, -1)) return;
   f.status = type==='verkoop' ? 'verstuurd' : 'te betalen';
+  // Was dit een boeking van een medewerker, leg dan vast dat JIJ hem hebt
+  // teruggedraaid. controleerKassierBoekingen() ziet anders een logregel zonder
+  // bijbehorende betaling en meldt die ten onrechte als verloren gegaan.
+  if(f.betaaldDoorKassier?.op) f.kassierBoekingTeruggedraaid = f.betaaldDoorKassier.op;
+  delete f.betaaldDoorKassier;
   delete f.betaaldOp;
   delete f.handmatigBetaald;
   if(!save()) return; // balans blokkeerde; herstel + hertekenen is al gedaan
@@ -1182,7 +1195,7 @@ function renderFacturen(type){
     <td class="mono">${fmt(f.totaalExcl||0)}</td>
     <td class="mono">${fmt(f.btwBedrag||0)}</td>
     <td class="mono"><strong>${fmt(f.totaalIncl||0)}</strong></td>
-    <td>${badge(f.status||'')}</td>
+    <td>${badge(f.status||'')}${f.betaaldDoorKassier?.naam?`<div style="font-size:10px;color:var(--text-dim);margin-top:3px;" title="Op betaald gezet vanaf de app van deze medewerker — bank ↔ debiteuren is al geboekt.">👤 ${esc(f.betaaldDoorKassier.naam)}</div>`:''}</td>
     <td style="white-space:nowrap;">
       ${f.bijlagenMeta&&f.bijlagenMeta.length?`<span title="${f.bijlagenMeta.length} bijlage(n)" style="cursor:pointer;margin-right:6px;" onclick="openBijlagenModal('${type}','${f.id}')">📎<span style="font-size:10px;font-family:var(--mono);color:var(--accent);">${f.bijlagenMeta?.length||0}</span></span>`:''}
       ${!isVK&&f.status!=='betaald'?`<button class="btn btn-secondary btn-sm" onclick="openKoppelVanafFactuur('${f.id}')" style="background:rgba(96,165,250,.1);border-color:rgba(96,165,250,.3);color:#60a5fa;">⇄ Koppel betaling</button>`:''}

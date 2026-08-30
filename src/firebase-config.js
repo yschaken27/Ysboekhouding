@@ -321,6 +321,198 @@
       return JSON.stringify({ok:true});
     },
 
+    // ============================================================
+    // FACTUUR OP BETAALD ZETTEN VANAF DE KASSIER-TELEFOON
+    // ============================================================
+    // Doet in ÉÉN Firestore-transactie wat zetFactuurBetaald() + boekHandmatige-
+    // Betaling() bij de eigenaar doen: de factuur bijwerken in data/verkoop én de
+    // saldi bijwerken in data/main. Die twee horen bij elkaar — half doorvoeren
+    // geeft een factuur op "betaald" terwijl Debiteuren blijft staan, precies de
+    // fout waar facturen.js voor waarschuwt. Een transactie maakt dat onmogelijk.
+    //
+    // De controles staan hier en niet in de mobiele UI: de DB op een telefoon kan
+    // verouderd zijn (PWA blijft in het geheugen staan, zie CLAUDE.md), dus de
+    // enige betrouwbare stand is die van dit moment in Firestore.
+    //
+    // richting  1 = betaald zetten   → Bank +incl, Debiteuren −incl
+    // richting −1 = terugdraaien     → Bank −incl, Debiteuren +incl
+    //
+    // Omzet en BTW worden NIET aangeraakt: die zijn al geboekt bij het aanmaken
+    // van de factuur (factuurstelsel). Nogmaals boeken zou ze verdubbelen.
+    async markeerFactuurBetaald(bedrijf, factuurId, richting, kassierJson){
+      const kassier = JSON.parse(kassierJson||'{}');
+      const dir = richting > 0 ? 1 : -1;
+      const ref = db.collection('bedrijven').doc(bedrijf).collection('data');
+      const verkoopRef = ref.doc('verkoop');
+      const mainRef    = ref.doc('main');
+      const transRef   = ref.doc('transacties');
+      // Append-only logboek van wat kassiers geboekt hebben. Dit document staat
+      // BEWUST buiten de zes documenten die slaAllesOp() overschrijft: een save()
+      // van de eigenaar kan het dus nooit wissen. Zou een kassier-boeking alsnog
+      // door zo'n save overschreven worden (de eigenaar bewerkte iets in dezelfde
+      // seconde), dan blijft hier het spoor staan waarmee dat te zien is.
+      const logRef     = ref.doc('kassierboekingen');
+
+      const weiger = reden => JSON.stringify({ok:false, reden});
+
+      try {
+        const uitkomst = await db.runTransaction(async tx=>{
+          // Alle reads vóór alle writes — vereist door Firestore.
+          const [verkoopSnap, mainSnap, transSnap, logSnap] = await Promise.all([
+            tx.get(verkoopRef), tx.get(mainRef), tx.get(transRef), tx.get(logRef)
+          ]);
+          if(!verkoopSnap.exists) return {ok:false, reden:'Geen verkoopfacturen gevonden.'};
+          if(!mainSnap.exists)    return {ok:false, reden:'Bedrijfsgegevens niet gevonden.'};
+
+          const facturen = verkoopSnap.data().items || [];
+          const idx = facturen.findIndex(f=>f && f.id===factuurId);
+          if(idx === -1) return {ok:false, reden:'Factuur niet gevonden — mogelijk net verwijderd.'};
+          const f = facturen[idx];
+
+          // --- Mag deze kassier aan deze factuur komen? ---
+          // Dezelfde regel als in de mobiele lijst, hier nog eens gecontroleerd:
+          // de knop kan van een verouderd scherm komen.
+          const toegestaan = Array.isArray(kassier.opdrachtgevers) ? kassier.opdrachtgevers : null;
+          if(toegestaan && !toegestaan.some(o=>String(o||'').toLowerCase() === String(f.klant||'').toLowerCase())){
+            return {ok:false, reden:'Deze factuur hoort niet bij jouw opdrachtgevers.'};
+          }
+
+          // --- Past de gevraagde actie bij de huidige stand? ---
+          if(dir > 0 && f.status === 'betaald'){
+            return {ok:false, reden:'Deze factuur staat al op betaald.'};
+          }
+          if(dir < 0){
+            if(f.status !== 'betaald') return {ok:false, reden:'Deze factuur staat niet op betaald.'};
+            // Alleen terugdraaien wat via deze weg geboekt is. Een betaling die de
+            // eigenaar via de bank heeft afgeletterd mag een misklik nooit ongedaan
+            // maken — die moet bij de banktransactie zelf teruggedraaid worden.
+            if(!f.handmatigBetaald) return {ok:false, reden:'Deze betaling loopt via de bank — vraag de eigenaar dit terug te draaien.'};
+            const melder = String(f.betaaldDoorKassier?.email||'').toLowerCase();
+            const ik     = String(kassier.email||'').toLowerCase();
+            if(!melder || melder !== ik){
+              return {ok:false, reden:'Alleen wie de betaling gemeld heeft kan hem terugdraaien.'};
+            }
+          }
+
+          // --- Hangt er een banktransactie aan? Dan volgt de status de bank. ---
+          const transacties = transSnap.exists ? (transSnap.data().items||[]) : [];
+          const nr = String(f.nummer||'').trim();
+          const nrRe = nr
+            ? new RegExp('(^|[^0-9A-Za-z])' + nr.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '([^0-9A-Za-z]|$)')
+            : null;
+          const heeftBankbetaling = transacties.some(t=>{
+            if(!t || t.status!=='gekoppeld') return false;
+            if(t.factuurId) return t.factuurId===f.id;
+            const soort = t.gekoppeldType;
+            if(soort && soort!=='verkoop' && soort!=='inkoop') return false;
+            return !!nrRe && !!t.gekoppeldAan && nrRe.test(t.gekoppeldAan);
+          });
+          if(heeftBankbetaling){
+            return {ok:false, reden:'Deze factuur hangt al aan een banktransactie — de status volgt de bank.'};
+          }
+
+          // --- Rekeningen opzoeken ---
+          const main = mainSnap.data() || {};
+          const grootboek = main.grootboek || [];
+          // NOOIT DB.huidigeBankId gebruiken: dat is een keuze per toestel en zou
+          // de kassier op een andere rekening laten boeken dan de eigenaar.
+          const zoekBank = () => grootboek.find(g=>g.subtype==='bank')
+                                || grootboek.find(g=>g.nummer==='1100')
+                                || grootboek.find(g=>String(g.naam||'').toLowerCase().includes('bank'));
+          // Terugdraaien MOET op de rekening waar het geld destijds op geboekt is —
+          // daarvoor staat betaaldGbId op de factuur. Opnieuw zoeken kan een ANDERE
+          // rekening opleveren zodra er een tweede bankrekening bijkomt of de
+          // volgorde in het grootboek verandert. Dan blijft de oorspronkelijke
+          // rekening te hoog staan en gaat een andere te laag, terwijl het totaal
+          // klopt: checkBalansEvenwicht() ziet zo'n scheefstand niet.
+          // Zelfde regel als boekHandmatigeBetaling() in facturen.js.
+          const bank = (dir < 0 && f.betaaldGbId)
+            ? (grootboek.find(g=>g.id===f.betaaldGbId) || zoekBank())
+            : zoekBank();
+          const deb  = grootboek.find(g=>g.nummer==='1300')
+                    || grootboek.find(g=>String(g.naam||'').toLowerCase().includes('debiteuren'));
+          if(!bank) return {ok:false, reden:'Geen bankrekening (1100) in het grootboek — vraag de eigenaar die toe te voegen.'};
+          if(!deb)  return {ok:false, reden:'Geen rekening 1300 Debiteuren in het grootboek — vraag de eigenaar die toe te voegen.'};
+          // Zijn het dezelfde rekening, dan heft de boeking zichzelf op: saldo
+          // onveranderd, balans in evenwicht, geen foutmelding — en debiteuren
+          // loopt nooit af. Weigeren dus (zelfde reden als facturen.js).
+          if(bank.id === deb.id) return {ok:false, reden:'Bank en Debiteuren zijn dezelfde rekening — de eigenaar moet dit corrigeren in Grootboek.'};
+
+          const incl = (parseFloat(f.totaalIncl)||0) * dir;
+          if(!incl) return {ok:false, reden:'Factuurbedrag is leeg — niets te boeken.'};
+
+          // --- Boeken: geld binnen, vordering weg (en andersom bij terugdraaien) ---
+          const rond2 = n => Math.round(n*100)/100;
+          bank.saldo = rond2((parseFloat(bank.saldo)||0) + incl);
+          deb.saldo  = rond2((parseFloat(deb.saldo)||0)  - incl);
+
+          const nieuweFactuur = {...f};
+          if(dir > 0){
+            nieuweFactuur.status = 'betaald';
+            nieuweFactuur.betaaldOp = new Date().toISOString().slice(0,10);
+            nieuweFactuur.handmatigBetaald = true;
+            // Vastleggen wáár het geld geboekt is; de grootboekkaart moet deze
+            // betaling later kunnen reconstrueren.
+            nieuweFactuur.betaaldGbId = bank.id;
+            nieuweFactuur.betaaldDoorKassier = {
+              naam: kassier.naam || '',
+              email: String(kassier.email||'').toLowerCase(),
+              op: new Date().toISOString()
+            };
+          } else {
+            nieuweFactuur.status = 'verstuurd';
+            delete nieuweFactuur.betaaldOp;
+            delete nieuweFactuur.handmatigBetaald;
+            delete nieuweFactuur.betaaldGbId;
+            delete nieuweFactuur.betaaldDoorKassier;
+          }
+          facturen[idx] = nieuweFactuur;
+
+          // Schrijf ALLEEN de velden die we aanraken. main met een heel object
+          // overschrijven zou profiel, kassiers en imports van dit toestel
+          // wegschrijven — de kassier heeft daar geen actuele versie van.
+          tx.update(mainRef, {grootboek});
+          tx.set(verkoopRef, {items: facturen});
+
+          // Logregel meeschrijven in dezelfde transactie. Laatste 200 bewaren:
+          // genoeg om een verdwenen boeking terug te vinden, klein genoeg voor
+          // de documentlimiet van Firestore.
+          const log = logSnap.exists ? (logSnap.data().items||[]) : [];
+          log.push({
+            factuurId,
+            factuurNr: f.nummer || '',
+            klant: f.klant || '',
+            richting: dir,
+            bedrag: Math.abs(incl),
+            op: new Date().toISOString(),
+            kassierNaam: kassier.naam || '',
+            kassierEmail: String(kassier.email||'').toLowerCase(),
+            bankGbId: bank.id
+          });
+          tx.set(logRef, {items: log.slice(-200)});
+
+          return {
+            ok: true,
+            bedrag: Math.abs(incl),
+            bankNaam: bank.naam || 'bank',
+            status: nieuweFactuur.status
+          };
+        });
+        return JSON.stringify(uitkomst);
+      } catch(e){
+        console.error('[markeerFactuurBetaald]', e);
+        return weiger('Boeking mislukt — probeer het opnieuw. (' + (e?.message||e) + ')');
+      }
+    },
+
+    // Logboek van kassier-boekingen lezen (eigenaar). Zie markeerFactuurBetaald.
+    async laadKassierBoekingen(bedrijf){
+      const snap = await db.collection('bedrijven').doc(bedrijf)
+        .collection('data').doc('kassierboekingen').get();
+      if(!snap.exists) return JSON.stringify({items:[]});
+      return JSON.stringify({items: snap.data().items || []});
+    },
+
     async checkKassalijstBestaat(bedrijf, kassaId){
       const snap = await db.collection('bedrijven').doc(bedrijf).collection('data').doc('kassalijsten').get();
       if(!snap.exists) return false;

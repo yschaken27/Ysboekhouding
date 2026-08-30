@@ -79,6 +79,12 @@ Bekende modals: `modal-bedrijf`, `modal-opdrachtgevers`, `modal-gebruiker-detail
   Elk doc wordt met `.set()` **zonder merge** geschreven; het #22-risico geldt dus per document.
 - Kassalijsten en uren hebben daarnaast directe cloud-writes (`voegKassalijstToe`/`voegUrenToe`)
   voor losse toevoegingen; `save()` schrijft diezelfde docs óók vanuit `_bouwSaveData()`.
+- **`kassierboekingen`** is een ZEVENDE document en staat bewust BUITEN `slaAllesOp()`:
+  een append-only logboek (max 200 regels) van facturen die een medewerker op betaald
+  heeft gezet. Omdat `save()` het niet overschrijft, blijft het spoor staan als een
+  save van de eigenaar een kassier-boeking wegdrukt. `controleerKassierBoekingen()`
+  (state.js) vergelijkt dit na elke geslaagde save met `DB.verkoop` en waarschuwt.
+  Voeg hier nooit velden aan toe die `save()` óók schrijft — dan is het nut weg.
 - Bonnen gaan als base64 naar `bedrijven/{bedrijf}/uploads/{id}` (Firestore, ~1 MB-limiet);
   factuurbijlagen gaan wél naar Storage via `uploadBijlage`.
 
@@ -124,6 +130,10 @@ getal in komma-notatie. Gebruik dit patroon voor elk nieuw bedrag-/aantalveld.
 ## Planning
 1. **Maandfacturen-mailflow** — goedgekeurde uren per beveiliger groeperen per opdrachtgever, per opdrachtgever een factuur (PDF) maken, als bijlage mailen én in Storage archiveren. Mailen via Firebase Trigger Email-extensie (schrijf doc naar `mail`-collectie; die collectie bestaat nog niet). Vereist Blaze-plan + SMTP-provider + geverifieerd afzenderdomein. PDF-library moet nog toegevoegd worden.
 2. **Firestore security rules** voor `bedrijven`, `bedrijven_toegang` en (later) de `mail`-collectie (eigenaar doet dit zelf in Firebase Console).
+   Let op bij het schrijven daarvan: een kassier moet in zijn eigen bedrijven kunnen schrijven naar
+   `data/verkoop`, `data/kassierboekingen` én het veld `grootboek` van `data/main` — anders faalt
+   `markeerFactuurBetaald()` (de betaald-knop op de telefoon) volledig. Alle andere velden van
+   `main` (profiel, kassiers, imports) mag alleen de eigenaar schrijven.
 
 **Af sinds aug 2026:** wachtwoord-login (`inloggenMetWachtwoord`, `registrerenMetWachtwoord`,
 `wachtwoordResetten` in firebase-config.js) — magic-link is volledig verwijderd.

@@ -842,8 +842,32 @@ function renderMobFacturen(){
   }
 }
 
+// Bouwt één factuurregel met een actieknop eronder. `actie` is 'betaald',
+// 'terugdraaien' of null (alleen tonen, geen knop).
+function _mobFactuurRegel(f, {regel, bedragKleur, actie}){
+  const knop = actie === 'betaald'
+    ? `<button class="mob-factuur-btn" onclick="mobMeldFactuurBetaald('${f.id}')">✓ Betaald</button>`
+    : actie === 'terugdraaien'
+    ? `<button class="mob-factuur-btn terug" onclick="mobDraaiFactuurTerug('${f.id}')">↩ Terugdraaien</button>`
+    : '';
+  return `<div class="mob-lijst-item mob-factuur-item">
+    <div class="mob-factuur-top">
+      <div>
+        <div class="mob-lijst-datum">${regel}</div>
+        <div class="mob-lijst-bedrag" style="font-size:15px;">${esc(f.nummer||f.id)}</div>
+      </div>
+      <span style="font-size:15px;font-weight:700;color:${bedragKleur};">${mobFmtEur(f.openstaand||f.totaal||f.totaalIncl||0)}</span>
+    </div>
+    ${knop}
+  </div>`;
+}
+
 function _renderMobFacturenIntern(){
-  const facturen = DB.verkoop||[];
+  // Alleen de opdrachtgevers die deze kassier van de eigenaar mag zien. Is er
+  // niets ingesteld, dan geeft kassierMagOpdrachtgever() overal true terug.
+  const facturen = (DB.verkoop||[]).filter(f=>
+    typeof kassierMagOpdrachtgever !== 'function' || kassierMagOpdrachtgever(f.klant)
+  );
   const nu = new Date();
 
   // Top klanten (op totaal betaald)
@@ -884,13 +908,11 @@ function _renderMobFacturenIntern(){
     } else {
       vervalEl.innerHTML = vervallen.slice(0,10).map(f=>{
         const dagen = Math.floor((nu - new Date(f.vervaldatum))/(1000*60*60*24));
-        return `<div class="mob-lijst-item" style="cursor:default;">
-          <div>
-            <div class="mob-lijst-datum">${f.klant||'Onbekend'} · ${dagen} dag${dagen===1?'':'en'} over</div>
-            <div class="mob-lijst-bedrag" style="font-size:15px;">${f.nummer||f.id}</div>
-          </div>
-          <span style="font-size:15px;font-weight:700;color:#f87171;">${mobFmtEur(f.openstaand||f.totaal||0)}</span>
-        </div>`;
+        return _mobFactuurRegel(f, {
+          regel: `${esc(f.klant||'Onbekend')} · ${dagen} dag${dagen===1?'':'en'} over`,
+          bedragKleur: '#f87171',
+          actie: 'betaald'
+        });
       }).join('');
     }
   }
@@ -907,17 +929,100 @@ function _renderMobFacturenIntern(){
     if(!open.length){
       openEl.innerHTML = '<div style="color:rgba(255,255,255,0.25);font-size:14px;padding:16px 0">Geen openstaande facturen.</div>';
     } else {
-      openEl.innerHTML = open.slice(0,10).map(f=>`
-        <div class="mob-lijst-item" style="cursor:default;">
-          <div>
-            <div class="mob-lijst-datum">${f.klant||'Onbekend'}${f.vervaldatum?' · vervalt '+new Date(f.vervaldatum).toLocaleDateString('nl-NL',{day:'numeric',month:'short'}):''}</div>
-            <div class="mob-lijst-bedrag" style="font-size:15px;">${f.nummer||f.id}</div>
-          </div>
-          <span style="font-size:15px;font-weight:700;color:#60a5fa;">${mobFmtEur(f.openstaand||f.totaal||0)}</span>
-        </div>`).join('');
+      openEl.innerHTML = open.slice(0,10).map(f=>_mobFactuurRegel(f, {
+        regel: `${esc(f.klant||'Onbekend')}${f.vervaldatum?' · vervalt '+new Date(f.vervaldatum).toLocaleDateString('nl-NL',{day:'numeric',month:'short'}):''}`,
+        bedragKleur: '#60a5fa',
+        actie: 'betaald'
+      })).join('');
+    }
+  }
+
+  // Door mij betaald gemeld — hier kan een misklik teruggedraaid worden.
+  // Alleen eigen meldingen: een betaling die de eigenaar via de bank heeft
+  // afgeletterd mag hier nooit ongedaan te maken zijn.
+  const mijnEmail = String(_actieveKassier?.email||'').toLowerCase();
+  const gemeld = facturen.filter(f=>
+    f.status==='betaald' &&
+    f.handmatigBetaald &&
+    String(f.betaaldDoorKassier?.email||'').toLowerCase() === mijnEmail &&
+    mijnEmail
+  ).sort((a,b)=>String(b.betaaldDoorKassier?.op||'').localeCompare(String(a.betaaldDoorKassier?.op||'')));
+
+  const gemeldEl = document.getElementById('mob-betaald-gemeld');
+  if(gemeldEl){
+    if(!gemeld.length){
+      gemeldEl.innerHTML = '<div style="color:rgba(255,255,255,0.25);font-size:14px;padding:16px 0">Je hebt nog geen facturen op betaald gezet.</div>';
+    } else {
+      gemeldEl.innerHTML = gemeld.slice(0,10).map(f=>_mobFactuurRegel(f, {
+        regel: `${esc(f.klant||'Onbekend')} · betaald ${f.betaaldOp||''}`,
+        bedragKleur: '#34d399',
+        actie: 'terugdraaien'
+      })).join('');
     }
   }
 }
+
+// ---- Factuur op betaald zetten vanaf de telefoon ----
+// De boeking zelf gebeurt in één Firestore-transactie (markeerFactuurBetaald in
+// firebase-config.js): factuur én grootboek tegelijk, of geen van beide. Hier
+// staat alleen de bevestiging en de terugkoppeling — nooit een eigen boeking,
+// want save() vanaf een kassiertoestel zou het hele main-document overschrijven.
+async function _mobZetFactuurStatus(factuurId, richting){
+  if(!checkOnline()) return;
+  const f = (DB.verkoop||[]).find(x=>x.id===factuurId);
+  if(!f){ toast('Factuur niet gevonden — ververs de lijst.','error'); return; }
+  if(typeof kassierMagOpdrachtgever === 'function' && !kassierMagOpdrachtgever(f.klant)){
+    toast('Deze factuur hoort niet bij jouw opdrachtgevers.','error');
+    return;
+  }
+
+  const bedrag = mobFmtEur(f.totaalIncl||f.totaal||0);
+  const ok = richting > 0
+    ? await bevestig(
+        `Factuur ${f.nummer||''} van ${f.klant||'onbekend'} — ${bedrag} — op betaald zetten?`,
+        'Betaald melden', 'Ja, betaald')
+    : await bevestig(
+        `Betaling van factuur ${f.nummer||''} (${bedrag}) terugdraaien? De factuur komt weer open te staan.`,
+        'Terugdraaien', 'Terugdraaien');
+  if(!ok) return;
+
+  toonSyncStatus('opslaan');
+  const kassier = {
+    naam: _actieveKassier?.naam || '',
+    email: _actieveKassier?.email || '',
+    // De cloud-functie controleert dit nog een keer tegen de verse factuur.
+    opdrachtgevers: typeof kassierOpdrachtgeverFilter === 'function' ? kassierOpdrachtgeverFilter() : null
+  };
+
+  try {
+    const antwoord = await fbAanroep(fb=>
+      fb.markeerFactuurBetaald(huidigBedrijf, factuurId, richting, JSON.stringify(kassier))
+    );
+    const res = JSON.parse(antwoord||'{}');
+    if(!res.ok){
+      toonSyncStatus('fout');
+      toast(res.reden || 'De boeking is niet doorgevoerd.','error',7000);
+      // Verse stand ophalen: de weigering komt meestal doordat dit scherm
+      // achterloopt op de werkelijkheid.
+      renderMobFacturen();
+      return;
+    }
+    toonSyncStatus('opgeslagen');
+    toast(richting > 0
+      ? `Factuur betaald — ${mobFmtEur(res.bedrag)} van Debiteuren naar ${res.bankNaam}.`
+      : 'Betaling teruggedraaid — de factuur staat weer open.',
+      'success', 5000);
+  } catch(e){
+    toonSyncStatus('fout');
+    toast('Boeking mislukt — controleer je verbinding en probeer opnieuw.','error',7000);
+    console.error('[mobZetFactuurStatus]', e);
+  }
+  // Altijd vers herladen: de transactie heeft de cloud gewijzigd, niet DB.
+  renderMobFacturen();
+}
+
+function mobMeldFactuurBetaald(id){ return _mobZetFactuurStatus(id, 1); }
+function mobDraaiFactuurTerug(id){ return _mobZetFactuurStatus(id, -1); }
 
 // ---- Uploads ----
 let _mobHuidigBestand = null; // { naam, type, size, base64 }
