@@ -1,0 +1,136 @@
+rules_version = '2';
+
+// ============================================================
+// YS Boekhouding — Firestore security rules
+// ============================================================
+// Plakken in Firebase Console → Firestore Database → Regels → Publiceren.
+//
+// Uitgangspunt: de hoofdeigenaar mag alles; een medewerker mag alleen bij de
+// bedrijven waar zijn e-mailadres op de gastenlijst staat, en daarbinnen alleen
+// schrijven wat de app hem laat doen. Dat is bewust nauwer dan "alles binnen
+// zijn bedrijf": zonder die grens zou een medewerker met de config uit de
+// browser het hele grootboek kunnen herschrijven.
+//
+// De twee lijsten die de toegang bepalen worden allebei door de eigenaar
+// bijgehouden in syncToegangVoorEmail() (auth.js):
+//   bedrijven/{bedrijf}/toegang/lijst  → veld `emails`, bepaalt DATA-toegang
+//   bedrijven_toegang/{email}          → veld `bedrijven`, bepaalt wat een
+//                                        medewerker bij het inloggen te zien
+//                                        krijgt zonder de hele collectie te lezen
+//
+// LET OP bij wijzigen: de app leest data/main, verkoop, inkoop, transacties,
+// kassalijsten en uren in ÉÉN Promise.all (laadAlles). Wordt één van die zes
+// geweigerd, dan faalt het laden van dat bedrijf volledig — niet gedeeltelijk.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+
+    function ingelogd() {
+      return request.auth != null && request.auth.token.email != null;
+    }
+
+    function mijnEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    // Hardgecodeerd, net als _HOOFD_EIGENAAR in firebase-config.js.
+    // Wijzig je dat adres daar, wijzig het hier dan mee.
+    function isEigenaar() {
+      return ingelogd() && mijnEmail() == 'ymeraldo@hotmail.com';
+    }
+
+    // Staat dit e-mailadres op de gastenlijst van dit bedrijf?
+    function isGast(bedrijf) {
+      return ingelogd()
+        && exists(/databases/$(database)/documents/bedrijven/$(bedrijf)/toegang/lijst)
+        && mijnEmail() in get(/databases/$(database)/documents/bedrijven/$(bedrijf)/toegang/lijst).data.emails;
+    }
+
+    function magBedrijf(bedrijf) {
+      return isEigenaar() || isGast(bedrijf);
+    }
+
+    // Een medewerker mag van data/main UITSLUITEND het veld grootboek wijzigen.
+    // markeerFactuurBetaald() schrijft precies dat (tx.update(mainRef,{grootboek}))
+    // om Bank en Debiteuren bij te werken. profiel, kassiers, imports, memoriaal,
+    // vasteActiva en btwNotities blijven van de eigenaar.
+    function alleenGrootboek() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['grootboek']);
+    }
+
+    // ---------- bedrijven ----------
+
+    match /bedrijven/{bedrijf} {
+      // Een medewerker mag zijn eigen bedrijfsdocument lezen. De ONGEFILTERDE
+      // collection('bedrijven').get() uit getBedrijvenLijst() wordt voor hem
+      // geweigerd — dat is de bedoeling: die aanroep staat in een try/catch en
+      // een medewerker ontdekt zijn bedrijven via bedrijven_toegang/{email}.
+      allow read: if magBedrijf(bedrijf);
+      allow write: if isEigenaar();
+
+      match /data/{docId} {
+        allow read: if magBedrijf(bedrijf);
+        allow write: if isEigenaar();
+
+        // Wat een medewerker zelf wegschrijft:
+        //   uren, kassalijsten  → eigen invoer (voegUrenToe / voegKassalijstToe)
+        //   verkoop             → factuur op betaald zetten (markeerFactuurBetaald)
+        //   kassierboekingen    → het logboek van diezelfde handeling
+        allow create, update: if isGast(bedrijf)
+          && docId in ['uren', 'kassalijsten', 'verkoop', 'kassierboekingen'];
+
+        // main alleen voor de grootboekboeking die bij die betaling hoort.
+        allow update: if isGast(bedrijf) && docId == 'main' && alleenGrootboek();
+
+        // Verwijderen doet alleen de eigenaar (verwijderBedrijfCloud).
+        allow delete: if isEigenaar();
+      }
+
+      // Bonnen: base64 in Firestore. Een medewerker uploadt ze en ziet ze terug.
+      match /uploads/{bonId} {
+        allow read: if magBedrijf(bedrijf);
+        allow create, update: if magBedrijf(bedrijf);
+        allow delete: if isEigenaar();
+      }
+
+      // De gastenlijst zelf. Lezen mag wie toegang heeft (de regels hierboven
+      // doen dat al namens hem); schrijven is een eigenaarshandeling.
+      match /toegang/{docId} {
+        allow read: if magBedrijf(bedrijf);
+        allow write: if isEigenaar();
+      }
+    }
+
+    // getBedrijvenLijst() doet een collectionGroup('data')-query om bedrijven
+    // te vinden die geen veld op hun hoofddocument hebben ("ghost documents").
+    // Zo'n query wordt in zijn geheel geweigerd zonder een regel op groepsniveau.
+    // Alleen de eigenaar heeft hem nodig; voor een medewerker faalt hij stil.
+    match /{path=**}/data/{docId} {
+      allow read: if isEigenaar();
+    }
+
+    // ---------- bedrijven_toegang ----------
+    // Elke medewerker leest hier bij het inloggen zijn eigen bedrijvenlijst —
+    // en uitsluitend die van hemzelf.
+    match /bedrijven_toegang/{email} {
+      allow read: if isEigenaar() || (ingelogd() && email == mijnEmail());
+      allow write: if isEigenaar();
+    }
+
+    // ---------- mail ----------
+    // Bestemd voor de Firebase Trigger Email-extensie (maandfacturen-mailflow).
+    // De collectie bestaat nog niet; deze regel staat er alvast zodat er nooit
+    // een moment is waarop hij open staat. Alleen de eigenaar mag mail versturen.
+    match /mail/{docId} {
+      allow read, write: if isEigenaar();
+    }
+
+    // Al het overige is dicht. Firestore weigert standaard al wat hier niet
+    // expliciet is toegestaan; deze regel maakt dat zichtbaar.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

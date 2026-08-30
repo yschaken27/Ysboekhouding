@@ -129,14 +129,31 @@ getal in komma-notatie. Gebruik dit patroon voor elk nieuw bedrag-/aantalveld.
 
 ## Planning
 1. **Maandfacturen-mailflow** — goedgekeurde uren per beveiliger groeperen per opdrachtgever, per opdrachtgever een factuur (PDF) maken, als bijlage mailen én in Storage archiveren. Mailen via Firebase Trigger Email-extensie (schrijf doc naar `mail`-collectie; die collectie bestaat nog niet). Vereist Blaze-plan + SMTP-provider + geverifieerd afzenderdomein. PDF-library moet nog toegevoegd worden.
-2. **Firestore security rules** voor `bedrijven`, `bedrijven_toegang` en (later) de `mail`-collectie (eigenaar doet dit zelf in Firebase Console).
-   Let op bij het schrijven daarvan: een kassier moet in zijn eigen bedrijven kunnen schrijven naar
-   `data/verkoop`, `data/kassierboekingen` én het veld `grootboek` van `data/main` — anders faalt
-   `markeerFactuurBetaald()` (de betaald-knop op de telefoon) volledig. Alle andere velden van
-   `main` (profiel, kassiers, imports) mag alleen de eigenaar schrijven.
 
 **Af sinds aug 2026:** wachtwoord-login (`inloggenMetWachtwoord`, `registrerenMetWachtwoord`,
 `wachtwoordResetten` in firebase-config.js) — magic-link is volledig verwijderd.
+
+## Security rules
+De regels staan als `firestore.rules` en `storage.rules` in de repo. Ze zijn NIET automatisch
+actief: plak ze in de Firebase Console (Firestore → Regels, Storage → Regels) en publiceer.
+Zolang dat niet gebeurd is staat de database open voor iedereen die de config uit de browser
+plukt — die config staat inline in `firebase-config.js` en is dus openbaar.
+
+Wat de regels toestaan, kort:
+- Hoofdeigenaar (`ymeraldo@hotmail.com`, hardgecodeerd op drie plekken — wijzig je het adres,
+  wijzig het overal) mag alles.
+- Een kassier mag alleen bij bedrijven waar zijn e-mail in `bedrijven/{bedrijf}/toegang/lijst`
+  (veld `emails`) staat, en schrijft daarbinnen alleen `data/uren`, `data/kassalijsten`,
+  `data/verkoop`, `data/kassierboekingen` en het veld `grootboek` van `data/main`.
+  Dat laatste is precies wat `markeerFactuurBetaald()` nodig heeft.
+
+Twee dingen om te weten bij het aanpassen:
+- `laadAlles()` leest zes documenten in één `Promise.all`. Weiger je er één, dan faalt het laden
+  van dat bedrijf volledig — niet gedeeltelijk.
+- `initLogin()` draait VÓÓR het inloggen en leest dan bedrijfsdata. Met regels actief worden die
+  reads geweigerd; dat is opgevangen (`.catch(()=>{})` in `laadKassiersVoorLogin()` en
+  `laadBedrijfNamenUitFirebase()`, try/catch in `syncBedrijvenVanuitFirebase()`) en het
+  loginscherm valt terug op de localStorage-cache. Haal die vangnetten dus niet weg.
 
 ## Veelgemaakte fouten — NOOIT HERHALEN
 

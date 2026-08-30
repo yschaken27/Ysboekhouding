@@ -1,0 +1,39 @@
+rules_version = '2';
+
+// ============================================================
+// YS Boekhouding — Firebase Storage security rules
+// ============================================================
+// Plakken in Firebase Console → Storage → Regels → Publiceren.
+//
+// In Storage staat op dit moment één ding: factuurbijlagen, weggeschreven door
+// uploadBijlage() (firebase-config.js) op het pad {bedrijf}/facturen/{factuurId}/{naam}.
+// Die flow zit in de factuurmodal van de eigenaar (state.js) — een medewerker
+// komt er niet. Bonnen gaan NIET hierheen: die staan als base64 in Firestore
+// onder bedrijven/{bedrijf}/uploads.
+//
+// Daarom is dit bewust strak: alleen de hoofdeigenaar. Krijgt een medewerker
+// later een functie die bijlagen moet lezen, dan kan dat met firestore.get()
+// op de gastenlijst — nu zou dat alleen maar toegang opengooien die niemand
+// gebruikt.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function ingelogd() {
+      return request.auth != null && request.auth.token.email != null;
+    }
+
+    // Zelfde adres als _HOOFD_EIGENAAR in firebase-config.js en firestore.rules.
+    function isEigenaar() {
+      return ingelogd() && request.auth.token.email.lower() == 'ymeraldo@hotmail.com';
+    }
+
+    match /{bedrijf}/facturen/{factuurId}/{bestand} {
+      allow read, write: if isEigenaar();
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
