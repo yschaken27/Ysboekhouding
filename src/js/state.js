@@ -1269,6 +1269,17 @@ function eenheidInfo(eenheid){
     ? { eenheid:'dag', kort:'dag', meervoud:'dagen', per:'/dag', perInput:'€/dag', tariefLabel:'Dagtarief', gewerkt:'Gewerkte dagen' }
     : { eenheid:'uur', kort:'u',   meervoud:'uren',  per:'/u',   perInput:'€/u',   tariefLabel:'Uurtarief', gewerkt:'Gewerkte uren' };
 }
+// Aantal + eenheid als leesbare tekst: "3 dagen", "1 dag", "3 u".
+// Alleen 'dag' krijgt een meervoud; uren houden de korte notatie "u", zoals in
+// de rest van de app en op de factuur.
+function eenheidAantalTekst(aantal, eenheid){
+  const info  = eenheidInfo(eenheid);
+  const n     = Math.round((Number(aantal)||0)*100)/100;
+  const getal = String(n).replace('.',',');
+  // Enkelvoud t/m 1 ("0,5 dag", "1 dag"), daarboven meervoud ("1,5 dagen", "3 dagen").
+  const woord = info.eenheid === 'dag' ? (Math.abs(n) <= 1 ? 'dag' : 'dagen') : info.kort;
+  return getal + ' ' + woord;
+}
 // Zoekt de eenheid van een opdrachtgever op naam op (fallback 'uur').
 function eenheidVanOpdrachtgever(naam){
   const o = (DB.profiel?.opdrachtgevers||[]).find(x=>x.naam===naam);

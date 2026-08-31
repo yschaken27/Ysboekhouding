@@ -387,7 +387,7 @@ function renderMobUrenLijst(){
         <span style="font-family:var(--mono);font-weight:700;">€ ${(u.bedrag||0).toFixed(2)}</span>
       </div>
       <div style="font-size:12px;color:var(--text-mid);margin-top:3px;">
-        ${dd} · ${u.uren} ${eenheidInfo(u.eenheid).kort}${u.tariefLabel?(' · '+esc(u.tariefLabel)):''}${u.wie?(' · '+esc(u.wie)):''} · ${status}
+        ${dd} · ${eenheidAantalTekst(u.uren, u.eenheid)}${u.tariefLabel?(' · '+esc(u.tariefLabel)):''}${u.wie?(' · '+esc(u.wie)):''} · ${status}
       </div>
       ${u.notitie?`<div style="font-size:12px;color:var(--text-dim);margin-top:4px;">${esc(u.notitie)}</div>`:''}
       ${wijzigBtn}
@@ -512,7 +512,7 @@ function renderUrenoverzicht(){
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
         <div>
           <strong style="font-size:15px;">${esc(opdr)}</strong>
-          <span style="font-size:12px;color:var(--text-mid);margin-left:10px;">${(Math.round(uSom*100)/100)} ${grpInfo.kort} · € ${bSom.toFixed(2)}</span>
+          <span style="font-size:12px;color:var(--text-mid);margin-left:10px;">${eenheidAantalTekst(uSom, grpInfo.eenheid)} · € ${bSom.toFixed(2)}</span>
         </div>
         <button onclick="maakUrenFactuur('${encodeURIComponent(opdr)}')"
           style="font-size:12px;padding:6px 14px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:pointer;"
@@ -985,7 +985,7 @@ async function maakUrenFactuur(opdrEnc){
         ? `${r.label}${r.wie?' ('+r.wie+')':''}`
         : `${eInfo.gewerkt} — ${r.label}`,
       perDienst ? _factuurDatumKort(r.datum) : maandLabel,
-      String(Math.round(r.uren*100)/100).replace('.',',')+' '+eInfo.kort,
+      eenheidAantalTekst(r.uren, eInfo.eenheid),
       '€ '+r.tarief.toFixed(2)+eInfo.per,
       '€ '+r.bedrag.toFixed(2)
     ]),
