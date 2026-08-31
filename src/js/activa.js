@@ -574,7 +574,16 @@ function renderMobDashboard(){
   // opgeteld en stond dan half incl., half excl. onder het kopje "excl. BTW".
   const omzetLijstenExcl = lijsten.reduce((s,l)=>s+(parseFloat(l.totaalOmzet||0)),0);
   const omzetLijstenIncl = lijsten.reduce((s,l)=>s+(parseFloat(l.totaalOmzetIncl||l.totaalOmzet||0)),0);
-  const kosten = lijsten.reduce((s,l)=>s+(parseFloat(l.totUitgaven||0)),0);
+  // Kosten = kassa-uitgaven + de inkoopfacturen van dezelfde periode. Die tweede
+  // helft ontbrak, en omdat de huidige kassa-invoer totUitgaven altijd op 0 zet
+  // (zie kassier.js/activa.js bij het aanmaken van een kassalijst) stond de tegel
+  // structureel op € 0,00 — hoeveel inkoopfacturen de eigenaar ook invoerde.
+  // Excl. BTW, net als de omzettegel, anders klopt netto (= omzet - kosten) niet.
+  const kostenUitgaven = lijsten.reduce((s,l)=>s+(parseFloat(l.totUitgaven||0)),0);
+  const kostenInkoop = (DB.inkoop||[])
+    .filter(f=>f && _inMobPeriode(f.datum||''))
+    .reduce((s,f)=>s+(parseFloat(f.totaalExcl||0)),0);
+  const kosten = kostenUitgaven + kostenInkoop;
 
   // Uren-facturen (type='uren') ook meenemen in omzet en openstaand
   const urenFacturen = (DB.verkoop||[]).filter(f=>f.type==='uren');
