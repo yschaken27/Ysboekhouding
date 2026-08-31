@@ -569,8 +569,11 @@ function mobPeriodeLabel(){
 // ---- Dashboard render ----
 function renderMobDashboard(){
   const lijsten = mobGetPeriodeLijsten();
-  // Toon incl BTW op dashboard — dat is wat kassier fysiek heeft ontvangen
-  const omzetLijsten = lijsten.reduce((s,l)=>s+(parseFloat(l.totaalOmzetIncl||l.totaalOmzet||0)),0);
+  // Twee sommen, want de tegel toont excl. BTW en de subregel incl. BTW. Eén
+  // gedeelde som (voorheen: altijd de incl.-waarde) werd bij de excl. uren-omzet
+  // opgeteld en stond dan half incl., half excl. onder het kopje "excl. BTW".
+  const omzetLijstenExcl = lijsten.reduce((s,l)=>s+(parseFloat(l.totaalOmzet||0)),0);
+  const omzetLijstenIncl = lijsten.reduce((s,l)=>s+(parseFloat(l.totaalOmzetIncl||l.totaalOmzet||0)),0);
   const kosten = lijsten.reduce((s,l)=>s+(parseFloat(l.totUitgaven||0)),0);
 
   // Uren-facturen (type='uren') ook meenemen in omzet en openstaand
@@ -578,8 +581,8 @@ function renderMobDashboard(){
   const urenFacturenInPeriode = urenFacturen.filter(f=>_inMobPeriode(f.datum||''));
   const urenExclInPeriode = urenFacturenInPeriode.reduce((s,f)=>s+(parseFloat(f.totaalExcl||0)),0);
   const urenInclInPeriode = urenFacturenInPeriode.reduce((s,f)=>s+(parseFloat(f.totaalIncl||f.totaal||0)),0);
-  const omzet = omzetLijsten + urenExclInPeriode;
-  const omzetIncl = omzetLijsten + urenInclInPeriode;
+  const omzet = omzetLijstenExcl + urenExclInPeriode;
+  const omzetIncl = omzetLijstenIncl + urenInclInPeriode;
   const netto = omzet - kosten;
 
   const openstaandLijsten = (DB.kassalijsten||[]).filter(l=>l.status==='ingediend'||l.status==='open').length;
