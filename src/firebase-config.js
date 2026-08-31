@@ -446,10 +446,16 @@
           bank.saldo = rond2((parseFloat(bank.saldo)||0) + incl);
           deb.saldo  = rond2((parseFloat(deb.saldo)||0)  - incl);
 
+          // ÉÉN tijdstempel voor zowel de factuur als de logregel hieronder.
+          // Twee keer new Date() geeft twee waarden die milliseconden schelen, en
+          // controleerKassierBoekingen() vergelijkt die twee op gelijkheid: dan
+          // meldt hij een keurig geboekte betaling als verloren gegaan.
+          const nu = new Date().toISOString();
+
           const nieuweFactuur = {...f};
           if(dir > 0){
             nieuweFactuur.status = 'betaald';
-            nieuweFactuur.betaaldOp = new Date().toISOString().slice(0,10);
+            nieuweFactuur.betaaldOp = nu.slice(0,10);
             nieuweFactuur.handmatigBetaald = true;
             // Vastleggen wáár het geld geboekt is; de grootboekkaart moet deze
             // betaling later kunnen reconstrueren.
@@ -457,7 +463,7 @@
             nieuweFactuur.betaaldDoorKassier = {
               naam: kassier.naam || '',
               email: String(kassier.email||'').toLowerCase(),
-              op: new Date().toISOString()
+              op: nu
             };
           } else {
             nieuweFactuur.status = 'verstuurd';
@@ -484,7 +490,7 @@
             klant: f.klant || '',
             richting: dir,
             bedrag: Math.abs(incl),
-            op: new Date().toISOString(),
+            op: nu,
             kassierNaam: kassier.naam || '',
             kassierEmail: String(kassier.email||'').toLowerCase(),
             bankGbId: bank.id

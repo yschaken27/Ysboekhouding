@@ -365,6 +365,19 @@ async function controleerKassierBoekingen(){
     const laatste = new Map();
     items.forEach(e=>{ if(e && e.factuurId) laatste.set(e.factuurId, e); });
 
+    // Factuur en logregel worden in dezelfde transactie geschreven, maar hun
+    // tijdstempels hoeven niet tot op de milliseconde gelijk te zijn (oudere
+    // boekingen zetten new Date() twee keer apart). Vergelijken op exacte
+    // gelijkheid meldt zo'n boeking ten onrechte als verloren; een marge van een
+    // minuut is ruim genoeg en nog steeds veel korter dan de tijd tussen twee
+    // boekingen op dezelfde factuur.
+    const zelfdeBoeking = (a,b)=>{
+      if(!a || !b) return false;
+      if(a === b) return true;
+      const ta = new Date(a).getTime(), tb = new Date(b).getTime();
+      return isFinite(ta) && isFinite(tb) && Math.abs(ta-tb) < 60000;
+    };
+
     const grens = Date.now() - 7*24*60*60*1000; // ouder dan een week: laat rusten
     const kwijt = [];
     laatste.forEach(e=>{
@@ -372,9 +385,9 @@ async function controleerKassierBoekingen(){
       const f = (DB.verkoop||[]).find(x=>x && x.id===e.factuurId);
       if(!f) return; // factuur verwijderd — dat was een bewuste actie
       // Door jou teruggedraaid? Dan klopt het dat de melding weg is.
-      if(f.kassierBoekingTeruggedraaid === e.op) return;
+      if(zelfdeBoeking(f.kassierBoekingTeruggedraaid, e.op)) return;
       const opFactuur = f.betaaldDoorKassier?.op || null;
-      if(e.richting > 0 && opFactuur !== e.op) kwijt.push(e);
+      if(e.richting > 0 && !zelfdeBoeking(opFactuur, e.op)) kwijt.push(e);
       if(e.richting < 0 && opFactuur) kwijt.push(e);
     });
 
