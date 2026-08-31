@@ -493,6 +493,36 @@ overal hetzelfde zijn.
 factuur nog stond. Altijd `if(!save()){ toast(...); return; }` vóór elke succesmelding, render
 of vervolgactie — precies zoals `slaFactuurOp()` het doet.
 
+### 31. Wandkloktijd is GEEN identiteit — nooit twee keer `new Date()` voor één gebeurtenis
+Aug 2026: `markeerFactuurBetaald()` (firebase-config.js) schreef in één transactie de factuur én
+een logregel in `data/kassierboekingen`, maar riep daarvoor **twee keer apart**
+`new Date().toISOString()` aan — één voor `betaaldDoorKassier.op`, één voor `log.op`. Daartussen
+zit onder meer het serialiseren van de hele facturenlijst, dus die twee stempels schelen
+milliseconden. `controleerKassierBoekingen()` (state.js) vergeleek ze met `!==` en meldde daardoor
+een keurig geboekte betaling als verloren gegaan ("betaalmelding staat niet meer op de factuur",
+UF-2026-003 stond gewoon op betaald mét kassiersnaam). Zelfde fout zat in de terugdraai-route:
+`kassierBoekingTeruggedraaid` bewaart de factuurstempel en werd óók op `===` vergeleken.
+
+Twee regels, allebei verplicht:
+
+1. **Eén gebeurtenis = één tijdstempel.** Bepaal `const nu = new Date().toISOString()` bovenaan de
+   handeling en gebruik díé variabele overal: op het record, in het logboek, in een spiegelboeking.
+   Roep `new Date()` nooit een tweede keer aan voor hetzelfde moment.
+2. **Vergelijk tijdstempels nooit met `===`/`!==` om records te koppelen.** Gebruik
+   `zelfdeBoeking()` (state.js) of dezelfde opzet: gelijk óf binnen een marge (nu 60 s). Die marge
+   is er niet voor de netheid maar voor de al weggeschreven data — records van vóór de fix hebben
+   uiteenlopende stempels en gaan anders eeuwig door met vals alarm.
+
+Wat wél mag: dag-strings (`YYYY-MM-DD`, `f.datum`, `k.datum`, `slice(0,10)`) op `===` vergelijken.
+Die worden één keer bepaald en daarna alleen gelezen — geen twee bronnen, geen milliseconden.
+
+**En hetzelfde geldt voor id's.** `Date.now()` als sleutel is wandkloktijd in een andere jas.
+`state.js` heeft daarvoor `uid()` (= `Date.now()` + random); gebruik die altijd. Twee kassiers op
+twee toestellen die in dezelfde milliseconde indienen, krijgen anders hetzelfde id — en
+`auth.js:99` mergt kassalijsten van álle bedrijven op `x.id===kl.id`, dus dan overschrijft de ene
+lijst de andere zonder melding. Nog open: `'kassa_'+Date.now()` (kassier.js, activa.js) en
+`'bon_'+Date.now()` (activa.js).
+
 ## Losse eindjes (geen risico)
 - (Verwijderd 2026-07-22: de twee oude "regel ~3976 / ~1751"-notities verwezen naar de
   inmiddels opgesliste monoliet-`index.html` en klopten niet meer met de `src/`-structuur.)
