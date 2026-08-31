@@ -520,8 +520,8 @@ Die worden één keer bepaald en daarna alleen gelezen — geen twee bronnen, ge
 `state.js` heeft daarvoor `uid()` (= `Date.now()` + random); gebruik die altijd. Twee kassiers op
 twee toestellen die in dezelfde milliseconde indienen, krijgen anders hetzelfde id — en
 `auth.js:99` mergt kassalijsten van álle bedrijven op `x.id===kl.id`, dus dan overschrijft de ene
-lijst de andere zonder melding. Nog open: `'kassa_'+Date.now()` (kassier.js, activa.js) en
-`'bon_'+Date.now()` (activa.js).
+lijst de andere zonder melding. `'kassa_'` (kassier.js, activa.js) en `'bon_'` (activa.js) zijn
+aug 2026 omgezet naar `uid()`; er staat nu nergens meer een kale `Date.now()` als sleutel.
 
 ## Losse eindjes (geen risico)
 - (Verwijderd 2026-07-22: de twee oude "regel ~3976 / ~1751"-notities verwezen naar de

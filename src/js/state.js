@@ -368,14 +368,15 @@ async function controleerKassierBoekingen(){
     // Factuur en logregel worden in dezelfde transactie geschreven, maar hun
     // tijdstempels hoeven niet tot op de milliseconde gelijk te zijn (oudere
     // boekingen zetten new Date() twee keer apart). Vergelijken op exacte
-    // gelijkheid meldt zo'n boeking ten onrechte als verloren; een marge van een
-    // minuut is ruim genoeg en nog steeds veel korter dan de tijd tussen twee
-    // boekingen op dezelfde factuur.
+    // gelijkheid meldt zo'n boeking ten onrechte als verloren. De marge dekt
+    // alleen die milliseconden-drift in al weggeschreven logregels; hou hem klein,
+    // anders kan een ECHT verloren boeking binnen het venster wegvallen als dezelfde
+    // factuur snel heen en terug geboekt wordt.
     const zelfdeBoeking = (a,b)=>{
       if(!a || !b) return false;
       if(a === b) return true;
       const ta = new Date(a).getTime(), tb = new Date(b).getTime();
-      return isFinite(ta) && isFinite(tb) && Math.abs(ta-tb) < 60000;
+      return isFinite(ta) && isFinite(tb) && Math.abs(ta-tb) < 5000;
     };
 
     const grens = Date.now() - 7*24*60*60*1000; // ouder dan een week: laat rusten

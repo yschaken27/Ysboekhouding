@@ -795,7 +795,7 @@ function mobSlaKassaOp(){
   if(omzetIncl <= 0){ toast('Eindsaldo moet hoger zijn dan beginsaldo.','error'); return; }
 
   const nieuw = {
-    id: 'kassa_'+Date.now(),
+    id: 'kassa_'+uid(), // uid() = tijd + random; Date.now() alleen botst tussen toestellen (#31)
     datum,
     ingevoerdDoor: naam,
     ingevoerdOp: new Date().toISOString(),
@@ -1176,7 +1176,7 @@ function mobStuurUpload(){
 
   const omschr = document.getElementById('mob-upload-omschrijving')?.value||'';
   const bonData = {
-    id: 'bon_'+Date.now(),
+    id: 'bon_'+uid(), // uid() = tijd + random; Date.now() alleen botst tussen toestellen (#31)
     naam: _mobHuidigBestand.naam,
     type: _mobHuidigBestand.type,
     bestand: _mobHuidigBestand.base64,

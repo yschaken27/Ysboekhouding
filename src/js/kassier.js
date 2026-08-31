@@ -102,7 +102,7 @@ function slaKassaOp(){
   const omzetBtw  = omzetIncl - omzetExcl;
 
   const nieuw = {
-    id: 'kassa_' + Date.now(),
+    id: 'kassa_' + uid(), // uid() = tijd + random; Date.now() alleen botst tussen toestellen (#31)
     datum,
     ingevoerdDoor: naam,
     ingevoerdOp: new Date().toISOString(),
