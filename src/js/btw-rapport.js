@@ -367,6 +367,29 @@ function renderOpenPosten(){
   }
 }
 
+// Hoe een factuur op de omzet-/kostenrekeningen landt: [{gbId, excl, r}].
+// Spiegelt facturen.js (per regel naar r.gbId, anders de eerste omzet-/kostenrekening)
+// én kassier.js (urenfactuur boekt totaalExcl). totaalExcl is leidend: een eventueel
+// verschil met Σ aantal×prijs gaat op de laatste regel, zodat de som exact gelijk is aan
+// wat er op het saldo geboekt is. Facturen zonder regels (oude urenfacturen) gaan in één
+// keer naar de fallback-rekening. Gedeeld door balansAudit() en bouwGrootboekkaart(),
+// zodat controle en kaart nooit uiteenlopen.
+function _factuurBoekRegels(f, fallbackType){
+  const regels = Array.isArray(f.regels) ? f.regels : [];
+  const totExcl = parseFloat(f.totaalExcl||0);
+  const fallback = DB.grootboek.find(g=>g.type===fallbackType);
+  const regelSom = regels.reduce((a,r)=>a+(parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0),0);
+  if(regels.length && Math.abs(regelSom - totExcl) < 0.02){
+    const uit = regels.map(r=>{
+      const rek = (r.gbId ? DB.grootboek.find(g=>g.id===r.gbId) : null) || fallback;
+      return { gbId: rek?.id || null, excl: (parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0), r };
+    });
+    uit[uit.length-1].excl += totExcl - regelSom;
+    return uit;
+  }
+  return [{ gbId: fallback?.id || null, excl: totExcl, r: null }];
+}
+
 // ===== BOEKHOUD-AUDIT (reconciliatie balans ↔ brondocumenten) =====
 // Herberekent per omzet-/kostenrekening het VERWACHTE saldo uit de onderliggende
 // boekingen (facturen + directe bankkoppelingen + memoriaal, VOL bedrag excl. BTW —
@@ -376,22 +399,11 @@ function renderOpenPosten(){
 // zet — precies het soort stille fout dat je bij veel boekingen niet ziet.
 function balansAudit(){
   const verwacht = {};
-  const add = (id, x) => { if(id){ verwacht[id] = rond((verwacht[id]||0) + x); } };
+  // Niet per stap afronden: halve centen (bv. 8,5 u × € 37,28) stapelen anders op
+  // tot een vals verschil van € 0,01. Alleen het eindtotaal wordt afgerond.
+  const add = (id, x) => { if(id){ verwacht[id] = (verwacht[id]||0) + x; } };
   const factuurExcl = (f, fallbackType) => {
-    const regels = f.regels||[];
-    const regelSom = regels.reduce((a,r)=>a+(parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0),0);
-    const totExcl = parseFloat(f.totaalExcl||0);
-    if(regels.length && Math.abs(regelSom - totExcl) < 0.02){
-      // Spiegelt facturen.js: per regel naar r.gbId, of anders de eerste omzet-/kostenrekening.
-      regels.forEach(r=>{
-        const excl = (parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0);
-        const rek = (r.gbId ? DB.grootboek.find(g=>g.id===r.gbId) : null) || DB.grootboek.find(g=>g.type===fallbackType);
-        add(rek?.id, excl);
-      });
-    } else {
-      const rek = DB.grootboek.find(g=>g.type===fallbackType);
-      add(rek?.id, totExcl);
-    }
+    _factuurBoekRegels(f, fallbackType).forEach(x=>add(x.gbId, x.excl));
   };
   (DB.verkoop||[]).forEach(f=>factuurExcl(f, 'omzet'));
   (DB.inkoop||[]).forEach(f=>factuurExcl(f, 'kosten'));
@@ -405,7 +417,8 @@ function balansAudit(){
       if(!g || (g.type!=='omzet' && g.type!=='kosten')) return;
       const bedrag = parseFloat(d.bedrag)||0;
       const tarief = parseFloat(d.btwTarief)||0;
-      const exclSigned = tarief>0 ? bedrag/((100+tarief)/100) : bedrag;
+      // rond(): _boekTegenrekening rondt het excl.-deel per boeking af (anders dan facturen).
+      const exclSigned = rond(tarief>0 ? bedrag/((100+tarief)/100) : bedrag);
       // Exact zoals _boekTegenrekening: omzet (credit-normaal) +excl, kosten −excl —
       // ook bij een terugbetaling (omgekeerd teken), zodat dat geen vals alarm geeft.
       add(g.id, g.type==='omzet' ? exclSigned : -exclSigned);
@@ -878,11 +891,11 @@ function bouwGrootboekkaart(gbId){
 
   (DB.verkoop||[]).forEach(f=>{
     const d=f.datum||'';
-    (f.regels||[]).forEach(r=>{
-      if(String(r.gbId||'')===gbId){
-        const excl=rond((parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0));
-        if(Math.abs(excl)>0.005) posten.push({datum:d,bron:'Verkoopfactuur '+(f.nummer||''),oms:f.klant||r.omschrijving||'',effect:excl,ref:{p:'verkoop',id:f.id}});
-      }
+    // Zelfde verdeling als de boeking zelf (ook regels zonder gbId en urenfacturen
+    // zonder regels) — anders belandden die als "Niet-toegewezen" restpost op de kaart.
+    _factuurBoekRegels(f,'omzet').forEach(x=>{
+      if(String(x.gbId||'')===gbId && Math.abs(x.excl)>0.005)
+        posten.push({datum:d,bron:'Verkoopfactuur '+(f.nummer||''),oms:f.klant||x.r?.omschrijving||'',effect:x.excl,ref:{p:'verkoop',id:f.id}});
     });
     if(nr==='1300'){ const v=rond(parseFloat(f.totaalIncl||0)); if(Math.abs(v)>0.005) posten.push({datum:d,bron:'Verkoopfactuur '+(f.nummer||''),oms:'Debiteur — '+(f.klant||''),effect:v,ref:{p:'verkoop',id:f.id}}); }
     if(btwTeBetalen){ const v=rond(parseFloat(f.btwBedrag||0)); if(v>0.005) posten.push({datum:d,bron:'Verkoopfactuur '+(f.nummer||''),oms:'BTW te betalen',effect:v,ref:{p:'verkoop',id:f.id}}); }
@@ -902,11 +915,9 @@ function bouwGrootboekkaart(gbId){
   });
   (DB.inkoop||[]).forEach(f=>{
     const d=f.datum||'';
-    (f.regels||[]).forEach(r=>{
-      if(String(r.gbId||'')===gbId){
-        const excl=rond((parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0));
-        if(Math.abs(excl)>0.005) posten.push({datum:d,bron:'Inkoopfactuur '+(f.nummer||''),oms:f.klant||r.omschrijving||'',effect:excl,ref:{p:'inkoop',id:f.id}});
-      }
+    _factuurBoekRegels(f,'kosten').forEach(x=>{
+      if(String(x.gbId||'')===gbId && Math.abs(x.excl)>0.005)
+        posten.push({datum:d,bron:'Inkoopfactuur '+(f.nummer||''),oms:f.klant||x.r?.omschrijving||'',effect:x.excl,ref:{p:'inkoop',id:f.id}});
     });
     if(nr==='2100'){ const v=rond(parseFloat(f.totaalIncl||0)); if(Math.abs(v)>0.005) posten.push({datum:d,bron:'Inkoopfactuur '+(f.nummer||''),oms:'Crediteur — '+(f.klant||''),effect:v,ref:{p:'inkoop',id:f.id}}); }
     // Zelfde als bij verkoop, maar dan geld eruit: crediteuren omlaag, bank omlaag.
@@ -955,8 +966,10 @@ function bouwGrootboekkaart(gbId){
   });
 
   posten.sort((a,b)=>String(a.datum).localeCompare(String(b.datum)));
+  // Onafgerond optellen (factuurregels kunnen halve centen hebben, net als g.saldo);
+  // alleen het getoonde lopende saldo wordt afgerond.
   let som=0;
-  posten.forEach(p=>{ som=rond(som+p.effect); p.saldo=som; });
+  posten.forEach(p=>{ som+=p.effect; p.saldo=rond(som); });
   const werkelijk=rond(parseFloat(g.saldo)||0);
   const verschil=rond(werkelijk-som);
   if(Math.abs(verschil)>0.005){

@@ -250,7 +250,12 @@ Elke koppeling van een banktransactie aan een grootboekrekening in `bank.js` (`i
 ### 19. Grootboekkaart = read-only reconstructie, sluit altijd op `g.saldo`
 De grootboekkaart (drill-down vanuit Balans, P&L en de Grootboek-tab) is een READ-ONLY weergave in `btw-rapport.js` — de wéérgave muteert NOOIT saldi.
 **Eén uitzondering: `gbkVerwijderPost()`** (aug 2026). Zie #19b hieronder; alle andere code in de kaart blijft read-only. `bouwGrootboekkaart(gbId)` reconstrueert de boekingen per rekening uit de bestaande data:
-- **Facturen** (`DB.verkoop`/`DB.inkoop`): omzet/kosten via `r.gbId` (excl. = aantal×prijs), debiteuren 1300 / crediteuren 2100 = totaalIncl, BTW naar 1510/1530 (verkoop) of 1500/1520 (inkoop) = btwBedrag.
+- **Facturen** (`DB.verkoop`/`DB.inkoop`): omzet/kosten via `_factuurBoekRegels(f, type)` — dezelfde helper
+  als `balansAudit`, die spiegelt hoe facturen.js/kassier.js boeken: per regel naar `r.gbId`, regel zonder
+  `gbId` → eerste omzet-/kostenrekening, factuur zonder `regels` (oude urenfactuur) → `totaalExcl` in één
+  keer. Nooit alleen op `r.gbId` filteren: dan belandt die omzet als "Niet-toegewezen" restpost op de kaart
+  (okt 2026: € 1.244,62 op 4000). Bedragen ONafgerond optellen, alleen het eindtotaal afronden — halve
+  centen (8,5 × tarief) gaven anders een vals auditverschil van € 0,01. Debiteuren 1300 / crediteuren 2100 = totaalIncl, BTW naar 1510/1530 (verkoop) of 1500/1520 (inkoop) = btwBedrag.
 - **Banktransacties**: de bankrekening zelf (`t.bankGbId`) = bedrag; directe grootboek-koppeling (tegenrekening via `t.tegenrekeningId`, anders `t.gekoppeldAan` startsWith `nr — `) excl. BTW via `t.btwTarief`, met teken op rekeningtype; factuurbetaling boekt 1300/2100 af. Gesplitste koppelingen belanden in de sluitregel (kaart blijft kloppen via `g.saldo`).
 - **Memoriaal**: `r.gbId` met `r.effect` (exacte mutatie); fallback via `_memSaldoEffect(g, r.dc, r.bedrag)` — NOOIT naïef `dc?bedrag:-bedrag`, want dat geeft credit-normale rekeningen (omzet/passiva/EV) het verkeerde teken.
 
