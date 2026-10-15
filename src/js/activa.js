@@ -854,9 +854,10 @@ function renderMobFacturen(){
   }
 }
 
-// Bouwt één factuurregel met een actieknop eronder. `actie` is 'betaald',
-// 'terugdraaien' of null (alleen tonen, geen knop).
+// Bouwt één factuurregel met knoppen eronder: altijd "Bekijk factuur", plus de
+// actieknop. `actie` is 'betaald', 'terugdraaien' of null (geen actieknop).
 function _mobFactuurRegel(f, {regel, bedragKleur, actie}){
+  const bekijk = `<button class="mob-factuur-btn bekijk" onclick="mobToonFactuur('${f.id}')">📄 Bekijk factuur</button>`;
   const knop = actie === 'betaald'
     ? `<button class="mob-factuur-btn" onclick="mobMeldFactuurBetaald('${f.id}')">✓ Betaald</button>`
     : actie === 'terugdraaien'
@@ -870,9 +871,89 @@ function _mobFactuurRegel(f, {regel, bedragKleur, actie}){
       </div>
       <span style="font-size:15px;font-weight:700;color:${bedragKleur};">${mobFmtEur(f.openstaand||f.totaal||f.totaalIncl||0)}</span>
     </div>
-    ${knop}
+    <div class="mob-factuur-knoppen">${bekijk}${knop}</div>
   </div>`;
 }
+
+// ---- Factuur bekijken / downloaden vanaf de telefoon ----
+// Toont het factuurdocument in een venster binnen de app i.p.v. window.open():
+// een geïnstalleerde PWA op iOS opent een leeg pop-upvenster niet betrouwbaar.
+// Het document zelf komt uit bouwVerkoopFactuurDocument() (facturen.js), dus de
+// kassier ziet precies de factuur die de eigenaar met "📄 Factuur" opent.
+// Alleen-lezen: hier wordt niets geboekt of opgeslagen.
+let _mobFactuurHtml = null, _mobFactuurNaam = '';
+
+function mobToonFactuur(id){
+  const f = (DB.verkoop||[]).find(x=>x.id===id);
+  if(!f){ toast('Factuur niet gevonden — ververs de lijst.','error'); return; }
+  if(typeof kassierMagOpdrachtgever === 'function' && !kassierMagOpdrachtgever(f.klant)){
+    toast('Deze factuur hoort niet bij jouw opdrachtgevers.','error');
+    return;
+  }
+
+  _mobFactuurHtml = bouwVerkoopFactuurDocument(f);
+  _mobFactuurNaam = 'Factuur-' + String(f.nummer||f.id).replace(/[^\w\-]+/g,'_') + '.html';
+
+  const viewer = document.getElementById('mob-factuur-viewer');
+  const frame  = document.getElementById('mob-factuur-frame');
+  document.getElementById('mob-factuur-titel').textContent = 'Factuur ' + (f.nummer||'');
+  // De eigen afdrukknop in het document is hier overbodig: de balk bovenin heeft
+  // er al een. In het gedownloade bestand blijft hij wel staan.
+  frame.onload = _mobSchaalFactuur;
+  frame.srcdoc = _mobFactuurHtml.replace('</head>','<style>.print-btn{display:none!important}</style></head>');
+  viewer.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+// Het document is A4-breed (794px). Op een telefoon verkleinen we het hele
+// document zodat de factuur in één keer in beeld staat, net als een PDF.
+function _mobSchaalFactuur(){
+  const frame = document.getElementById('mob-factuur-frame');
+  const wrap  = document.getElementById('mob-factuur-schaal');
+  const doc   = frame?.contentDocument;
+  if(!frame || !wrap || !doc) return;
+  const hoogte = Math.max(doc.documentElement.scrollHeight, doc.body?.scrollHeight||0, 1123);
+  const schaal = Math.min(1, (wrap.parentElement.clientWidth - 16) / 794);
+  frame.style.height = hoogte + 'px';
+  frame.style.transform = `scale(${schaal})`;
+  wrap.style.width  = (794*schaal) + 'px';
+  wrap.style.height = (hoogte*schaal) + 'px';
+}
+
+function mobSluitFactuur(){
+  document.getElementById('mob-factuur-viewer')?.classList.remove('open');
+  const frame = document.getElementById('mob-factuur-frame');
+  if(frame){ frame.onload = null; frame.srcdoc = ''; }
+  document.body.style.overflow = '';
+  _mobFactuurHtml = null;
+}
+
+// Slaat de factuur op als bestand op de telefoon. Openen kan daarna in elke
+// browser, en via de knop onderaan het document ook als PDF bewaren.
+function mobDownloadFactuur(){
+  if(!_mobFactuurHtml) return;
+  const url = URL.createObjectURL(new Blob([_mobFactuurHtml], {type:'text/html'}));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = _mobFactuurNaam;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 10000);
+}
+
+// Opent het afdrukmenu van de telefoon; daar kies je "Opslaan als PDF"
+// (Android) of deel/bewaar je de PDF (iPhone).
+function mobPrintFactuur(){
+  const w = document.getElementById('mob-factuur-frame')?.contentWindow;
+  if(!w){ toast('De factuur is nog niet geladen.','warning'); return; }
+  w.focus();
+  w.print();
+}
+
+window.addEventListener('resize', ()=>{
+  if(document.getElementById('mob-factuur-viewer')?.classList.contains('open')) _mobSchaalFactuur();
+});
 
 function _renderMobFacturenIntern(){
   // Alleen de opdrachtgevers die deze kassier van de eigenaar mag zien. Is er

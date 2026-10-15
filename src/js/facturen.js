@@ -1098,7 +1098,6 @@ async function toonVerkoopFactuur(id){
   const f = (DB.verkoop||[]).find(x=>x.id===id);
   if(!f){ toast('Factuur niet gevonden.','error'); return; }
   const p = DB.profiel || {};
-  const bedrijf = p.naam || huidigBedrijf;
 
   const ontbrekend = [];
   if(!p.straat) ontbrekend.push('Bedrijfsadres (Instellingen → Bedrijfsprofiel)');
@@ -1117,6 +1116,15 @@ async function toonVerkoopFactuur(id){
     if(!ok) return;
   }
 
+  openFactuurVenster(bouwVerkoopFactuurDocument(f));
+}
+
+// Het factuurdocument (HTML) van een opgeslagen verkoopfactuur, zonder het te
+// openen. Gedeeld door toonVerkoopFactuur() (eigenaar) en mobToonFactuur()
+// (kassier, activa.js), zodat beide exact dezelfde factuur laten zien.
+function bouwVerkoopFactuurDocument(f){
+  const p = DB.profiel || {};
+  const bedrijf = p.naam || huidigBedrijf;
   const dFmt = d => d ? new Date(d).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'}) : '—';
   const regels = Array.isArray(f.regels) ? f.regels : [];
 
@@ -1132,7 +1140,7 @@ async function toonVerkoopFactuur(id){
     .map(pct=>({label:`BTW ${pct}%`, bedrag:perTarief[pct]}));
 
   const btwBedrag = parseFloat(f.btwBedrag)||0;
-  const html = bouwFactuurHtml({
+  return bouwFactuurHtml({
     bedrijf, p,
     klantNaam: f.klant,
     klantRegels: [ ...String(f.adres||'').split('\n'),
@@ -1158,7 +1166,6 @@ async function toonVerkoopFactuur(id){
     zonderBtw: !!p.urenZonderBtw && Math.abs(btwBedrag) < 0.005,
     notities: f.notities||''
   });
-  openFactuurVenster(html);
 }
 
 // Betalingstermijn in dagen uit de twee datums; valt terug op de standaardtekst

@@ -543,6 +543,88 @@ body.kassier-mobiel .app { display: none !important; }
   background: rgba(255,255,255,0.05);
   color: rgba(255,255,255,0.6);
 }
+.mob-factuur-btn.bekijk {
+  border-color: rgba(96,165,250,0.35);
+  background: rgba(96,165,250,0.12);
+  color: #60a5fa;
+}
+.mob-factuur-knoppen {
+  display: flex;
+  gap: 8px;
+}
+
+/* ---- FACTUUR BEKIJKEN (kassier) ----
+   Schermvullend venster met het A4-document in een iframe. Het document wordt
+   in activa.js (_mobSchaalFactuur) verkleind tot de schermbreedte. */
+.mob-factuur-viewer {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: #0f172a;
+  flex-direction: column;
+}
+.mob-factuur-viewer.open { display: flex; }
+.mob-factuur-viewer-balk {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: calc(10px + env(safe-area-inset-top)) 12px 6px;
+}
+.mob-fv-titel {
+  min-width: 0;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mob-factuur-viewer-acties {
+  display: flex;
+  gap: 8px;
+  padding: 6px 12px 10px;
+}
+.mob-fv-knop {
+  flex: 1;
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(96,165,250,0.35);
+  background: rgba(96,165,250,0.12);
+  color: #60a5fa;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mob-fv-knop.sluit {
+  flex: 0 0 auto;
+  width: 42px;
+  border-color: rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.05);
+  color: #fff;
+}
+.mob-fv-knop:active { opacity: 0.6; }
+.mob-factuur-viewer-inhoud {
+  flex: 1;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 8px calc(16px + env(safe-area-inset-bottom));
+}
+.mob-factuur-schaal {
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #fff;
+}
+.mob-factuur-schaal iframe {
+  display: block;
+  width: 794px;
+  border: 0;
+  background: #fff;
+  transform-origin: top left;
+}
 
 /* ---- KASSA SCHERM ---- */
 .mob-kassa-header {

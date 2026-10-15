@@ -284,6 +284,23 @@
     <div id="mob-betaald-gemeld"></div>
   </div>
 
+  <!-- FACTUUR BEKIJKEN (kassier, alleen-lezen) — gevuld door mobToonFactuur() in activa.js -->
+  <div id="mob-factuur-viewer" class="mob-factuur-viewer">
+    <div class="mob-factuur-viewer-balk">
+      <button class="mob-fv-knop sluit" onclick="mobSluitFactuur()" aria-label="Sluiten">✕</button>
+      <div id="mob-factuur-titel" class="mob-fv-titel">Factuur</div>
+    </div>
+    <div class="mob-factuur-viewer-acties">
+      <button class="mob-fv-knop" onclick="mobDownloadFactuur()">⬇ Downloaden</button>
+      <button class="mob-fv-knop" onclick="mobPrintFactuur()">🖨 PDF / afdrukken</button>
+    </div>
+    <div class="mob-factuur-viewer-inhoud">
+      <div id="mob-factuur-schaal" class="mob-factuur-schaal">
+        <iframe id="mob-factuur-frame" title="Factuur"></iframe>
+      </div>
+    </div>
+  </div>
+
   <!-- UPLOADS pagina -->
   <div id="mob-page-uploads" class="mob-page">
 
