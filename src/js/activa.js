@@ -460,6 +460,8 @@ function isMobiel(){
 // Dashboard: gekozen jaar en maand (0-11). Standaard de huidige maand.
 let _mobJaar  = new Date().getFullYear();
 let _mobMaand = new Date().getMonth();
+// BTW-blok: gekozen kwartaal (0-3), null = automatisch het kwartaal dat nu speelt.
+let _mobBtwKwartaal = null;
 let _mobFilter  = '';
 let _mobActieveCat = null; // welke categorie numpad open
 let _mobNumpadWaarde = '';
@@ -488,9 +490,12 @@ function mobBouwNav(){
   // wie alleen de module 'sales' heeft (zonder de factuurlijsten, zie
   // _renderMobFacturenIntern).
   const facturenZichtbaar = modules.includes('facturen') || modules.includes('sales');
+  // Het BTW-overzicht staat op het dashboard, dus module 'btw' toont die tab ook.
+  const dashboardZichtbaar = modules.includes('dashboard') || modules.includes('btw');
   // Overzichten altijd tonen als kassa actief is
   const zichtbaar = tabs.filter(t=>
-    (t.id==='uren' ? urenZichtbaar : t.id==='facturen' ? facturenZichtbaar : modules.includes(t.id)) ||
+    (t.id==='uren' ? urenZichtbaar : t.id==='facturen' ? facturenZichtbaar
+      : t.id==='dashboard' ? dashboardZichtbaar : modules.includes(t.id)) ||
     (t.id==='overzichten' && modules.includes('kassa'))
   );
   nav.innerHTML = zichtbaar.map(t=>
@@ -528,6 +533,12 @@ function mobKiesJaar(jaar){
   const nu = new Date();
   // Huidig jaar: de huidige maand; een eerder jaar: december (laatste maand).
   _mobMaand = jaar === nu.getFullYear() ? nu.getMonth() : 11;
+  _mobBtwKwartaal = null;
+  renderMobDashboard();
+}
+
+function mobKiesBtwKwartaal(q){
+  _mobBtwKwartaal = q;
   renderMobDashboard();
 }
 
@@ -551,6 +562,73 @@ function _mobKortBedrag(v){
 
 function mobFmtEur(val){
   return '€ ' + parseFloat(val||0).toFixed(2).replace('.',',');
+}
+
+// ---- BTW per kwartaal (dashboard-blok) ----
+// Status van een kwartaal t.o.v. vandaag. Aangifte + betaling uiterlijk de
+// laatste dag van de maand ná het kwartaal (Q4 → 31 januari volgend jaar).
+function _mobBtwStatus(jaar, q, nu){
+  const start    = new Date(jaar, q*3, 1);
+  const eind     = new Date(jaar, q*3+3, 1);            // eerste dag ná het kwartaal
+  const deadline = new Date(jaar, q*3+4, 0);            // laatste dag van de maand erna
+  const vandaag  = new Date(nu.getFullYear(), nu.getMonth(), nu.getDate());
+  const dl = deadline.toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
+  if(vandaag < start)     return { code:'toekomst', tekst:'Nog niet begonnen', deadline: dl };
+  if(vandaag < eind)      return { code:'lopend',   tekst:'Loopt nog', deadline: dl };
+  if(vandaag <= deadline) return { code:'aangeven', tekst:'Aangifte vóór '+deadline.toLocaleDateString('nl-NL',{day:'numeric',month:'short'}), deadline: dl };
+  return { code:'klaar', tekst:'Afgelopen', deadline: dl };
+}
+
+function _renderMobBtw(nu){
+  const periodes = ['jan – mrt','apr – jun','jul – sep','okt – dec'];
+  const kw = [0,1,2,3].map(q=>{
+    const r = berekenBtwPeriode(_mobJaar, [q*3, q*3+1, q*3+2]);
+    // Zelfde saldo als het BTW-rapport: omzet-BTW (1a+1b) min voorbelasting (5b).
+    return { q, r, saldo: r.btw1a + r.btw1b - r.btw5b, status: _mobBtwStatus(_mobJaar, q, nu) };
+  });
+  // Automatisch: het kwartaal waarvoor nu aangifte moet, anders het lopende,
+  // anders (eerder jaar) Q4.
+  let sel = _mobBtwKwartaal;
+  if(sel === null){
+    const aangeven = kw.find(k=>k.status.code==='aangeven');
+    const lopend   = kw.find(k=>k.status.code==='lopend');
+    sel = (aangeven || lopend || kw[3]).q;
+  }
+
+  const titel = document.getElementById('mob-btw-titel');
+  if(titel) titel.textContent = 'BTW ' + _mobJaar;
+
+  const grid = document.getElementById('mob-btw-kwartalen');
+  if(grid){
+    grid.innerHTML = kw.map(k=>{
+      const toekomst = k.status.code === 'toekomst';
+      const bedrag = toekomst ? '–' : (k.saldo < 0 ? 'terug ' : '') + mobFmtEur(Math.abs(k.saldo));
+      return `<button class="mob-btw-kaart${k.q===sel?' sel':''}" onclick="mobKiesBtwKwartaal(${k.q})"${toekomst?' disabled':''}>` +
+        `<div class="mob-btw-kw">Q${k.q+1} · ${periodes[k.q]}</div>` +
+        `<div class="mob-btw-bedrag">${bedrag}</div>` +
+        `<span class="mob-btw-tag ${k.status.code}">${k.status.tekst}</span></button>`;
+    }).join('');
+  }
+
+  const k = kw[sel], r = k.r;
+  const rij = (label, sub, waarde, klasse='') =>
+    `<div class="mob-btw-rij"><span>${label}${sub?`<small>${sub}</small>`:''}</span><span class="${klasse}">${waarde}</span></div>`;
+  const detail = document.getElementById('mob-btw-detail');
+  if(detail){
+    detail.innerHTML =
+      `<div class="mob-btw-titel">Q${k.q+1} ${_mobJaar} · ${periodes[k.q]}</div>` +
+      rij('BTW over omzet 21%', 'omzet ' + mobFmtEur(r.gs1a), mobFmtEur(r.btw1a)) +
+      rij('BTW over omzet 9%',  'omzet ' + mobFmtEur(r.gs1b), mobFmtEur(r.btw1b)) +
+      (r.gs1d ? rij('Omzet 0% / vrijgesteld', '', mobFmtEur(r.gs1d)) : '') +
+      rij('Voorbelasting (aftrekbaar)', 'BTW op kosten en inkoop', '− ' + mobFmtEur(r.btw5b), 'terug') +
+      `<div class="mob-btw-rij totaal"><span>${k.saldo>=0?'Te betalen':'Terug te krijgen'}</span>` +
+        `<span class="${k.saldo>=0?'betalen':'terug'}">${mobFmtEur(Math.abs(k.saldo))}</span></div>` +
+      `<div class="mob-btw-deadline">Uiterlijk aangeven en betalen: ${k.status.deadline}</div>`;
+  }
+
+  const noot = document.getElementById('mob-btw-noot');
+  if(noot) noot.textContent = 'Indicatie op basis van de boekhouding (' +
+    (r.kasstelsel ? 'kasstelsel' : 'factuurstelsel') + ') — de aangifte zelf doet de eigenaar.';
 }
 
 // ---- Dashboard render ----
@@ -652,6 +730,16 @@ function renderMobDashboard(){
   // Topbar sub
   const subEl = document.getElementById('mob-topbar-sub');
   if(subEl) subEl.textContent = _actieveKassier?.naam||'';
+
+  // BTW per kwartaal: alleen met module 'btw' (de eigenaar vinkt dat aan per
+  // gebruiker). Bedrijfsbreed, dus zonder opdrachtgever-filter — anders klopt
+  // het te betalen bedrag niet.
+  const btwSectie = document.getElementById('mob-btw-sectie');
+  if(btwSectie){
+    const heeftBtw = (mobGetModules()||[]).includes('btw') && typeof berekenBtwPeriode === 'function';
+    btwSectie.style.display = heeftBtw ? '' : 'none';
+    if(heeftBtw) _renderMobBtw(nu);
+  }
 
   // Uren-sectie (gekozen maand): toon als kassier uren-module heeft
   const urenSectie = document.getElementById('mob-uren-dashboard-sectie');

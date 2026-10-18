@@ -541,8 +541,9 @@ function pasNavAanRol(){
     // Altijd de volledige kassier-interface (dashboard, kassa, facturen, bonnen, lijsten)
     mobBouwNav();
     const modules = _actieveKassier?.modules || ['dashboard','kassa','uploads'];
-    // 'sales' is geen eigen tab maar zit in het Facturen-tabblad.
-    const startTab = modules.includes('dashboard') ? 'dashboard'
+    // 'sales' is geen eigen tab maar zit in het Facturen-tabblad; 'btw' is een
+    // blok op het dashboard (renderMobDashboard → _renderMobBtw).
+    const startTab = (modules.includes('dashboard') || modules.includes('btw')) ? 'dashboard'
       : (modules[0]==='sales' ? 'facturen' : modules[0]) || 'kassa';
     mobNav(startTab);
   } else {
@@ -665,6 +666,7 @@ function openGebruikerDetail(id){
     {v:'facturen',  l:'🧾 Facturen'},
     {v:'uploads',   l:'📎 Bonnen'},
     {v:'sales',     l:'💼 Sales'},
+    {v:'btw',       l:'🧮 BTW (op dashboard)'},
   ];
   document.getElementById('gd-modules').innerHTML = modDefs.map(m=>`
     <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;

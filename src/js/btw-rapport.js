@@ -1438,22 +1438,12 @@ function _factuurBtwPct(f){
   return 0;
 }
 
-function renderBTWAangifte(){
-  // Vul jaar dropdown
-  const jaarSel=document.getElementById('btw-jaar');
-  if(jaarSel&&jaarSel.options.length===0){
-    const huidigJaar=new Date().getFullYear();
-    for(let j=huidigJaar;j>=huidigJaar-4;j--){
-      const opt=document.createElement('option');
-      opt.value=j; opt.textContent=j;
-      jaarSel.appendChild(opt);
-    }
-  }
-  if(!jaarSel) return;
-  const jaar=parseInt(jaarSel.value)||new Date().getFullYear();
-  const periode=document.getElementById('btw-periode')?.value||'Q1';
-  const maanden={Q1:[0,1,2],Q2:[3,4,5],Q3:[6,7,8],Q4:[9,10,11]}[periode];
-
+// Berekent de rubrieken van de BTW-aangifte voor een periode (jaar + maanden
+// 0-11). Gedeeld door het BTW-rapport van de eigenaar (renderBTWAangifte) en het
+// BTW-blok op het kassier-dashboard (activa.js), zodat beide gegarandeerd
+// hetzelfde bedrag tonen. Pure berekening op DB — raakt geen DOM en boekt niets.
+// Wijzig je hier iets, dan verandert het op beide plekken (CLAUDE.md #26).
+function berekenBtwPeriode(jaar, maanden){
   function inPeriode(datumStr){
     if(!datumStr) return false;
     const d=new Date(datumStr);
@@ -1467,8 +1457,7 @@ function renderBTWAangifte(){
   let gs1b=0; let btw1b=0;
   let gs1d=0; // 0% BTW omzet (vrijgesteld of nultarief)
   const kasstelsel = isKasstelsel();
-  const stelselLabel = kasstelsel ? 'kasstelsel — betaaldatum' : 'factuurstelsel — factuurdatum';
-  DB.verkoop.forEach(f=>{
+  (DB.verkoop||[]).forEach(f=>{
     const btwDatum = getBtwDatum(f);
     if(!btwDatum || !inPeriode(btwDatum)) return;
     const ratio = _getBetaaldRatio(f);
@@ -1496,7 +1485,7 @@ function renderBTWAangifte(){
   // RUBRIEK 5b — voorbelasting inkoop (per factuurregel)
   // Bij kasstelsel: alleen betaalde inkopen, proportioneel op betaald bedrag
   let gs5b=0; let btw5b=0;
-  DB.inkoop.forEach(f=>{
+  (DB.inkoop||[]).forEach(f=>{
     const btwDatum = getBtwDatum(f);
     if(!btwDatum || !inPeriode(btwDatum)) return;
     // Gebruik centrale helper — voorkomt dubbele ratio toepassing
@@ -1538,7 +1527,7 @@ function renderBTWAangifte(){
   // (het wérkelijk geboekte tarief, #20/#25). Uitgaven met BTW → 5b (voorbelasting,
   // gespiegeld aan de 1500-boeking); ontvangsten met BTW → 1a/1b (gespiegeld aan de
   // 1510-boeking van _boekTegenrekening); 0%-ontvangsten op een omzetrekening → 1d.
-  DB.transacties.filter(t=>inPeriode(t.datum)&&t.status==='gekoppeld'&&t.gekoppeldType==='grootboek').forEach(t=>{
+  (DB.transacties||[]).filter(t=>inPeriode(t.datum)&&t.status==='gekoppeld'&&t.gekoppeldType==='grootboek').forEach(t=>{
     _bankGbDelen(t).forEach(d=>{
       const bedrag = parseFloat(d.bedrag)||0;
       const tarief = parseFloat(d.btwTarief)||0;
@@ -1556,6 +1545,27 @@ function renderBTWAangifte(){
       }
     });
   });
+
+  return { gs1a, btw1a, gs1b, btw1b, gs1d, gs5b, btw5b, kasstelsel, inPeriode };
+}
+
+function renderBTWAangifte(){
+  // Vul jaar dropdown
+  const jaarSel=document.getElementById('btw-jaar');
+  if(jaarSel&&jaarSel.options.length===0){
+    const huidigJaar=new Date().getFullYear();
+    for(let j=huidigJaar;j>=huidigJaar-4;j--){
+      const opt=document.createElement('option');
+      opt.value=j; opt.textContent=j;
+      jaarSel.appendChild(opt);
+    }
+  }
+  if(!jaarSel) return;
+  const jaar=parseInt(jaarSel.value)||new Date().getFullYear();
+  const periode=document.getElementById('btw-periode')?.value||'Q1';
+  const maanden={Q1:[0,1,2],Q2:[3,4,5],Q3:[6,7,8],Q4:[9,10,11]}[periode];
+
+  const { gs1a, btw1a, gs1b, btw1b, gs1d, gs5b, btw5b, kasstelsel, inPeriode } = berekenBtwPeriode(jaar, maanden);
 
   // Update rubrieken
   const set=(id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=fmt(val); };

@@ -464,6 +464,13 @@ Concreet gerepareerd, en dus nooit opnieuw introduceren:
 Aansluitcontrole om dit type fout te vangen: rubriek 1a+1b moet aansluiten op wat er in
 dezelfde periode op 1510 geboekt is, en 5b op 1500.
 
+**Eén BTW-berekening, twee schermen (okt 2026).** `berekenBtwPeriode(jaar, maanden)` in
+btw-rapport.js rekent de rubrieken (1a/1b/1d/5b) uit; `renderBTWAangifte()` (eigenaar) én het
+BTW-blok op het kassier-dashboard (`_renderMobBtw` in activa.js, module `'btw'` per gebruiker)
+gebruiken die. Reken BTW-aangiftebedragen nooit ergens anders opnieuw uit — een tweede kopie
+loopt gegarandeerd uit de pas met het rapport. Het kassier-blok is bedrijfsbreed (géén
+opdrachtgever-filter), anders klopt het te betalen bedrag niet.
+
 ### 27. Eenzijdige saldo-mutaties zijn ALTIJD fout (behalve #19b)
 Vier features lagen stil doordat ze een saldo aan één kant muteerden; de balanscontrole
 blokkeerde ze allemaal met een cryptische "boekhoudkundige fout" die op een codebug leek.
