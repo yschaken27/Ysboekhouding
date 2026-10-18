@@ -482,9 +482,13 @@ function mobBouwNav(){
   ];
   // Uren-tab: zichtbaar als uren-registratie aan staat voor dit bedrijf én module 'uren' is aangevinkt.
   const urenZichtbaar = isUrenAan() && modules.includes('uren');
+  // Sales invullen zit in het Facturen-tabblad, dus dat tabblad is er ook voor
+  // wie alleen de module 'sales' heeft (zonder de factuurlijsten, zie
+  // _renderMobFacturenIntern).
+  const facturenZichtbaar = modules.includes('facturen') || modules.includes('sales');
   // Overzichten altijd tonen als kassa actief is
   const zichtbaar = tabs.filter(t=>
-    (t.id==='uren' ? urenZichtbaar : modules.includes(t.id)) ||
+    (t.id==='uren' ? urenZichtbaar : t.id==='facturen' ? facturenZichtbaar : modules.includes(t.id)) ||
     (t.id==='overzichten' && modules.includes('kassa'))
   );
   nav.innerHTML = zichtbaar.map(t=>
@@ -586,7 +590,8 @@ function renderMobDashboard(){
   const kosten = kostenUitgaven + kostenInkoop;
 
   // Uren-facturen (type='uren') ook meenemen in omzet en openstaand
-  const urenFacturen = (DB.verkoop||[]).filter(f=>f.type==='uren');
+  // Salesfacturen (type='sales', maakSalesFactuur) horen er net zo bij.
+  const urenFacturen = (DB.verkoop||[]).filter(f=>f.type==='uren' || f.type==='sales');
   const urenFacturenInPeriode = urenFacturen.filter(f=>_inMobPeriode(f.datum||''));
   const urenExclInPeriode = urenFacturenInPeriode.reduce((s,f)=>s+(parseFloat(f.totaalExcl||0)),0);
   const urenInclInPeriode = urenFacturenInPeriode.reduce((s,f)=>s+(parseFloat(f.totaalIncl||f.totaal||0)),0);
@@ -625,7 +630,7 @@ function renderMobDashboard(){
     if(heeftUren){
       // Gezamenlijk dashboard: álle uren van het bedrijf, niet alleen die van
       // de ingelogde kassier — iedereen met toegang ziet hetzelfde beeld.
-      const alleUren = (DB.uren||[]).filter(u=>_inMobPeriode(u.datum||''));
+      const alleUren = (DB.uren||[]).filter(u=>!isSalesIngave(u) && _inMobPeriode(u.datum||''));
       const urenOmzetExcl = alleUren.reduce((s,u)=>s+(parseFloat(u.bedrag)||0),0);
       const btwFactor = DB.profiel?.urenZonderBtw ? 0 : 0.21;
       const urenOmzetIncl = Math.round(urenOmzetExcl * (1 + btwFactor) * 100) / 100;
@@ -846,6 +851,9 @@ function renderMobFacturen(){
         const d = JSON.parse(json||'{}');
         if(d.verkoop) DB.verkoop = d.verkoop;
         if(d.inkoop) DB.inkoop = d.inkoop;
+        // Sales-ingaves staan in het uren-document; vers ophalen zodat de
+        // status (goedgekeurd/afgewezen door de eigenaar) actueel is.
+        if(d.uren) DB.uren = d.uren;
       }catch(e){}
       _renderMobFacturenIntern();
     }).catch(()=>_renderMobFacturenIntern());
@@ -956,6 +964,17 @@ window.addEventListener('resize', ()=>{
 });
 
 function _renderMobFacturenIntern(){
+  const modules = mobGetModules();
+  const salesSectie = document.getElementById('mob-sales-sectie');
+  if(salesSectie){
+    salesSectie.style.display = modules.includes('sales') ? '' : 'none';
+    if(modules.includes('sales')) renderMobSales();
+  }
+  // De factuurlijsten tonen bedrijfsfacturen; wie alleen 'sales' heeft, ziet ze niet.
+  const lijstenEl = document.getElementById('mob-facturen-lijsten');
+  if(lijstenEl) lijstenEl.style.display = modules.includes('facturen') ? '' : 'none';
+  if(!modules.includes('facturen')) return;
+
   // Alleen de opdrachtgevers die deze kassier van de eigenaar mag zien. Is er
   // niets ingesteld, dan geeft kassierMagOpdrachtgever() overal true terug.
   const facturen = (DB.verkoop||[]).filter(f=>

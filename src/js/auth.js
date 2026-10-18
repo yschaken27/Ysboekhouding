@@ -534,13 +534,16 @@ function pasNavAanRol(){
   // Urenoverzicht-navitem alleen tonen als uren-registratie aan staat voor dit bedrijf
   const urenNav = document.getElementById('nav-item-urenoverzicht');
   if(urenNav) urenNav.style.display = (!isKassier && isUrenAan()) ? '' : 'none';
+  updateSalesNav();
 
   // Gebruiker gaat naar kassa invullen, eigenaar naar dashboard
   if(isKassier){
     // Altijd de volledige kassier-interface (dashboard, kassa, facturen, bonnen, lijsten)
     mobBouwNav();
     const modules = _actieveKassier?.modules || ['dashboard','kassa','uploads'];
-    const startTab = modules.includes('dashboard') ? 'dashboard' : modules[0] || 'kassa';
+    // 'sales' is geen eigen tab maar zit in het Facturen-tabblad.
+    const startTab = modules.includes('dashboard') ? 'dashboard'
+      : (modules[0]==='sales' ? 'facturen' : modules[0]) || 'kassa';
     mobNav(startTab);
   } else {
     navTo('dashboard');
@@ -577,6 +580,8 @@ function uitloggen(){
 // ===== KASSIER BEHEER =====
 
 function renderGebruikersBeheer(){
+  // Draait na elke gebruikerswijziging: module 'sales' aan/uit → menu-item mee.
+  updateSalesNav();
   // Vul bedrijven checkboxes in voor nieuwe kassier
   const bedrijven = getBedrijven();
   const nkBedrijven = document.getElementById('nk-bedrijven');
@@ -603,7 +608,7 @@ function renderGebruikersBeheer(){
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:4px;">
       ${kassiers.map(k=>{
         const modules = k.modules||['dashboard','kassa','uploads'];
-        const modLabels = modules.map(m=>({dashboard:'📊',kassa:'💰',facturen:'🧾',uploads:'📎',uren:'⏱'}[m]||m)).join(' ');
+        const modLabels = modules.map(m=>({dashboard:'📊',kassa:'💰',facturen:'🧾',uploads:'📎',uren:'⏱',sales:'💼'}[m]||m)).join(' ');
         const initials = (k.naam||'?').charAt(0).toUpperCase();
         return `
           <div onclick="openGebruikerDetail('${k.id}')" style="
@@ -659,6 +664,7 @@ function openGebruikerDetail(id){
     {v:'uren',      l:'⏱ Uren'},
     {v:'facturen',  l:'🧾 Facturen'},
     {v:'uploads',   l:'📎 Bonnen'},
+    {v:'sales',     l:'💼 Sales'},
   ];
   document.getElementById('gd-modules').innerHTML = modDefs.map(m=>`
     <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;

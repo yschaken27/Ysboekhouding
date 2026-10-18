@@ -368,7 +368,7 @@ function renderMobUrenLijst(){
   const filterMaand = sel?.value || (_nu.getFullYear() + '-' + String(_nu.getMonth()+1).padStart(2,'0'));
   // Gezamenlijke lijst: alle uren van het bedrijf, niet alleen eigen ingaves.
   const lijst = (DB.uren||[])
-    .filter(u=> (u.datum||'').slice(0,7)===filterMaand)
+    .filter(u=> !isSalesIngave(u) && (u.datum||'').slice(0,7)===filterMaand)
     .sort((a,b)=> (b.datum||'').localeCompare(a.datum||''));
 
   if(!lijst.length){
@@ -435,6 +435,7 @@ function _urenVanMaand(){
   const { van, tot } = _urenPeriode();
   if(!van) return [];
   return (DB.uren||[]).filter(u=>{
+    if(isSalesIngave(u)) return false;
     const m = (u.datum||'').slice(0,7);
     return m >= van && m <= tot;
   });
@@ -766,11 +767,15 @@ function _zoekBestaandeUrenFactuur(opdr, van, tot){
 // Geeft een Promise die {nummer, datum, vervaldatum} teruggeeft, of null bij
 // annuleren. Bestaat zodat de eigenaar een teruggestuurde factuur opnieuw kan
 // maken met hetzelfde nummer en dezelfde factuurdatum als de klant al heeft.
+// voorstel.type = 'uren' (standaard) of 'sales': alleen een bestaande factuur
+// van datzelfde type mag via het nummer vervangen worden.
 let _ufnResolve = null;
+let _ufnType = 'uren';
 
 function vraagUrenFactuurGegevens(voorstel){
   return new Promise(resolve=>{
     _ufnResolve = resolve;
+    _ufnType = voorstel.type || 'uren';
     document.getElementById('ufn-context').innerHTML   = voorstel.context || '';
     document.getElementById('ufn-nummer').value        = voorstel.nummer || '';
     document.getElementById('ufn-datum').value         = voorstel.datum || '';
@@ -799,8 +804,9 @@ function _ufnControleer(){
   if(!bestaand){
     zet('',''); ok.disabled = false; ok.textContent = 'Factuur aanmaken'; return;
   }
-  if(bestaand.type!=='uren'){
-    zet(`Nummer ${esc(nr)} is al in gebruik door een handmatige verkoopfactuur (${esc(bestaand.klant||'')}). Kies een ander nummer.`,'rood');
+  if(bestaand.type!==_ufnType){
+    const soort = bestaand.type==='uren' ? 'een urenfactuur' : bestaand.type==='sales' ? 'een salesfactuur' : 'een handmatige verkoopfactuur';
+    zet(`Nummer ${esc(nr)} is al in gebruik door ${soort} (${esc(bestaand.klant||'')}). Kies een ander nummer.`,'rood');
     ok.disabled = true; return;
   }
   if(bestaand.status==='betaald' || _getBetalingen(bestaand).length){
@@ -848,20 +854,7 @@ async function maakUrenFactuur(opdrEnc){
   // Opdrachtgever-object opzoeken uit centraal register
   const opdrObj = (DB.profiel?.opdrachtgevers||[]).find(o=>o.naam===opdr) || {};
 
-  // Valideer verplichte factuurvelden
-  const ontbrekend = [];
-  if(!p.straat)      ontbrekend.push('Bedrijfsadres (Instellingen → Bedrijfsprofiel)');
-  if(!p.btw && !p.urenZonderBtw) ontbrekend.push('BTW-nummer (Instellingen → Bedrijfsprofiel)');
-  if(!p.kvk)         ontbrekend.push('KvK-nummer (Instellingen → Bedrijfsprofiel)');
-  if(!p.iban)        ontbrekend.push('IBAN (Instellingen → Bedrijfsprofiel)');
-  if(!opdrObj.straat && !opdrObj.adres) ontbrekend.push(`Adres van opdrachtgever "${opdr}" (Instellingen → Opdrachtgevers)`);
-  if(ontbrekend.length){
-    const ok = await bevestig(
-      `Waarschuwing: de factuur is mogelijk ongeldig.\n\nOntbrekende verplichte velden:\n• ${ontbrekend.join('\n• ')}\n\nToch doorgaan?`,
-      'Toch aanmaken', 'Annuleer'
-    );
-    if(!ok) return;
-  }
+  if(!await _bevestigFactuurVelden(p, opdrObj, opdr)) return;
 
   // Periode van deze factuur — legt ook vast welke eerdere factuur bij dezelfde
   // periode hoort, zodat de dialoog verderop die kan voorstellen om te vervangen.
@@ -995,27 +988,11 @@ async function maakUrenFactuur(opdrEnc){
     zonderBtw
   });
 
-  // Grootboekboekingen (factuurstelsel): Debiteuren D / Omzet C / BTW te betalen C
-  if(!DB.grootboek) DB.grootboek = [];
-  // Zorg dat benodigde rekeningen bestaan — voeg toe uit DEFAULT_GB als ze ontbreken.
-  // Dit moet vóór de verkoop-entry, want de factuurregels hieronder verwijzen naar
-  // de omzetrekening waar de boeking straks ook echt op landt.
-  [
-    {nummer:'1300', naam:'Debiteuren',              type:'activa'},
-    {nummer:'4000', naam:'Omzet diensten',           type:'omzet'},
-    {nummer:'1510', naam:'BTW te betalen (verkoop)', type:'passiva'},
-  ].forEach(def => {
-    const bestaat = DB.grootboek.find(g=>g.nummer===def.nummer);
-    if(!bestaat) DB.grootboek.push({id:'gb_auto_'+def.nummer, ...def, saldo:0});
-  });
-
   // Sla op als verkoop-entry zodat factuurnummer-teller klopt en factuur in dashboard verschijnt.
   // De factuurregels gaan MEE: zonder `regels` toonde de knop "📄 Factuur" bij
   // Verkoopfacturen een lege regeltabel en maakte "Bewerk" er één regel van met
   // aantal 1 en omschrijving "Factuur UF-…" — de urenspecificatie was dan weg.
-  if(!DB.verkoop) DB.verkoop=[];
-  const gbOmzetRek = DB.grootboek.find(g=>g.type==='omzet')
-                  || DB.grootboek.find(g=>(g.naam||'').toLowerCase().includes('omzet'));
+  const gbOmzetRek = _zorgFactuurRekeningen();
   const verkoopRegels = regelLijst.map(r=>({
     omschrijving: perDienst
       ? `${r.label}${r.wie?' ('+r.wie+')':''}${r.datum?' — '+_factuurDatumKort(r.datum):''}`
@@ -1027,18 +1004,13 @@ async function maakUrenFactuur(opdrEnc){
     gbId: gbOmzetRek?.id || '',
     btw: zonderBtw ? '0' : String(btwPct)
   }));
-  const klantAdres = [
-    opdrObj.straat || opdrObj.adres || '',
-    (String(opdrObj.postcode||'')+' '+String(opdrObj.stad||'')).trim()
-  ].filter(Boolean).join('\n');
-
   const verkoopEntry = {
     id: vervangen?.id || uid(),
     nummer: factuurNr,
     datum: datumISO,
     vervaldatum: betaaldatumISO,
     klant: opdr,
-    adres: klantAdres,
+    adres: _opdrachtgeverAdres(opdrObj),
     btwnr: opdrObj.btwNummer || '',
     regels: verkoopRegels,
     omschrijving: `${eInfo.gewerkt} ${maandLabel}`,
@@ -1055,36 +1027,92 @@ async function maakUrenFactuur(opdrEnc){
     periodeLabel: maandLabel
   };
 
+  if(!_boekGegenereerdeFactuur(verkoopEntry, vervangen)) return;
+  openFactuurVenster(html);
+}
+
+// ── Gedeeld door maakUrenFactuur() en maakSalesFactuur() ─────────────────────
+
+// Waarschuwt over ontbrekende wettelijk verplichte velden (art. 35a Wet OB 1968).
+// Geeft true als er doorgegaan mag worden.
+async function _bevestigFactuurVelden(p, opdrObj, opdr){
+  const ontbrekend = [];
+  if(!p.straat)      ontbrekend.push('Bedrijfsadres (Instellingen → Bedrijfsprofiel)');
+  if(!p.btw && !p.urenZonderBtw) ontbrekend.push('BTW-nummer (Instellingen → Bedrijfsprofiel)');
+  if(!p.kvk)         ontbrekend.push('KvK-nummer (Instellingen → Bedrijfsprofiel)');
+  if(!p.iban)        ontbrekend.push('IBAN (Instellingen → Bedrijfsprofiel)');
+  if(!opdrObj.straat && !opdrObj.adres) ontbrekend.push(`Adres van opdrachtgever "${opdr}" (Instellingen → Opdrachtgevers)`);
+  if(!ontbrekend.length) return true;
+  return bevestig(
+    `Waarschuwing: de factuur is mogelijk ongeldig.\n\nOntbrekende verplichte velden:\n• ${ontbrekend.join('\n• ')}\n\nToch doorgaan?`,
+    'Toch aanmaken', 'Annuleer'
+  );
+}
+
+// Adres van een opdrachtgever zoals het in f.adres van een verkoopfactuur staat.
+function _opdrachtgeverAdres(opdrObj){
+  return [
+    opdrObj.straat || opdrObj.adres || '',
+    (String(opdrObj.postcode||'')+' '+String(opdrObj.stad||'')).trim()
+  ].filter(Boolean).join('\n');
+}
+
+// Zorgt dat Debiteuren, Omzet en BTW te betalen bestaan (aangevuld uit
+// DEFAULT_GB als ze ontbreken) en geeft de omzetrekening terug. Moet vóór het
+// opbouwen van de factuurregels, want die verwijzen naar de omzetrekening
+// waar _boekGegenereerdeFactuur() straks ook echt op boekt.
+function _zorgFactuurRekeningen(){
+  if(!DB.grootboek) DB.grootboek = [];
+  [
+    {nummer:'1300', naam:'Debiteuren',              type:'activa'},
+    {nummer:'4000', naam:'Omzet diensten',           type:'omzet'},
+    {nummer:'1510', naam:'BTW te betalen (verkoop)', type:'passiva'},
+  ].forEach(def => {
+    const bestaat = DB.grootboek.find(g=>g.nummer===def.nummer);
+    if(!bestaat) DB.grootboek.push({id:'gb_auto_'+def.nummer, ...def, saldo:0});
+  });
+  return DB.grootboek.find(g=>g.type==='omzet')
+      || DB.grootboek.find(g=>(g.naam||'').toLowerCase().includes('omzet'));
+}
+
+// Zet een gegenereerde factuur (uren of sales) in DB.verkoop en boekt hem
+// (factuurstelsel, CLAUDE.md #11): Debiteuren D totaalIncl / Omzet C totaalExcl /
+// BTW te betalen C btwBedrag. Bij `vervangen` wordt de oude boeking eerst
+// gespiegeld (#21.4). Geeft false als save() de handeling heeft teruggedraaid.
+function _boekGegenereerdeFactuur(entry, vervangen){
+  if(!DB.verkoop) DB.verkoop=[];
   if(vervangen){
     // Oude boeking eerst spiegelen, anders komt de nieuwe er bovenop (#21.4)
     draaiFactuurGBTerug(vervangen, 'verkoop');
     const i = DB.verkoop.findIndex(f=>f.id===vervangen.id);
-    if(i>=0) DB.verkoop[i] = verkoopEntry; else DB.verkoop.push(verkoopEntry);
+    if(i>=0) DB.verkoop[i] = entry; else DB.verkoop.push(entry);
   } else {
-    DB.verkoop.push(verkoopEntry);
+    DB.verkoop.push(entry);
   }
 
   const gbDebiteuren = DB.grootboek.find(g=>g.nummer==='1300')
                     || DB.grootboek.find(g=>(g.naam||'').toLowerCase().includes('debiteuren'));
-  if(gbDebiteuren) gbDebiteuren.saldo = (parseFloat(gbDebiteuren.saldo)||0) + totaalIncl;
+  if(gbDebiteuren) gbDebiteuren.saldo = (parseFloat(gbDebiteuren.saldo)||0) + entry.totaalIncl;
 
   const gbOmzet = DB.grootboek.find(g=>g.type==='omzet')
                || DB.grootboek.find(g=>(g.naam||'').toLowerCase().includes('omzet'));
-  if(gbOmzet) gbOmzet.saldo = (parseFloat(gbOmzet.saldo)||0) + subtotaalExcl;
+  if(gbOmzet) gbOmzet.saldo = (parseFloat(gbOmzet.saldo)||0) + entry.totaalExcl;
 
-  if(!zonderBtw && btwBedrag > 0.01){
+  // Drempel MOET gelijk blijven aan die in draaiFactuurGBTerug() (facturen.js),
+  // anders draait vervangen/verwijderen niet exact terug wat hier geboekt is.
+  if(entry.btwBedrag > 0.01){
     const gbBtw = DB.grootboek.find(g=>g.nummer==='1510')
                || DB.grootboek.find(g=>g.nummer==='1530')
                || DB.grootboek.find(g=>(g.naam||'').toLowerCase().includes('btw te betalen'));
-    if(gbBtw) gbBtw.saldo = (parseFloat(gbBtw.saldo)||0) + btwBedrag;
+    if(gbBtw) gbBtw.saldo = (parseFloat(gbBtw.saldo)||0) + entry.btwBedrag;
   }
 
   // save() draait de hele handeling terug zodra de balans niet klopt. Dat resultaat
-  // MOET gecontroleerd worden (zie state.js), anders volgt hieronder een
-  // succesmelding en een factuurvenster terwijl er niets bewaard is.
+  // MOET gecontroleerd worden (zie state.js), anders volgt een succesmelding en
+  // een factuurvenster terwijl er niets bewaard is.
   if(!save()){
     toast('De factuur is niet aangemaakt: de balans zou er niet meer door kloppen. Er is niets gewijzigd.','error',9000);
-    return;
+    return false;
   }
 
   // Verkooplijst en dashboard bijwerken — bij vervangen verandert een bestaande
@@ -1093,9 +1121,491 @@ async function maakUrenFactuur(opdrEnc){
   if(typeof renderDashboard==='function') renderDashboard();
 
   toast(vervangen
-    ? `Factuur ${factuurNr} vervangen — de oude boeking is teruggedraaid.`
-    : `Factuur ${factuurNr} aangemaakt.`, 'success', 6000);
+    ? `Factuur ${entry.nummer} vervangen — de oude boeking is teruggedraaid.`
+    : `Factuur ${entry.nummer} aangemaakt.`, 'success', 6000);
+  return true;
+}
 
+// ============================================================
+// SALES — medewerker vult per maand zijn omzet excl. BTW in, eigenaar keurt
+// goed en factureert per opdrachtgever per maand.
+//
+// Een sales-ingave staat in hetzelfde document als de uren (DB.uren /
+// data/uren) met soort:'sales'. Zo werken de bestaande directe cloud-writes
+// (voegUrenToe, updateUrenStatus, updateUrenItem, verwijderUrenItem) en de
+// security rules ongewijzigd, en hoeft de sync-set (#22) niet uitgebreid.
+// Gevolg: ELKE uren-doorloop moet isSalesIngave() uitsluiten, anders telt een
+// salesbedrag als gewerkte uren mee.
+//
+// Velden: id, soort:'sales', maand ('YYYY-MM'), datum (maand+'-01', voor
+// code die op datum filtert), wie, wieEmail, opdrachtgever, bedrag (excl.
+// BTW, 2 decimalen), notitie, status ('ingediend'|'goedgekeurd'|'afgewezen'),
+// aangemaakt.
+// ============================================================
+function isSalesIngave(u){ return u?.soort === 'sales'; }
+
+function _salesMaandLabel(m){
+  if(!m) return '';
+  const [j,mm] = m.split('-');
+  return new Date(j, parseInt(mm)-1, 1).toLocaleDateString('nl-NL',{month:'long',year:'numeric'});
+}
+
+// Bedrag-invoer met Nederlandse duizendtallen. parseDecimaalInvoer() leest
+// "2.500" als 2,5 — prima voor uren, maar een salesbedrag van € 2.500 zou dan
+// € 2,50 worden. Hier: met een komma zijn punten duizendtallen ("2.500,75");
+// zonder komma alleen als het patroon er exact op lijkt ("2.500", "12.500.000").
+function _parseBedragInvoer(waarde){
+  let s = String(waarde||'').replace(/[€\s]/g,'');
+  if(s.includes(',')) s = s.replace(/\./g,'').replace(',','.');
+  else if(/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g,'');
+  return Math.round((parseFloat(s)||0)*100)/100;
+}
+
+function _salesHuidigeMaand(){
+  const nu = new Date();
+  return nu.getFullYear() + '-' + String(nu.getMonth()+1).padStart(2,'0');
+}
+
+// Bestaat er voor deze medewerker al een (niet-afgewezen) ingave voor dezelfde
+// opdrachtgever en maand? Eén bedrag per maand — een tweede zou dubbel gefactureerd
+// worden. `behalveId` = de ingave die nu bewerkt wordt.
+function _salesDubbel(wieEmail, wieNaam, opdr, maand, behalveId){
+  const email = String(wieEmail||'').toLowerCase();
+  return (DB.uren||[]).find(u=>
+    isSalesIngave(u) && u.id!==behalveId && u.status!=='afgewezen' &&
+    u.opdrachtgever===opdr && u.maand===maand &&
+    (email ? String(u.wieEmail||'').toLowerCase()===email : u.wie===wieNaam)
+  ) || null;
+}
+
+// Eigenaar: zichtbaar als minstens één medewerker van dit bedrijf de module heeft.
+function isSalesInGebruik(){
+  return (DB.kassiers||[]).some(k=>
+    (k.modules||[]).includes('sales') && (k.bedrijven||[]).includes(huidigBedrijf));
+}
+
+function updateSalesNav(){
+  const nav = document.getElementById('nav-item-salesoverzicht');
+  const isEigenaar = typeof _loginRol !== 'undefined' && _loginRol === 'eigenaar';
+  if(nav) nav.style.display = (isEigenaar && isSalesInGebruik()) ? '' : 'none';
+}
+
+// ---- Kassier (telefoon) ----
+function renderMobSales(){
+  const sel = document.getElementById('mob-sales-opdrachtgever');
+  if(sel){
+    const vorige = sel.value;
+    const lijst = (DB.profiel?.opdrachtgevers||[]).map(o=>o.naam).filter(n=>
+      n && (typeof kassierMagOpdrachtgever !== 'function' || kassierMagOpdrachtgever(n)));
+    sel.innerHTML = lijst.length
+      ? lijst.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')
+      : '<option value="">Geen opdrachtgevers — vraag de eigenaar</option>';
+    if(lijst.includes(vorige)) sel.value = vorige;
+  }
+  const maandEl = document.getElementById('mob-sales-maand');
+  if(maandEl && !maandEl.value) maandEl.value = _salesHuidigeMaand();
+
+  const el = document.getElementById('mob-sales-lijst');
+  if(!el) return;
+  const mijnEmail = String(_actieveKassier?.email||'').toLowerCase();
+  const mijn = (DB.uren||[]).filter(u=>isSalesIngave(u) &&
+    (mijnEmail ? String(u.wieEmail||'').toLowerCase()===mijnEmail : u.wie===_actieveKassier?.naam))
+    .sort((a,b)=>(b.maand||'').localeCompare(a.maand||'') || String(b.aangemaakt||'').localeCompare(String(a.aangemaakt||'')))
+    .slice(0,12);
+  if(!mijn.length){
+    el.innerHTML = '<div style="color:rgba(255,255,255,0.25);font-size:14px;padding:16px 0">Nog geen sales ingediend.</div>';
+    return;
+  }
+  el.innerHTML = mijn.map(u=>{
+    const st = u.status==='goedgekeurd' ? ['goed','Goedgekeurd']
+             : u.status==='afgewezen'   ? ['afgekeurd','Afgewezen']
+             : ['ingediend','Ingediend'];
+    const intrekken = u.status==='ingediend'
+      ? `<button class="mob-factuur-btn terug" onclick="mobTrekSalesIn('${u.id}')">↩ Intrekken</button>` : '';
+    return `<div class="mob-lijst-item mob-factuur-item">
+      <div class="mob-factuur-top">
+        <div>
+          <div class="mob-lijst-datum">${esc(u.opdrachtgever||'')} · ${esc(_salesMaandLabel(u.maand))}</div>
+          <div class="mob-lijst-bedrag" style="font-size:15px;">${mobFmtEur(u.bedrag||0)} <span style="font-size:11px;opacity:.6;font-weight:400;">excl. BTW</span></div>
+          ${u.notitie?`<div style="font-size:12px;color:rgba(255,255,255,0.45);margin-top:2px;">${esc(u.notitie)}</div>`:''}
+        </div>
+        <span class="mob-lijst-status ${st[0]}">${st[1]}</span>
+      </div>
+      ${intrekken}
+    </div>`;
+  }).join('');
+}
+
+function mobSlaSalesOp(){
+  if(!checkOnline()) return;
+  const opdr    = document.getElementById('mob-sales-opdrachtgever')?.value || '';
+  const maand   = document.getElementById('mob-sales-maand')?.value || '';
+  const bedrag  = _parseBedragInvoer(document.getElementById('mob-sales-bedrag')?.value);
+  const notitie = document.getElementById('mob-sales-notitie')?.value.trim() || '';
+  const wie      = _actieveKassier?.naam || '';
+  const wieEmail = String(_actieveKassier?.email||'').toLowerCase();
+
+  if(!opdr){ toast('Kies een opdrachtgever.','error'); return; }
+  if(!/^\d{4}-\d{2}$/.test(maand)){ toast('Kies een maand.','error'); return; }
+  if(!(bedrag > 0)){ toast('Vul het bedrag excl. BTW in.','error'); return; }
+  const dubbel = _salesDubbel(wieEmail, wie, opdr, maand);
+  if(dubbel){
+    toast(`Je hebt voor ${opdr} over ${_salesMaandLabel(maand)} al ${mobFmtEur(dubbel.bedrag)} ingediend. `+
+          (dubbel.status==='ingediend' ? 'Trek die eerst in om een nieuw bedrag op te geven.' : 'Die is al goedgekeurd — vraag de eigenaar om het aan te passen.'),
+          'error', 8000);
+    return;
+  }
+
+  const ingave = {
+    id: uid(), soort:'sales', maand, datum: maand+'-01',
+    wie, wieEmail, opdrachtgever: opdr,
+    bedrag, notitie,
+    status: 'ingediend',
+    aangemaakt: new Date().toISOString()
+  };
+  if(!DB.uren) DB.uren = [];
+  DB.uren.push(ingave);
+  localStorage.setItem(storageKey(), JSON.stringify(DB));
+  slaUrenOpCloud(ingave);
+
+  toast(`Sales ${_salesMaandLabel(maand)} ingediend: ${mobFmtEur(bedrag)} excl. BTW.`,'success');
+  document.getElementById('mob-sales-bedrag').value = '';
+  document.getElementById('mob-sales-notitie').value = '';
+  renderMobSales();
+}
+
+async function mobTrekSalesIn(id){
+  if(!checkOnline()) return;
+  const u = (DB.uren||[]).find(x=>x.id===id);
+  if(!u || !isSalesIngave(u)) return;
+  if(u.status!=='ingediend'){ toast('Deze is al beoordeeld en kan niet meer ingetrokken worden.','error'); return; }
+  const ok = await bevestig(`Sales ${_salesMaandLabel(u.maand)} voor ${u.opdrachtgever} (${mobFmtEur(u.bedrag)}) intrekken?`, 'Intrekken', 'Intrekken');
+  if(!ok) return;
+  // Verse stand ophalen: dit scherm kan achterlopen (PWA in het geheugen, #9).
+  // Heeft de eigenaar intussen goedgekeurd — misschien al gefactureerd — dan
+  // mag de ingave niet meer weg.
+  try{
+    const vers = (JSON.parse(await fbAanroep(fb=>fb.laadAlles(huidigBedrijf))||'{}').uren||[]).find(x=>x.id===id);
+    if(vers && vers.status!=='ingediend'){
+      toast('De eigenaar heeft deze al beoordeeld — intrekken kan niet meer.','error',7000);
+      renderMobFacturen();
+      return;
+    }
+  }catch(e){ toast('Geen verbinding — probeer opnieuw.','error'); return; }
+  DB.uren = DB.uren.filter(x=>x.id!==id);
+  localStorage.setItem(storageKey(), JSON.stringify(DB));
+  toonSyncStatus('opslaan');
+  fbAanroep(fb=>fb.verwijderUrenItem(huidigBedrijf, id))
+    .then(()=>toonSyncStatus('opgeslagen'))
+    .catch(()=>{ toonSyncStatus('fout'); toast('Intrekken mislukt — probeer opnieuw.','error'); });
+  renderMobSales();
+}
+
+// ---- Eigenaar: overzicht, goedkeuren, factureren ----
+function _salesFilterMaand(){
+  const el = document.getElementById('sales-filter-maand');
+  if(el && !el.value) el.value = _salesHuidigeMaand();
+  return el?.value || _salesHuidigeMaand();
+}
+
+function _zoekBestaandeSalesFactuur(opdr, maand){
+  // Alleen exact op de vastgelegde periode — nooit gokken (CLAUDE.md #29).
+  return (DB.verkoop||[]).find(f=>
+    f && f.type==='sales' && f.klant===opdr && f.periodeVan===maand && f.periodeTot===maand
+  ) || null;
+}
+
+function renderSalesoverzicht(){
+  const maand = _salesFilterMaand();
+  const lijst = (DB.uren||[]).filter(u=>isSalesIngave(u) && u.maand===maand);
+  const geldig = lijst.filter(u=>u.status!=='afgewezen');
+  const z=(id,v)=>{ const e=document.getElementById(id); if(e) e.textContent=v; };
+  z('sov-bedrag', fmt(geldig.reduce((a,u)=>a+(parseFloat(u.bedrag)||0),0)));
+  z('sov-goed',   fmt(geldig.filter(u=>u.status==='goedgekeurd').reduce((a,u)=>a+(parseFloat(u.bedrag)||0),0)));
+  z('sov-wacht',  String(lijst.filter(u=>u.status==='ingediend').length));
+  z('sov-opdr',   String(new Set(geldig.map(u=>u.opdrachtgever)).size));
+
+  const el = document.getElementById('sales-overzicht-lijst');
+  if(!el) return;
+  if(!lijst.length){
+    el.innerHTML = `<div style="color:var(--text-dim);padding:24px 0;text-align:center;">Geen sales ingediend over ${esc(_salesMaandLabel(maand))}.</div>`;
+    return;
+  }
+
+  const perOpdr = {};
+  lijst.forEach(u=>{ (perOpdr[u.opdrachtgever] ||= []).push(u); });
+  const th = (t,r)=>`<th style="padding:4px 8px;text-align:${r?'right':'left'};font-size:11px;color:var(--text-dim);font-weight:600;">${t}</th>`;
+
+  el.innerHTML = Object.keys(perOpdr).sort().map(opdr=>{
+    const items = perOpdr[opdr].sort((a,b)=>(a.wie||'').localeCompare(b.wie||''));
+    const som = items.filter(u=>u.status!=='afgewezen').reduce((a,u)=>a+(parseFloat(u.bedrag)||0),0);
+    const kanFactureren = items.some(u=>u.status==='goedgekeurd');
+    const wacht = items.some(u=>u.status==='ingediend');
+    const bestaande = _zoekBestaandeSalesFactuur(opdr, maand);
+
+    const rijen = items.map(u=>{
+      const keur = u.status==='goedgekeurd'
+        ? '<span style="color:#16a34a;">✓</span>'
+        : u.status==='afgewezen'
+        ? '<span style="color:var(--text-dim);font-size:11px;">afgewezen</span>'
+        : `<span style="display:inline-flex;gap:6px;">
+             <button onclick="salesKeur('${u.id}','goedgekeurd')" style="font-size:11px;padding:2px 8px;border-radius:5px;border:none;background:#16a34a;color:#fff;cursor:pointer;">Goedkeuren</button>
+             <button onclick="salesKeur('${u.id}','afgewezen')" style="font-size:11px;padding:2px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text-mid);cursor:pointer;">×</button>
+           </span>`;
+      const knoppen = `<span style="display:inline-flex;gap:4px;align-items:center;">${keur}<button onclick="openSalesModal('${u.id}')" title="Bewerken" style="font-size:12px;padding:2px 6px;border-radius:5px;border:1px solid var(--border);background:var(--surface);cursor:pointer;">✏️</button><button onclick="verwijderSales('${u.id}')" title="Verwijderen" style="font-size:12px;padding:2px 6px;border-radius:5px;border:none;background:#ef4444;color:#fff;cursor:pointer;">🗑</button></span>`;
+      const afgewezen = u.status==='afgewezen' ? 'opacity:0.45;text-decoration:line-through;' : '';
+      return `<tr style="${afgewezen}">
+        <td style="padding:6px 8px;font-size:12px;">${esc(u.wie||'')}</td>
+        <td style="padding:6px 8px;font-size:12px;text-align:right;font-family:var(--mono);">${fmt(u.bedrag||0)}</td>
+        <td style="padding:6px 8px;font-size:12px;color:var(--text-dim);">${esc(u.notitie||'')}</td>
+        <td style="padding:6px 8px;text-align:right;">${knoppen}</td>
+      </tr>`;
+    }).join('');
+
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
+        <div>
+          <strong style="font-size:15px;">${esc(opdr)}</strong>
+          <span style="font-size:12px;color:var(--text-mid);margin-left:10px;">${fmt(som)} excl. BTW</span>
+          ${bestaande?`<span style="font-size:11px;color:var(--text-dim);margin-left:10px;">Gefactureerd: ${esc(bestaande.nummer||'')}</span>`:''}
+        </div>
+        <button onclick="maakSalesFactuur('${encodeURIComponent(opdr)}')" ${kanFactureren?'':'disabled'}
+          style="font-size:12px;padding:6px 14px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:${kanFactureren?'pointer':'default'};opacity:${kanFactureren?1:.5};"
+          title="${kanFactureren?(wacht?'Alleen de goedgekeurde bedragen gaan op de factuur':''):'Keur eerst een bedrag goed'}">
+          🧾 ${bestaande?'Factuur opnieuw maken':'Factuur maken'}${wacht?' *':''}
+        </button>
+      </div>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr style="border-bottom:1px solid var(--border);">${th('Medewerker')}${th('Bedrag excl. BTW',1)}${th('Notitie')}${th('Status',1)}</tr></thead>
+        <tbody>${rijen}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+}
+
+function salesKeur(id, status){
+  const u = (DB.uren||[]).find(x=>x.id===id);
+  if(!u || !isSalesIngave(u)) return;
+  u.status = status;
+  localStorage.setItem(storageKey(), JSON.stringify(DB));
+  if(checkOnline()){
+    toonSyncStatus('opslaan');
+    fbAanroep(fb=>fb.updateUrenStatus(huidigBedrijf, id, status))
+      .then(()=>toonSyncStatus('opgeslagen'))
+      .catch(()=>{ toonSyncStatus('fout'); toast('Bijwerken mislukt — probeer opnieuw.','error'); });
+  }
+  renderSalesoverzicht();
+}
+
+async function verwijderSales(id){
+  const u = (DB.uren||[]).find(x=>x.id===id);
+  if(!u || !isSalesIngave(u)) return;
+  const ok = await bevestig(`Sales van ${u.wie||'?'} voor ${u.opdrachtgever} over ${_salesMaandLabel(u.maand)} (${fmt(u.bedrag)}) verwijderen?`, 'Verwijderen', 'Verwijderen');
+  if(!ok) return;
+  DB.uren = DB.uren.filter(x=>x.id!==id);
+  localStorage.setItem(storageKey(), JSON.stringify(DB));
+  if(checkOnline()){
+    toonSyncStatus('opslaan');
+    fbAanroep(fb=>fb.verwijderUrenItem(huidigBedrijf, id))
+      .then(()=>toonSyncStatus('opgeslagen'))
+      .catch(()=>{ toonSyncStatus('fout'); toast('Verwijderen mislukt — probeer opnieuw.','error'); });
+  }
+  renderSalesoverzicht();
+  toast('Sales verwijderd.','success');
+}
+
+// Toevoegen (door de eigenaar, meteen goedgekeurd) of bewerken van een ingave.
+function openSalesModal(editId){
+  const bestaand = editId ? (DB.uren||[]).find(u=>u.id===editId && isSalesIngave(u)) : null;
+  if(editId && !bestaand){ toast('Sales-ingave niet gevonden.','error'); return; }
+  const kassiers = (DB.kassiers||[]).filter(k=>(k.bedrijven||[]).includes(huidigBedrijf) && (k.modules||[]).includes('sales'));
+  if(!bestaand && !kassiers.length){ toast('Geen medewerkers met de module Sales in dit bedrijf.','warning'); return; }
+  const opdrachtgevers = (DB.profiel?.opdrachtgevers||[]).map(o=>o.naam).filter(Boolean);
+  if(!opdrachtgevers.length){ toast('Voeg eerst een opdrachtgever toe (⚙ Opdrachtgevers).','warning'); return; }
+
+  document.getElementById('sm-titel').textContent = bestaand ? 'Sales bewerken' : 'Sales toevoegen';
+  document.getElementById('sm-edit-id').value = editId || '';
+  const kasSel = document.getElementById('sm-kassier');
+  // Bij bewerken: de oorspronkelijke medewerker altijd selecteerbaar, ook als
+  // zijn module inmiddels uit staat.
+  const opties = kassiers.map(k=>({naam:k.naam, email:String(k.email||'').toLowerCase()}));
+  if(bestaand && !opties.some(o=>o.email && o.email===String(bestaand.wieEmail||'').toLowerCase()))
+    opties.unshift({naam:bestaand.wie||'?', email:String(bestaand.wieEmail||'').toLowerCase()});
+  kasSel.innerHTML = opties.map((o,i)=>`<option value="${i}">${esc(o.naam)}</option>`).join('');
+  kasSel._opties = opties;
+  if(bestaand){
+    const i = opties.findIndex(o=>o.email===String(bestaand.wieEmail||'').toLowerCase());
+    kasSel.value = String(Math.max(0,i));
+  }
+  const opdrSel = document.getElementById('sm-opdrachtgever');
+  const opdrLijst = bestaand && !opdrachtgevers.includes(bestaand.opdrachtgever) ? [bestaand.opdrachtgever, ...opdrachtgevers] : opdrachtgevers;
+  opdrSel.innerHTML = opdrLijst.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  if(bestaand) opdrSel.value = bestaand.opdrachtgever;
+  document.getElementById('sm-maand').value   = bestaand?.maand || _salesFilterMaand();
+  document.getElementById('sm-bedrag').value  = bestaand ? String(bestaand.bedrag).replace('.',',') : '';
+  document.getElementById('sm-notitie').value = bestaand?.notitie || '';
+  openModal('modal-sales');
+}
+
+function slaSalesModalOp(){
+  const editId  = document.getElementById('sm-edit-id').value || '';
+  const kasSel  = document.getElementById('sm-kassier');
+  const kassier = (kasSel._opties||[])[parseInt(kasSel.value||'0')];
+  const opdr    = document.getElementById('sm-opdrachtgever').value || '';
+  const maand   = document.getElementById('sm-maand').value || '';
+  const bedrag  = _parseBedragInvoer(document.getElementById('sm-bedrag').value);
+  const notitie = document.getElementById('sm-notitie').value.trim();
+
+  if(!kassier){ toast('Kies een medewerker.','error'); return; }
+  if(!opdr){ toast('Kies een opdrachtgever.','error'); return; }
+  if(!/^\d{4}-\d{2}$/.test(maand)){ toast('Kies een maand.','error'); return; }
+  if(!(bedrag > 0)){ toast('Vul het bedrag excl. BTW in.','error'); return; }
+  const dubbel = _salesDubbel(kassier.email, kassier.naam, opdr, maand, editId);
+  if(dubbel){
+    toast(`${kassier.naam} heeft voor ${opdr} over ${_salesMaandLabel(maand)} al ${fmt(dubbel.bedrag)} staan. Eén bedrag per maand — pas die aan.`,'error',8000);
+    return;
+  }
+  if(!checkOnline()) return;
+
+  const velden = { maand, datum: maand+'-01', wie: kassier.naam, wieEmail: kassier.email, opdrachtgever: opdr, bedrag, notitie };
+  toonSyncStatus('opslaan');
+  if(editId){
+    const u = (DB.uren||[]).find(x=>x.id===editId);
+    if(!u){ toast('Sales-ingave niet gevonden.','error'); return; }
+    Object.assign(u, velden);
+    fbAanroep(fb=>fb.updateUrenItem(huidigBedrijf, editId, JSON.stringify(velden)))
+      .then(()=>toonSyncStatus('opgeslagen'))
+      .catch(()=>{ toonSyncStatus('fout'); toast('Opslaan mislukt — probeer opnieuw.','error'); });
+    toast('Sales bijgewerkt.','success');
+  } else {
+    const ingave = { id: uid(), soort:'sales', ...velden, status:'goedgekeurd', aangemaakt: new Date().toISOString() };
+    if(!DB.uren) DB.uren = [];
+    DB.uren.push(ingave);
+    slaUrenOpCloud(ingave);
+    toast(`Sales toegevoegd voor ${kassier.naam}.`,'success');
+  }
+  localStorage.setItem(storageKey(), JSON.stringify(DB));
+  closeModal('modal-sales');
+  // Overzicht naar de maand van de ingave, zodat hij direct zichtbaar is
+  const f = document.getElementById('sales-filter-maand');
+  if(f) f.value = maand;
+  renderSalesoverzicht();
+}
+
+// Factuur over één maand voor één opdrachtgever, uit de GOEDGEKEURDE bedragen.
+// Per medewerker één regel "Sales-/verkoopwerkzaamheden <maand> — <naam>" met
+// het bedrag — geen aantal of tarief.
+async function maakSalesFactuur(opdrEnc){
+  const opdr  = decodeURIComponent(opdrEnc);
+  const maand = _salesFilterMaand();
+  const alle  = (DB.uren||[]).filter(u=>isSalesIngave(u) && u.maand===maand && u.opdrachtgever===opdr);
+  const items = alle.filter(u=>u.status==='goedgekeurd').sort((a,b)=>(a.wie||'').localeCompare(b.wie||''));
+  if(!items.length){ toast('Keur eerst een bedrag goed — alleen goedgekeurde sales worden gefactureerd.','warning'); return; }
+  const openstaand = alle.filter(u=>u.status==='ingediend');
+  if(openstaand.length){
+    const ok = await bevestig(
+      `${openstaand.length} bedrag(en) voor ${opdr} wacht(en) nog op goedkeuring en gaan NIET mee op de factuur.\n\nToch de factuur maken met alleen de goedgekeurde bedragen?`,
+      'Nog niet alles goedgekeurd', 'Toch maken');
+    if(!ok) return;
+  }
+
+  const p = DB.profiel || {};
+  const bedrijf = p.naam || huidigBedrijf;
+  const opdrObj = (p.opdrachtgevers||[]).find(o=>o.naam===opdr) || {};
+  if(!await _bevestigFactuurVelden(p, opdrObj, opdr)) return;
+
+  const maandLabel = _salesMaandLabel(maand);
+  // Art. 35a Wet OB vraagt de aard van de dienst en de periode; "Sales" alleen
+  // is te vaag, dus de dienst voluit plus wie hem verricht heeft.
+  const regelLijst = items.map(u=>({
+    omschrijving: `Sales-/verkoopwerkzaamheden ${maandLabel}${u.wie ? ' — '+u.wie : ''}`,
+    bedrag: Math.round((parseFloat(u.bedrag)||0)*100)/100
+  }));
+
+  const zonderBtw = !!p.urenZonderBtw;
+  const btwPct = 21;
+  // Zelfde formules als slaFactuurOp() (CLAUDE.md #30): subtotaal = som van
+  // aantal × prijs (aantal is hier 1), BTW per regel afgerond.
+  const subtotaalExcl = regelLijst.reduce((a,r)=>a+r.bedrag,0);
+  const btwBedrag = zonderBtw ? 0 : regelLijst.reduce((a,r)=>a+Math.round(r.bedrag*btwPct)/100,0);
+  const totaalIncl = subtotaalExcl + btwBedrag;
+
+  const bestaande = _zoekBestaandeSalesFactuur(opdr, maand);
+  const standaardDatum = bestaande?.datum || new Date().toISOString().slice(0,10);
+  const standaardVerval = bestaande?.vervaldatum
+    || (()=>{ const d=new Date(standaardDatum); d.setDate(d.getDate()+30); return d.toISOString().slice(0,10); })();
+  const keuze = await vraagUrenFactuurGegevens({
+    type: 'sales',
+    context: bestaande
+      ? `Er staat al een salesfactuur voor ${esc(opdr)} over ${esc(maandLabel)}. Laat het nummer staan om die te vervangen, of geef een ander nummer op.`
+      : `Salesfactuur voor ${esc(opdr)} over ${esc(maandLabel)} — ${fmt(totaalIncl)} incl. BTW.`,
+    nummer: bestaande?.nummer || nextFactuurNummer('sales'),
+    datum: standaardDatum,
+    vervaldatum: standaardVerval
+  });
+  if(!keuze) return;
+
+  const factuurNr = keuze.nummer;
+  const vervangen = (DB.verkoop||[]).find(f=>f && f.type==='sales' && (f.nummer||'').trim()===factuurNr) || null;
+  if(vervangen && (vervangen.status==='betaald' || _getBetalingen(vervangen).length)){
+    toast(`Factuur ${factuurNr} is al betaald of gekoppeld aan een banktransactie. Draai die betaling eerst terug bij Verkoopfacturen.`,'error',9000);
+    return;
+  }
+
+  const dFmt = d => new Date(d).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
+  const html = bouwFactuurHtml({
+    bedrijf, p,
+    klantNaam: opdr,
+    klantRegels: [
+      opdrObj.straat || opdrObj.adres || '',
+      (String(opdrObj.postcode||'')+' '+String(opdrObj.stad||'')).trim(),
+      opdrObj.btwNummer ? 'BTW: '+opdrObj.btwNummer : ''
+    ],
+    factuurNr,
+    factuurdatumFmt: dFmt(keuze.datum),
+    vervaldatumFmt: dFmt(keuze.vervaldatum),
+    termijnLabel: berekenTermijnLabel(keuze.datum, keuze.vervaldatum),
+    kolommen: ['Omschrijving','Bedrag'],
+    rijen: regelLijst.map(r=>[r.omschrijving, '€ '+r.bedrag.toFixed(2)]),
+    subtotaalExcl,
+    btwRegels: zonderBtw ? [] : [{label:`BTW ${btwPct}%`, bedrag:btwBedrag}],
+    totaalIncl,
+    zonderBtw
+  });
+
+  const gbOmzetRek = _zorgFactuurRekeningen();
+  const entry = {
+    id: vervangen?.id || uid(),
+    nummer: factuurNr,
+    datum: keuze.datum,
+    vervaldatum: keuze.vervaldatum,
+    klant: opdr,
+    adres: _opdrachtgeverAdres(opdrObj),
+    btwnr: opdrObj.btwNummer || '',
+    // Aantal 1 × prijs = bedrag: zo rekenen draaiFactuurGBTerug(), de
+    // BTW-aangifte en de grootboekkaart exact hetzelfde terug als hier geboekt.
+    regels: regelLijst.map(r=>({
+      omschrijving: r.omschrijving,
+      aantal: 1,
+      prijs: r.bedrag,
+      gbId: gbOmzetRek?.id || '',
+      btw: zonderBtw ? '0' : String(btwPct)
+    })),
+    omschrijving: `Sales-/verkoopwerkzaamheden ${maandLabel}`,
+    totaalExcl: subtotaalExcl,
+    totaalIncl,
+    totaal: totaalIncl,
+    btwBedrag,
+    btwTarief: zonderBtw ? 0 : btwPct,
+    status: 'verstuurd',
+    type: 'sales',
+    periodeVan: maand,
+    periodeTot: maand,
+    periodeLabel: maandLabel
+  };
+
+  if(!_boekGegenereerdeFactuur(entry, vervangen)) return;
+  renderSalesoverzicht();
   openFactuurVenster(html);
 }
 

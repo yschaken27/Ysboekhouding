@@ -27,6 +27,27 @@
       <div id="uren-overzicht-lijst"></div>
     </div>
 
+    <!-- SALESOVERZICHT — renderSalesoverzicht() in kassier.js -->
+    <div class="page" id="page-salesoverzicht">
+      <div class="page-header">
+        <div><h2>Salesoverzicht</h2><p>Ingediende sales per opdrachtgever — nakijken, goedkeuren en factureren</p></div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="month" id="sales-filter-maand" onchange="renderSalesoverzicht()" style="font-size:13px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);">
+          <button class="btn btn-primary btn-sm" onclick="openSalesModal()">+ Sales toevoegen</button>
+          <button class="btn btn-secondary btn-sm" onclick="openOpdrachtgeversModal()">⚙ Opdrachtgevers</button>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
+        <div class="stat-card"><div class="label">Totaal sales (maand)</div><div class="value" id="sov-bedrag">€ 0,00</div></div>
+        <div class="stat-card"><div class="label">Goedgekeurd</div><div class="value" id="sov-goed" style="color:#16a34a;">€ 0,00</div></div>
+        <div class="stat-card"><div class="label">Wacht goedkeuring</div><div class="value" id="sov-wacht" style="color:var(--warning);">0</div></div>
+        <div class="stat-card"><div class="label">Opdrachtgevers</div><div class="value" id="sov-opdr">0</div></div>
+      </div>
+
+      <div id="sales-overzicht-lijst"></div>
+    </div>
+
     <!-- JAAROPGAVE -->
     <div class="page" id="page-vasteactiva">
       <div class="page-header">

@@ -274,14 +274,35 @@
 
   <!-- FACTUREN pagina -->
   <div id="mob-page-facturen" class="mob-page">
-    <div class="mob-section-title">Top klanten</div>
-    <div id="mob-top-klanten"></div>
-    <div class="mob-section-title" style="margin-top:20px;">Vervallen facturen</div>
-    <div id="mob-vervallen"></div>
-    <div class="mob-section-title" style="margin-top:20px;">Open facturen</div>
-    <div id="mob-open-facturen"></div>
-    <div class="mob-section-title" style="margin-top:20px;">Door jou op betaald gezet</div>
-    <div id="mob-betaald-gemeld"></div>
+    <!-- SALES INVULLEN — alleen met module 'sales' (renderMobSales in kassier.js) -->
+    <div id="mob-sales-sectie" style="display:none;margin-bottom:20px;">
+      <div class="mob-section-title">Sales invullen</div>
+      <div class="mob-sales-form">
+        <label class="mob-sales-lbl" for="mob-sales-opdrachtgever">Opdrachtgever</label>
+        <select id="mob-sales-opdrachtgever" class="mob-sales-input"></select>
+        <label class="mob-sales-lbl" for="mob-sales-maand">Maand</label>
+        <input type="month" id="mob-sales-maand" class="mob-sales-input">
+        <label class="mob-sales-lbl" for="mob-sales-bedrag">Bedrag excl. BTW (€)</label>
+        <input type="text" inputmode="decimal" id="mob-sales-bedrag" class="mob-sales-input" placeholder="0,00" autocomplete="off">
+        <label class="mob-sales-lbl" for="mob-sales-notitie">Notitie (optioneel)</label>
+        <input type="text" id="mob-sales-notitie" class="mob-sales-input" placeholder="Bijv. 3 nieuwe klanten" autocomplete="off">
+        <button class="mob-factuur-btn" style="margin-top:12px;" onclick="mobSlaSalesOp()">💼 Indienen</button>
+      </div>
+      <div class="mob-section-title" style="margin-top:20px;">Jouw ingediende sales</div>
+      <div id="mob-sales-lijst"></div>
+    </div>
+
+    <!-- FACTUURLIJSTEN — alleen met module 'facturen' -->
+    <div id="mob-facturen-lijsten">
+      <div class="mob-section-title">Top klanten</div>
+      <div id="mob-top-klanten"></div>
+      <div class="mob-section-title" style="margin-top:20px;">Vervallen facturen</div>
+      <div id="mob-vervallen"></div>
+      <div class="mob-section-title" style="margin-top:20px;">Open facturen</div>
+      <div id="mob-open-facturen"></div>
+      <div class="mob-section-title" style="margin-top:20px;">Door jou op betaald gezet</div>
+      <div id="mob-betaald-gemeld"></div>
+    </div>
   </div>
 
   <!-- FACTUUR BEKIJKEN (kassier, alleen-lezen) — gevuld door mobToonFactuur() in activa.js -->
@@ -506,6 +527,7 @@
           <div class="nav-dropdown-item" id="nav-item-jaaropgave" onclick="navTo('jaaropgave')"><span class="icon">◎</span>Jaaropgave</div>
           <div class="nav-dropdown-item" id="nav-item-kassaoverzicht" onclick="navTo('kassaoverzicht')"><span class="icon">💰</span>Kassaoverzicht</div>
           <div class="nav-dropdown-item" id="nav-item-urenoverzicht" onclick="navTo('urenoverzicht')"><span class="icon">⏱</span>Urenoverzicht</div>
+          <div class="nav-dropdown-item" id="nav-item-salesoverzicht" onclick="navTo('salesoverzicht')" style="display:none;"><span class="icon">💼</span>Salesoverzicht</div>
         </div>
       </div>
     </div>
@@ -809,6 +831,9 @@
               <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;">
                 <input type="checkbox" value="uren" id="nk-mod-uren" style="width:auto;"> ⏱ Uren
               </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;">
+                <input type="checkbox" value="sales" id="nk-mod-sales" style="width:auto;"> 💼 Sales
+              </label>
             </div>
           </div>
         </div>
@@ -1095,6 +1120,45 @@
     <div class="modal-footer" style="margin-top:20px;">
       <button class="btn btn-secondary" onclick="closeModal('modal-eigenaar-uren')">Annuleren</button>
       <button class="btn btn-primary" onclick="eigenaarVoegUrenToe()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<!-- SALES TOEVOEGEN / BEWERKEN MODAL — openSalesModal() / slaSalesModalOp() in kassier.js -->
+<div class="modal-overlay" id="modal-sales">
+  <div class="modal" style="width:440px;">
+    <div class="modal-header">
+      <h3 id="sm-titel">Sales toevoegen</h3>
+      <button class="modal-close" onclick="closeModal('modal-sales')">✕</button>
+    </div>
+    <input type="hidden" id="sm-edit-id">
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div>
+        <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px;">Medewerker</label>
+        <select id="sm-kassier" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);font-size:14px;"></select>
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px;">Opdrachtgever</label>
+        <select id="sm-opdrachtgever" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);font-size:14px;"></select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px;">Maand</label>
+          <input type="month" id="sm-maand" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);font-size:14px;box-sizing:border-box;">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px;">Bedrag excl. BTW (€)</label>
+          <input type="text" id="sm-bedrag" placeholder="0,00" inputmode="decimal" autocomplete="off" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);font-size:14px;box-sizing:border-box;">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px;">Notitie (optioneel)</label>
+        <input type="text" id="sm-notitie" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);font-size:14px;box-sizing:border-box;">
+      </div>
+    </div>
+    <div class="modal-footer" style="margin-top:20px;">
+      <button class="btn btn-secondary" onclick="closeModal('modal-sales')">Annuleren</button>
+      <button class="btn btn-primary" onclick="slaSalesModalOp()">Opslaan</button>
     </div>
   </div>
 </div>

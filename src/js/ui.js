@@ -62,6 +62,7 @@ function showPage(name){
   if(name==='kassalijst') initKassalijst();
   if(name==='kassaoverzicht') renderKassaoverzicht();
   if(name==='urenoverzicht'){ initUrenoverzichtMaand(); renderUrenoverzicht(); }
+  if(name==='salesoverzicht') renderSalesoverzicht();
   if(name==='bonnen') laadBonnenPagina();
 }
 

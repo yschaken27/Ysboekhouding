@@ -127,6 +127,23 @@ mobiel. Invoervelden voor uren en tarieven zijn daarom `type="text"` met `inputm
 en worden uitgelezen via **`parseDecimaalInvoer()`** (kassier.js). Voorinvulling toont het
 getal in komma-notatie. Gebruik dit patroon voor elk nieuw bedrag-/aantalveld.
 
+## Sales-module (okt 2026)
+Medewerker met module `sales` (vinkje bij de gebruiker) vult in het Facturen-tabblad van de
+kassier-app per opdrachtgever per maand één bedrag excl. BTW in; eigenaar keurt goed in
+Rapportages → Salesoverzicht (alleen zichtbaar als een medewerker van dit bedrijf de module heeft,
+`updateSalesNav()`) en maakt per opdrachtgever per maand een factuur (`maakSalesFactuur`,
+type `'sales'`, reeks `SF-`, regels aantal 1 × bedrag). Alles in kassier.js, sectie "SALES".
+- **Opslag: sales-ingaves staan in `DB.uren` met `soort:'sales'`** (zelfde cloud-writes en
+  security rules als uren, geen sync-uitbreiding #22). Daarom: **elke doorloop over `DB.uren`
+  die uren telt/toont MOET `isSalesIngave(u)` uitsluiten** — nu in `_urenVanMaand`,
+  `renderMobUrenLijst` en het mobiele dashboard. Vergeet je dat, dan telt een salesbedrag als uren.
+- Boeken loopt via de gedeelde `_boekGegenereerdeFactuur()` (ook gebruikt door
+  `maakUrenFactuur`); de BTW-drempel daarin moet gelijk blijven aan `draaiFactuurGBTerug()`.
+- Bedragen lezen met `_parseBedragInvoer()` (snapt "2.500" = 2500), niet met
+  `parseDecimaalInvoer()` (die maakt er 2,5 van).
+- Factuurgegevens-dialoog `vraagUrenFactuurGegevens({type})`: alleen een bestaande factuur van
+  hetzelfde type mag via het nummer vervangen worden.
+
 ## Planning
 1. **Maandfacturen-mailflow** — goedgekeurde uren per beveiliger groeperen per opdrachtgever, per opdrachtgever een factuur (PDF) maken, als bijlage mailen én in Storage archiveren. Mailen via Firebase Trigger Email-extensie (schrijf doc naar `mail`-collectie; die collectie bestaat nog niet). Vereist Blaze-plan + SMTP-provider + geverifieerd afzenderdomein. PDF-library moet nog toegevoegd worden.
 

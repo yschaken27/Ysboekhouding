@@ -188,11 +188,12 @@ document.addEventListener('keydown',e=>{
 
 // ===== AUTO FACTUURNUMMER =====
 function nextFactuurNummer(type){
-  const prefix=type==='verkoop'?'VK':type==='uren'?'UF':'IK';
+  // SF = salesfactuur (maakSalesFactuur in kassier.js), eigen reeks naast UF.
+  const prefix={verkoop:'VK', uren:'UF', sales:'SF'}[type] || 'IK';
   const arr=type==='inkoop'?DB.inkoop:DB.verkoop;
   if(!arr.length) return `${prefix}-${new Date().getFullYear()}-001`;
   const nummers=arr
-    .filter(f=>type==='uren'?f.nummer?.startsWith('UF-'):type==='verkoop'?f.nummer?.startsWith('VK-'):f.nummer?.startsWith('IK-'))
+    .filter(f=>f.nummer?.startsWith(prefix+'-'))
     .map(f=>{ const m=f.nummer?.match(/(\d+)$/); return m?parseInt(m[1]):0; });
   const max=Math.max(...nummers,0);
   return `${prefix}-${new Date().getFullYear()}-${String(max+1).padStart(3,'0')}`;
@@ -738,6 +739,7 @@ function loadCloud(){
       } else {
         const urenNav = document.getElementById('nav-item-urenoverzicht');
         if(urenNav) urenNav.style.display = isUrenAan() ? '' : 'none';
+        updateSalesNav();
       }
       const actievePagina = document.querySelector('.page.active')?.id?.replace('page-','');
       if(actievePagina && actievePagina!=='dashboard') showPage(actievePagina);
