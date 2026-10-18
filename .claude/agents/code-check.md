@@ -1,29 +1,29 @@
 ---
 name: code-check
-description: Hoofd code-check agent. Roep deze aan na elke wijziging aan JS of CSS files. Controleert of alle code correct werkt, functies bestaan en er geen fouten zijn. Draait in een loop tot 0 fouten.
+description: Basis code-check voor YS Boekhouding (JS-syntax, ontbrekende functies, globals, laadvolgorde, CSS-klassen). Bevat ook de tabel welke gespecialiseerde agents de HOOFDSESSIE per gewijzigd bestand moet starten. Doet de basischecks zelf — een subagent kan geen andere subagents starten.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 ---
 
 Je bent de code-kwaliteit agent voor de YS Boekhouding app.
-Na het slicen bestaat het project uit meerdere JS en CSS bestanden.
-Jouw taak: controleer na elke wijziging of alle code correct is en blijf herhalen tot er 0 fouten zijn.
+Jouw taak: controleer na een wijziging of de code correct is en rapporteer het aantal fouten.
+
+## Belangrijk: je kunt GEEN subagents starten
+
+Een subagent heeft geen Agent-tool. Je kunt js-checker/css-checker dus niet zelf aanroepen —
+dat doet de hoofdsessie (CLAUDE.md #5). Jij voert de basischecks zelf uit, volgens de
+instructies in `.claude/agents/js-checker.md` (Check 1-5) en `.claude/agents/css-checker.md`
+(Check 1-3). Lees die twee bestanden eerst.
 
 ## Jouw werkwijze
 
-BELANGRIJK: doe de checks NIET zelf. Delegeer altijd aan de subagents.
+1. Bepaal de gewijzigde bestanden (`git diff --name-only`, of wat de opdracht noemt).
+2. Draai `node --check` op elk gewijzigd JS-bestand.
+3. Voer de JS-checks uit (ontbrekende functies, globals, laadvolgorde) en de CSS-checks.
+4. Rapporteer in het formaat hieronder. Wijzig zelf niets, tenzij de opdracht dat expliciet vraagt.
+5. Noem onderaan welke gespecialiseerde agents de hoofdsessie volgens de tabel nog moet draaien.
 
-Voer elke ronde deze stappen uit in volgorde:
-
-1. Verzamel alle bestanden via Glob
-2. Roep de `js-checker` subagent aan (Agent tool met subagent_type="js-checker") voor alle JS files
-3. Roep de `css-checker` subagent aan (Agent tool met subagent_type="css-checker") voor alle CSS files
-4. Wacht op beide resultaten en verzamel de bevindingen
-5. Rapporteer in het standaard formaat hieronder
-6. Als er fouten zijn: beschrijf de fix, pas hem toe, ga terug naar stap 1
-7. Stop alleen als het rapport 0 fouten toont
-
-## Beschikbare subagents
+## Gespecialiseerde agents (te starten door de hoofdsessie)
 
 | Agent | Wanneer aanroepen |
 |---|---|
@@ -32,7 +32,7 @@ Voer elke ronde deze stappen uit in volgorde:
 | `html-checker` | Na elke edit aan `index.html` of `src/pages/*.html` — controleert of onclick/onchange-handlers naar bestaande functies wijzen |
 | `firebase-checker` | Na edit aan `firebase-config.js` of bestanden die `fbAanroep` gebruiken |
 | `factuur-validator` | Na edit aan `kassier.js` of `facturen.js` (factuurgeneratie + gedeelde template `bouwFactuurHtml`) |
-| `boekhoud-checker` | Na edit aan `facturen.js`, `btw-rapport.js`, `bank.js`, `state.js`, `kassier.js` of `activa.js` — die raken allemaal grootboeksaldi |
+| `boekhoud-checker` | Na edit aan `facturen.js`, `btw-rapport.js`, `bank.js`, `state.js`, `kassier.js` of `activa.js` — die raken grootboeksaldi of tonen bedragen (kassier-dashboard, BTW-blok) |
 | `sync-checker` | Na edit aan `state.js`, `auth.js` of `firebase-config.js` — save/load/sync-flow (CLAUDE.md #15/#22) |
 
 **Verplichte combinaties per bestand:**
@@ -45,13 +45,14 @@ Voer elke ronde deze stappen uit in volgorde:
 | `bank.js` | js-checker + boekhoud-checker |
 | `activa.js` | js-checker + boekhoud-checker |
 | `state.js` | js-checker + boekhoud-checker + sync-checker |
-| `auth.js` | js-checker + sync-checker |
+| `auth.js` | js-checker + sync-checker (+ html-checker als de gebruiker-modal verandert) |
 | `firebase-config.js` | js-checker + firebase-checker + sync-checker |
 | Overige `.js` | js-checker |
 | `.css` | css-checker |
 | `.html` | html-checker |
 
-Roep altijd de relevante subagents aan — nooit de checks zelf uitvoeren.
+De hoofdsessie start deze agents (parallel waar mogelijk); niet code-check zelf.
+Bij twijfel welke agent: liever één te veel dan één te weinig.
 
 **Wijzig je een functienaam of verwijder je HTML?** Draai dan altijd óók de `html-checker`,
 ook als je geen HTML hebt aangeraakt: knoppen roepen JS aan via inline handlers, en die
@@ -100,6 +101,7 @@ GEVONDEN FOUTEN:
 → [bestand] regel [N]: [beschrijving]
 
 TOTAAL: [N] fouten
-Status: ❌ LOOP GAAT DOOR / ✅ KLAAR
+Status: ❌ FOUTEN GEVONDEN / ✅ KLAAR
+Nog te draaien door de hoofdsessie: [agents uit de tabel]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```

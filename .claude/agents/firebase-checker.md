@@ -22,14 +22,15 @@ bedrijven/{bedrijf}/data/verkoop         — { items: [...] }
 bedrijven/{bedrijf}/data/inkoop          — { items: [...] }
 bedrijven/{bedrijf}/data/transacties     — { items: [...] }
 bedrijven/{bedrijf}/data/kassalijsten    — { items: [...] }
-bedrijven/{bedrijf}/data/uren            — { items: [...] }
+bedrijven/{bedrijf}/data/uren            — { items: [...] }  (uren én sales-ingaves, soort:'sales')
+bedrijven/{bedrijf}/data/kassierboekingen — append-only logboek (markeerFactuurBetaald)
 bedrijven/{bedrijf}/uploads/{id}         — bonnen (base64 in Firestore)
 bedrijven/{bedrijf}/toegang/lijst        — gastenlijst per bedrijf
 bedrijven_toegang                        — top-level, welke bedrijven een gebruiker mag zien
 ```
 
-Let op: er is **géén** top-level `gebruikers`-collectie en **géén** `mail`-collectie
-(mailflow staat nog op de planning). Kassiers staan in het `kassiers`-veld van `data/main`
+Let op: er is **géén** top-level `gebruikers`-collectie. Een `mail`-collectie wordt in de code
+nog niet gebruikt (mailflow staat op de planning); `firestore.rules` heeft er alvast een regel voor. Kassiers staan in het `kassiers`-veld van `data/main`
 en worden geschreven via `slaKassiersOp`; toegang loopt via `getGastenlijst`/`setGastenlijst`.
 `uren` en `kassalijsten` zijn documenten met een `items`-array, geen collecties.
 
@@ -38,7 +39,10 @@ niet in dit schema past.
 
 ## Check 2 — Sharded save mag nooit velden verliezen
 
-`slaAllesOp()` schrijft met `.set()` **zonder merge** naar zes losse documenten. Elk veld dat
+`slaAllesOp()` schrijft met `.set()` **zonder merge** naar VIJF losse documenten (main, verkoop,
+inkoop, transacties, kassalijsten). `uren` en `kassierboekingen` staan bewust BUITEN de save —
+die worden wél gelezen maar alleen via eigen (transactionele) functies geschreven. Meld die
+asymmetrie niet als fout (CLAUDE.md Architectuur, #22). Elk veld dat
 in `_bouwSaveData()` (state.js) zit, moet ook in `slaAllesOp` geschreven én in `laadAlles`/
 `luisterAlles`/`verwerkCloudData` gelezen worden — anders overschrijft een apparaat dat het
 veld niet kent de echte data met een lege standaardwaarde (CLAUDE.md #22, zo ging `imports`
@@ -62,8 +66,22 @@ Elk uren-item MOET hebben:
 - `wie` — string (naam kassier)
 - `eenheid` — 'uur' of 'dag'
 
+### sales-ingaves (ook in `data/uren`, `soort:'sales'`)
+`id`, `soort:'sales'`, `maand` ('YYYY-MM'), `datum` (maand+'-01'), `wie`, `wieEmail`,
+`opdrachtgever`, `bedrag` (excl. BTW), `status`, `aangemaakt`. Géén `uren`/`tarief`-velden —
+de uren-velden hierboven gelden dus NIET voor sales-ingaves.
+
 ### kassiers (veld in `data/main`)
 Elk kassier-record MOET hebben: `naam`, `email`, `bedrijven` (array), `modules` (array).
+Het oude veld `opdrachtgevers` (filter per gebruiker) is afgeschaft en wordt niet meer gelezen.
+
+## Check 2c — Transacties
+
+- `data/uren` wordt UITSLUITEND geschreven via `_urenTransactie` (voegUrenToe, updateUrenStatus,
+  updateUrenItem, verwijderUrenItem). Een directe `.set()` op `data/uren` elders is een fout.
+- `markeerFactuurBetaald` doet factuur + grootboek + logboek in één `db.runTransaction`.
+- In elke transactie: eerst alle `tx.get`, dan pas schrijven; geen side-effects (DOM, toasts,
+  globale variabelen) binnen de callback — Firestore kan hem meerdere keren uitvoeren.
 
 ## Check 3 — Gebruik van fbAanroep()
 

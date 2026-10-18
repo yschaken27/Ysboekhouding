@@ -955,7 +955,7 @@ function bouwGrootboekkaart(gbId){
   (DB.memoriaal||[]).forEach(m=>{
     // Een 'saldocorrectie' is het auditspoor van een handmatig weggehaalde
     // restpost. De correctie zit al VERWERKT in g.saldo, dus meetellen zou hem
-    // dubbel laten wegen en direct een nieuwe sluitregel opleveren. Zie #24b.
+    // dubbel laten wegen en direct een nieuwe sluitregel opleveren. Zie #19b.
     if(m.type==='saldocorrectie') return;
     (m.regels||[]).forEach(r=>{
       if(String(r.gbId||'')===gbId){

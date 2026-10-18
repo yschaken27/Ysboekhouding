@@ -14,7 +14,8 @@ Projectmap: `C:\Users\ymera\OneDrive\Documenten\Bookkeeping\Ysboekhouding\src\`
 ## Check 1 — BTW-tarieven
 
 Nederlandse toegestane BTW-tarieven zijn: **0%, 9%, 21%**
-Beveiligingsdiensten vallen altijd onder **21%**.
+Beveiligingsdiensten vallen altijd onder **21%**. Kassalijsten (horeca, kappers) kunnen een eigen
+tarief hebben (`k.btwTarief`, standaard uit `DB.profiel.btwStandaard`) — 9% is daar dus geldig.
 
 Zoek in alle JS bestanden naar BTW-percentages:
 - Zoek naar `btw`, `btwPct`, `btwTarief`, `0.21`, `0.09`, `0.00`
@@ -174,10 +175,10 @@ Controleer in `btw-rapport.js` en `facturen.js`:
 ❌ js/btw-rapport.js regel 44: if(jaar === 2024) — hardcoded jaar, moet getFullYear() zijn
 ```
 
-## Check 9 — Uren-factuur grootboekboekingen (kassier.js)
+## Check 9 — Uren- en salesfactuur grootboekboekingen (kassier.js)
 
-`maakUrenFactuur()` in `kassier.js` genereert een factuur vanuit goedgekeurde uren.
-Bij factuurstelsel MOET deze functie drie grootboekboekingen doen:
+`maakUrenFactuur()` (goedgekeurde uren) en `maakSalesFactuur()` (goedgekeurde sales-bedragen)
+boeken allebei via de gedeelde `_boekGegenereerdeFactuur()`. Die MOET drie boekingen doen:
 
 ```
 Debet:  Debiteuren (1300)      += totaalIncl          (klant is geld schuldig)
@@ -356,7 +357,9 @@ verwerkt is in:
 1. `balansAudit` (btw-rapport.js)
 2. `berekenPLVoorPeriode` — de drie bronnen: facturen, bankkoppelingen, memoriaal (#20)
 3. `bouwGrootboekkaart` (#19)
-4. `renderBTWAangifte` — rubriek 1a/1b/1d en 5b
+4. `berekenBtwPeriode` — rubriek 1a/1b/1d en 5b. Gebruikt door `renderBTWAangifte` (eigenaar)
+   én het BTW-blok op het kassier-dashboard (`_renderMobBtw`, activa.js). Een tweede, eigen
+   BTW-berekening ergens anders is een fout: die loopt uit de pas met de aangifte.
 5. `renderJaaropgave` — omzet en kosten
 
 En specifiek:
@@ -371,6 +374,15 @@ En specifiek:
 
 Aansluitcontrole die je altijd kunt doen: rubriek 1a+1b van de aangifte moet aansluiten op
 wat er in dezelfde periode op 1510 geboekt is, en 5b op 1500.
+
+## Check 15 — Kassier-dashboard (activa.js `renderMobDashboard`)
+
+Het dashboard is een weergave, geen boeking — het muteert nooit DB of saldi. Controleer:
+- Omzet = kassalijsten (status ≠ afgewezen) + ALLE verkoopfacturen; excl. via `totaalExcl` /
+  `totaalOmzet`, incl. via `totaalIncl ?? totaal` / `totaalOmzetIncl`; excl. en incl. nooit gemengd.
+- Kosten = kassa-uitgaven + inkoop `totaalExcl`; netto = omzet excl. − kosten excl.
+- Jaartotaal = som van de maanden; datums via de `'YYYY-MM'`-prefix.
+- Bewust (geen fout): telt op factuurdatum, ook bij kasstelsel; ingediende kassalijsten tellen mee.
 
 ## Uitvoer formaat
 

@@ -40,6 +40,16 @@ Controleer met Grep of ze allemaal aanwezig zijn:
 **Gedefinieerd in `src/js/auth.js`:**
 - `inloggen`, `uitloggen`, `toonBedrijfsKiezer`, `verrijkActieveKassier`
 
+**Gedeelde rekenfuncties die op meerdere plekken gebruikt worden (niet dupliceren):**
+- `berekenBtwPeriode` (btw-rapport.js) — BTW-aangifte én het BTW-blok op het kassier-dashboard
+- `bouwFactuurHtml` / `bouwVerkoopFactuurDocument` (facturen.js) — alle factuurdocumenten
+- `_boekGegenereerdeFactuur` (kassier.js) — boeking van uren- én salesfacturen
+- `_urenTransactie` (firebase-config.js, lokaal in de IIFE) — de enige schrijver van `data/uren`
+
+**Bewust verwijderd (okt 2026) — mag niet terugkomen:** `kassierMagOpdrachtgever`,
+`kassierOpdrachtgeverFilter`, `opdrachtgeverSleutel` (opdrachtgever-filter per gebruiker,
+zie CLAUDE.md → Gebruikers), `_mobPeriode`/`mobSetPeriode`/`_inMobPeriode` (oude dashboard-periode).
+
 Controleer ook: als een functie in bestand A wordt **aangeroepen**, bestaat
 ze dan ook ergens in de codebase? Gebruik Grep om aanroepen te vinden
 en kruis ze af met de definities.
@@ -126,12 +136,12 @@ aangeroepen, tellen NIET als ongebruikt — zoek dus ook in `index.html` en `src
 (en in JS-template-literals die HTML genereren) voordat je iets als ongebruikt meldt.
 Rapporteer als ⚠️ waarschuwing, niet als fout — ze kunnen expres staan.
 
-## Check 7 — Service worker cache-versie
+## Check 7 — Service worker
 
-`sw.js` heeft een `CACHE_NAME` (bv. `ysboekhouding-v5`). Wordt er een bestand gewijzigd dat
-de service worker cachet, dan moet die versie omhoog — anders blijven gebruikers de oude
-versie zien en helpt "hard refresh" niet (CLAUDE.md #6). Controleer bij wijzigingen aan
-gecachete bestanden of `CACHE_NAME` is opgehoogd; zo niet, meld als ⚠️.
+`sw.js` haalt JS en CSS ALTIJD vers van het netwerk (`cache:'no-store'`, nooit gecachet) en
+HTML network-first (cache alleen als offline-fallback). Een gewijzigd JS/CSS/HTML-bestand vraagt
+dus GEEN `CACHE_NAME`-ophoging — meld dat niet. Wél melden (⚠️) als iemand `sw.js` zo verandert
+dat JS/CSS alsnog gecachet worden, of als er een tweede `serviceWorker.register` bijkomt (CLAUDE.md #4/#6).
 
 ## Uitvoer formaat
 

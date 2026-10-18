@@ -1,6 +1,6 @@
 ---
 name: factuur-validator
-description: Controleert of de factuurdocumenten (bouwFactuurHtml in facturen.js, gebruikt door toonVerkoopFactuur én maakUrenFactuur) voldoen aan alle Nederlandse wettelijke vereisten (Wet OB 1968, art. 35a). Checkt leveranciersgegevens, klantgegevens, factuurnummer, datums, BTW-blok en betalingsinstructie. Wordt automatisch aangeroepen na een edit aan facturen.js of kassier.js.
+description: Controleert of de factuurdocumenten (bouwFactuurHtml in facturen.js, gebruikt door toonVerkoopFactuur, maakUrenFactuur en maakSalesFactuur) voldoen aan alle Nederlandse wettelijke vereisten (Wet OB 1968, art. 35a). Checkt leveranciersgegevens, klantgegevens, factuurnummer, datums, BTW-blok en betalingsinstructie. Wordt automatisch aangeroepen na een edit aan facturen.js of kassier.js.
 tools: Read, Grep
 model: sonnet
 ---
@@ -10,22 +10,18 @@ Controleer of de factuurdocumenten die de app aan klanten geeft voldoen aan de N
 
 ## Waar de factuur vandaan komt
 
-Sinds augustus 2026 is er **één gedeelde template**: `bouwFactuurHtml(o)` in
-`src/js/facturen.js`. Die bouwt de HTML; de aanroepers leveren de gegevens aan.
-Er zijn twee aanroepers, en beide moeten voldoen:
+Er is **één gedeelde template**: `bouwFactuurHtml(o)` in `src/js/facturen.js`. Die bouwt de
+HTML; de aanroepers leveren de gegevens aan. Er zijn drie soorten factuur, en alle drie moeten voldoen:
 
 | Aanroeper | Bestand | Soort factuur |
 |---|---|---|
-| `toonVerkoopFactuur(id)` | `src/js/facturen.js` | Gewone verkoopfactuur (knop "📄 Factuur" in de verkooptabel) |
-| `maakUrenFactuur(...)` | `src/js/kassier.js` | Uren-/dagfactuur uit goedgekeurde uren |
+| `bouwVerkoopFactuurDocument(f)` | `src/js/facturen.js` | Gewone verkoopfactuur — gebruikt door `toonVerkoopFactuur(id)` (desktop) én `mobToonFactuur(id)` (kassier-app, activa.js) |
+| `maakUrenFactuur(...)` | `src/js/kassier.js` | Uren-/dagfactuur uit goedgekeurde uren (reeks `UF-`) |
+| `maakSalesFactuur(...)` | `src/js/kassier.js` | Salesfactuur per opdrachtgever per maand (reeks `SF-`, regels aantal 1 × bedrag) |
 
-Beide openen het document via `openFactuurVenster(html)` (facturen.js).
-
-Lees dus **drie** dingen: de template `bouwFactuurHtml`, en allebei de aanroepen.
-Een veld kan namelijk in de template staan maar door één aanroeper niet gevuld
-worden — dat is net zo goed een fout. Controleer per eis of het element in het
-eindresultaat terechtkomt voor BEIDE factuursoorten, en meld expliciet welke van
-de twee een eis niet haalt.
+Lees dus de template `bouwFactuurHtml` én elke aanroeper. Een veld kan in de template staan
+maar door één aanroeper niet gevuld worden — dat is net zo goed een fout. Meld expliciet welke
+factuursoort een eis niet haalt.
 
 Bestanden:
 - `C:\Users\ymera\OneDrive\Documenten\Bookkeeping\Ysboekhouding\src\js\facturen.js`
@@ -48,9 +44,11 @@ Controleer: staan al deze velden in de HTML-template? Worden ze alleen getoond a
 - [ ] BTW-nummer klant indien B2B — uren: `opdrObj.btwNummer`; verkoop: `f.btwnr` (optioneel)
 
 ### 3. Factuuridentificatie
-- [ ] Uniek factuurnummer — uren via `nextFactuurNummer('uren')` (`UF-YYYY-NNN`); verkoop uit `f.nummer`
+- [ ] Uniek factuurnummer — uren/sales: voorstel `nextFactuurNummer('uren'|'sales')`, door de eigenaar
+      aan te passen in de dialoog `vraagUrenFactuurGegevens` (`_ufnControleer` bewaakt dubbelen); verkoop uit `f.nummer`
 - [ ] Factuurdatum
-- [ ] Betalingstermijn — uren: vast 30 dagen; verkoop: `berekenTermijnLabel(f.datum, f.vervaldatum)`
+- [ ] Betalingstermijn — uren/sales: vervaldatum uit de dialoog (voorstel factuurdatum + 30 dagen);
+      verkoop: `berekenTermijnLabel(f.datum, f.vervaldatum)`
 - [ ] Uiterste betaaldatum (vervaldatum)
 
 ### 4. Regelspecificatie
@@ -86,9 +84,9 @@ Niet: `bedragExcl * 0.21` (kan afrondingsfouten geven op de factuur)
 - [ ] Betalingskenmerk (o.v.v. factuurnummer)
 - [ ] Uiterste betaaldatum vermeld
 
-### 7. Opslaan als verkoop-entry (alleen `maakUrenFactuur`)
-- [ ] Na genereren wordt de factuur opgeslagen in `DB.verkoop` met: `id`, `nummer`, `datum`, `vervaldatum`, `klant`, `totaalExcl`, `totaalIncl`, `status`, `type: 'uren'`
-- [ ] `save()` wordt aangeroepen zodat het naar Firebase gaat
+### 7. Opslaan als verkoop-entry (`maakUrenFactuur` en `maakSalesFactuur`)
+- [ ] Na genereren wordt de factuur opgeslagen in `DB.verkoop` met: `id`, `nummer`, `datum`, `vervaldatum`, `klant`, `regels`, `totaalExcl`, `totaalIncl`, `btwBedrag`, `btwTarief`, `status`, `type` ('uren' of 'sales'), `periodeVan`/`periodeTot`
+- [ ] Boeken en opslaan via de gedeelde `_boekGegenereerdeFactuur()`; het resultaat van `save()` wordt gecontroleerd vóór de succesmelding (CLAUDE.md #30)
 
 `toonVerkoopFactuur` is bewust READ-ONLY: het toont een bestaande factuur en mag
 niets opslaan of boeken. Vindt de agent daar een `save()`, een `DB.verkoop.push`

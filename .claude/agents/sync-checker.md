@@ -1,6 +1,6 @@
 ---
 name: sync-checker
-description: Controleert de Firebase↔localStorage sync-flow in YS Boekhouding. Roep aan na wijzigingen aan auth.js of state.js, of als er klachten zijn over stale data na inloggen op een ander apparaat. Checkt of Firebase altijd wint van localStorage, of verrijkActieveKassier() op het juiste moment draait, en of er race conditions zijn in de login-volgorde.
+description: Controleert de Firebase↔localStorage sync-flow in YS Boekhouding. Roep aan na wijzigingen aan auth.js, state.js of firebase-config.js, of als er klachten zijn over stale data na inloggen op een ander apparaat. Checkt of Firebase altijd wint van localStorage, of verrijkActieveKassier() op het juiste moment draait, en of er race conditions zijn in de login-volgorde.
 ---
 
 Je bent de sync-checker agent voor YS Boekhouding. Je controleert of de data-synchronisatie correct verloopt tussen Firebase (bron van waarheid) en localStorage (cache).
@@ -50,10 +50,17 @@ Lees `src/js/auth.js` en `src/js/state.js` volledig en controleer:
    - Dit is de kern: bij het wisselen van bedrijf, tab sluiten of naar de achtergrond gaan mag een net gemaakte, nog niet verzonden wijziging NOOIT verloren gaan of overschreven worden door een oudere cloud-stand. (Bug juli 2026: "verwerk regels → wissel bedrijf → wijziging weg, en later dook een oudere versie weer op.")
    - **`saveCloud()`** moet bedrijf én data VASTPINNEN op het moment van inplannen (`_pendingSaveData = { bedrijf: huidigBedrijf, data: _bouwSaveData() }`), niet pas bij het afvuren van de timer. Een vertraagde save mag nooit `huidigBedrijf`/`DB` van ná een wissel gebruiken.
    - **`_kickSave()`** moet serieel zijn via `_saveInFlight` (één write tegelijk, nieuwere versie erachteraan). Bij faal: data terug in `_pendingSaveData`, GEEN auto-retry-lus.
-   - **`wisselBedrijf()`** moet `await flushSave()` als ALLEREERSTE statement doen, vóór `_stopCloudListeners()` / DB legen / `huidigBedrijf=naam`. Ontbreekt die await → RISICO: databug is terug.
+   - **`_wisselBedrijfKern()`** (aangeroepen door de wrapper `wisselBedrijf()`) moet `await flushSave()` als ALLEREERSTE statement doen, vóór `_stopCloudListeners()` / DB legen / `huidigBedrijf=naam`. Ontbreekt die await → RISICO: databug is terug.
    - **`flushSave()`** moet ook draaien op `visibilitychange` (hidden) en best-effort in `beforeunload`.
    - **Listener-gate**: `verwerkCloudData()` moet inkomende snapshots negeren zolang `_heeftOnbevestigdeSave()` (`_pendingSaveData || _saveInFlight`) true is. De oude tijd-gok `_recentlySaved`/`_syncBezig`/`_pendingSave`/`_doSaveCloud` is verwijderd en mag NIET terugkomen.
    - **`_bouwSaveData()`** moet `imports` meesturen (anders wist `slaAllesOp()`, dat met `.set()` het hele doc overschrijft, de afschriftgeschiedenis).
+
+9. **Uren en sales staan BUITEN `save()`** (okt 2026)
+   - `_bouwSaveData()` en `slaAllesOp()` mogen `uren` NIET bevatten. Lezen (`laadAlles`/`luisterAlles`/`verwerkCloudData`) wél — die asymmetrie is bewust, geen #22-fout.
+   - Elke lokale mutatie van `DB.uren` moet gevolgd worden door één van de transactionele writes (`voegUrenToe`, `updateUrenStatus`, `updateUrenItem`, `verwijderUrenItem`), met `checkOnline()` vóór de lokale wijziging. Een mutatie die op `save()` rekent, gaat verloren → RISICO.
+   - Bekend open punt (geen nieuwe fout melden tenzij het erger wordt): kassalijsten gaan nog wél via `save()` én `voegKassalijstToe` zonder transactie — zie CLAUDE.md Architectuur.
+
+10. **Kassiers zijn de bedrijfseigenaren** — er is geen opdrachtgever-filter per gebruiker meer. Code die `k.opdrachtgevers` leest of facturen per gebruiker verbergt, is een regressie.
 
 ## Rapporteer
 

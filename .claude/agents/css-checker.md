@@ -15,10 +15,13 @@ Stap 1: Lees alle HTML bestanden en `index.html`.
 Verzamel alle class-namen uit `class="..."` attributen.
 
 Stap 2: Lees alle CSS bestanden:
-- `css/base.css`
-- `css/components.css`
-- `css/pages.css`
-- `css/branding.css`
+- `src/css/base.css`
+- `src/css/components.css`
+- `src/css/pages.css`
+- `src/css/branding.css`
+
+Neem ook klassen mee die JS genereert in template-literals (`class="..."` in `src/js/*.js`),
+bv. de mobiele dashboard-grafiek en het BTW-blok in activa.js.
 
 Stap 3: Controleer of elke gevonden HTML-klasse ook als `.klassenaam`
 in één van de CSS bestanden staat.
@@ -28,6 +31,8 @@ niet in de HTML geschreven. Sla ze over:
 - `active`, `open`, `hidden`, `loading`, `error`, `success`
 - `kassier-modus`, `kassier-mobiel`
 - `out` (toast animatie)
+- `sel` (gekozen maand/kwartaal), en de statusklassen op `.mob-btw-tag`: `toekomst`/`klaar`
+  hebben bewust geen eigen regel (vallen terug op de basisstijl)
 - Tailwind-achtige utility klassen
 
 Fout-voorbeeld:
@@ -95,10 +100,10 @@ Lees `index.html` en zoek alle `<link rel="stylesheet" href="...">` tags.
 Verplichte volgorde:
 
 ```
-1. css/base.css       (variabelen en reset — moet eerst)
-2. css/components.css (bouwt op base)
-3. css/pages.css      (bouwt op components)
-4. css/branding.css   (overschrijft kleuren — moet laatst)
+1. src/css/base.css       (variabelen en reset — moet eerst)
+2. src/css/components.css (bouwt op base)
+3. src/css/pages.css      (bouwt op components)
+4. src/css/branding.css   (overschrijft kleuren — moet laatst)
 ```
 
 Als de volgorde afwijkt, rapporteer welke file verplaatst moet worden.

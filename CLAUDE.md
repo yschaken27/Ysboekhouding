@@ -3,10 +3,16 @@
 ## Wat is dit project
 Boekhoud- + kassa(POS)-webapp met Firebase/Firestore als backend.
 Gehost op GitHub Pages (`yschaken27.github.io/Ysboekhouding`) als PWA.
-Doelgroep: zzp-beveiligers en multi-user bedrijven.
+Doelgroep: zzp-beveiligers en kleine bedrijven (ook horeca/kappers via de kassa).
+
+**Wie gebruikt de app?** De hoofdeigenaar (`ymeraldo@hotmail.com`) is de boekhouder en beheert alle
+bedrijven op de desktop. De "kassiers" in de code zijn **de klanten zelf: de eigenaren van die
+bedrijven**, die via de mobiele kassier-app hun eigen bedrijf zien en invoer doen. Per bedrijf
+hebben alleen de boekhouder en die eigenaar(s) toegang. Ga er dus niet van uit dat het personeel is,
+en bouw geen afscherming tussen gebruikers van hetzelfde bedrijf (zie Gebruikers).
 
 De app was oorspronkelijk één grote `index.html` (~11.500 regels) en is gesliced naar losse bestanden.
-`index.html` is nu de shell (~1.170 regels): laadt CSS/JS in en bevat de vaste HTML-structuur
+`index.html` is nu de shell (~1.270 regels): laadt CSS/JS in en bevat de vaste HTML-structuur
 (topbar, sidebar) plus ALLE modals — die modals zijn het leeuwendeel van de regels.
 **Werk altijd in de `src/`-bestanden, nooit in de backup of de root-`index.html` van de parent-map.**
 
@@ -31,11 +37,11 @@ De app was oorspronkelijk één grote `index.html` (~11.500 regels) en is geslic
 | `state.js` | `DB`-object, `save()`, `load()`, helpers (`fmt`, `uid`, `esc`, `rond`, `toast`, `bevestig`, `badge`), **`openModal`/`closeModal`**, `fbAanroep`, `wisselBedrijf`, factuurnummers, bedrijfsprofiel, opdrachtgever-register (centraal) |
 | `ui.js` | Klein (~86 regels): service-worker-registratie, `heeftToegang`, `showPage`, `laadAllePaginas`. Let op: `navTo` staat in `activa.js`, de modal-helpers in `state.js` |
 | `auth.js` | Inloggen, rolbepaling, kassier-beheer (CRUD), gebruiker-detail modal |
-| `facturen.js` | Dashboard, verkoop/inkoop CRUD, BTW-helpers, grootboek |
+| `facturen.js` | Dashboard, verkoop/inkoop CRUD, BTW-helpers, gedeelde factuurtemplate `bouwFactuurHtml` / `bouwVerkoopFactuurDocument` |
 | `bank.js` | Banktransacties, CSV-import, reconciliatie |
-| `btw-rapport.js` | BTW-aangifte, grootboek, balans, P&L |
-| `activa.js` | Vaste activa, afschrijvingsschema's, mobiele interface (uploads, facturen-tab) |
-| `kassier.js` | Desktop kassa, kassaoverzicht, urenoverzicht (eigenaar), `maakUrenFactuur()`, mobiele uren-invoer |
+| `btw-rapport.js` | BTW-aangifte (berekening in `berekenBtwPeriode`), grootboek(kaart), balans, P&L, jaaropgave |
+| `activa.js` | Vaste activa, afschrijvingsschema's, `navTo`, en de mobiele kassier-app: navigatie, dashboard (jaar/maand/BTW), facturen-tab, bonnen, kassa-invoer |
+| `kassier.js` | Desktop kassa, kassaoverzicht, urenoverzicht (eigenaar), `maakUrenFactuur()`, mobiele uren-invoer, sales-module (`maakSalesFactuur()`) |
 | `firebase-config.js` | **Staat in `src/`, niet in `src/js/`.** Firebase init, `window.FB`/`window.FBAuth` (alle Firestore/Storage-aanroepen). De wrapper `fbAanroep` zelf staat in `state.js` |
 
 ### Pagina-HTML — `src/pages/`
@@ -49,8 +55,10 @@ De app was oorspronkelijk één grote `index.html` (~11.500 regels) en is geslic
 
 ### Modals — zitten in `index.html`
 Alle modals staan in `index.html`. Zoek op `<!-- ... MODAL -->` commentaar.
-Bekende modals: `modal-bedrijf`, `modal-opdrachtgevers`, `modal-gebruiker-detail`, `modal-factuur`,
-`modal-handmatig`, `modal-grootboekkaart`, `modal-eigenaar-uren`, `modal-gb`, `modal-depr-vraag`.
+Modals (okt 2026): `modal-bedrijf`, `modal-opdrachtgevers`, `modal-gebruiker-detail`, `modal-instellingen`,
+`modal-factuur`, `modal-handmatig`, `modal-bijlagen`, `modal-koppel`, `modal-transfer`, `modal-regel`,
+`modal-bank-beheren`, `modal-gb`, `modal-grootboekkaart`, `modal-va`, `modal-depr-vraag`,
+`modal-eigenaar-uren`, `modal-uren-factuurnr`, `modal-sales`.
 (Er is géén `modal-inkoop`.)
 
 ## Hoe we werken
@@ -98,7 +106,7 @@ Bekende modals: `modal-bedrijf`, `modal-opdrachtgevers`, `modal-gebruiker-detail
   `wijsKassaAf` en `verwijderKassalijst` wijzigen de status samen met het grootboek via `save()`.
   Een fix vraagt een eigen transactie (kassalijst + grootboek), naar het model van `markeerFactuurBetaald`.
 - **`kassierboekingen`** is een ZEVENDE document en staat bewust BUITEN `slaAllesOp()`:
-  een append-only logboek (max 200 regels) van facturen die een medewerker op betaald
+  een append-only logboek (max 200 regels) van facturen die een gebruiker in de kassier-app op betaald
   heeft gezet. Omdat `save()` het niet overschrijft, blijft het spoor staan als een
   save van de eigenaar een kassier-boeking wegdrukt. `controleerKassierBoekingen()`
   (state.js) vergelijkt dit na elke geslaagde save met `DB.verkoop` en waarschuwt.
@@ -108,7 +116,8 @@ Bekende modals: `modal-bedrijf`, `modal-opdrachtgevers`, `modal-gebruiker-detail
 
 ## Gebruikers
 - Er is **géén** top-level `gebruikers`-collectie (die stond hier ooit gepland, maar is er nooit gekomen).
-- Kassiers staan per bedrijf in het veld `kassiers` van `data/main`, geschreven via `slaKassiersOp`.
+- Kassiers staan per bedrijf in het veld `kassiers` van `data/main`, geschreven via `slaKassiersOp`
+  (gericht, merge) én bij elke `save()` via `slaAllesOp`.
 - Wie welk bedrijf mag zien: `bedrijven/{bedrijf}/toegang/lijst` (`getGastenlijst`/`setGastenlijst`)
   plus de top-level collectie `bedrijven_toegang`.
 - Inloggen gaat via Firebase Authentication (wachtwoord) — een aparte laag dan de kassierlijst.
@@ -119,16 +128,21 @@ Bekende modals: `modal-bedrijf`, `modal-opdrachtgevers`, `modal-gebruiker-detail
   in de data wordt genegeerd en bij de volgende `slaGebruikerDetailOp` verwijderd.
 
 ## Rolbepaling
-- Hoofdeigenaar = `ymeraldo@hotmail.com` (ziet alles)
-- Anderen zijn kassier via `getGastenlijst`
-- `_actieveKassier` wordt verrijkt via `verrijkActieveKassier()`
+- Hoofdeigenaar = `ymeraldo@hotmail.com` (de boekhouder, ziet alles, desktop-interface)
+- Anderen zijn kassier (`_bepaalToegankelijkeBedrijven`, auth.js) — in de praktijk de bedrijfseigenaren
+  (klanten), mobiele interface. Hun bedrijven komen uit `bedrijven_toegang/{email}`
+  (`getBedrijvenVoorKassier`), met `DB.kassiers` als fallback; `toegang/lijst` regelt alleen de
+  datatoegang in de security rules.
+- `_actieveKassier` wordt verrijkt via `verrijkActieveKassier()` (naam, email, bedrijven, modules)
 
 ## Uren-module (af)
 - Per-bedrijf toggle: `DB.profiel.urenAan`
 - Mobiel invoerscherm, goedkeuren/afwijzen door eigenaar, factuurgeneratie
-- Hulpfuncties: `nextFactuurNummer(type)`, factuurmodal, `uploadBijlage`
-- `uploadBijlage` zet bestand in Storage onder `${bedrijf}/facturen/${factuurId}/${naam}`, geeft downloadURL terug
-- `updateUrenStatus`
+- Hulpfuncties: `nextFactuurNummer('uren')`, `vraagUrenFactuurGegevens()` + `modal-uren-factuurnr`,
+  `_boekGegenereerdeFactuur()`. Cloud-writes alleen via `voegUrenToe` / `updateUrenStatus` /
+  `updateUrenItem` / `verwijderUrenItem` (zie Architectuur).
+- Los daarvan: `uploadBijlage` (bijlagen in de factuurmodal van de eigenaar) zet een bestand in
+  Storage onder `${bedrijf}/facturen/${factuurId}/${naam}` en geeft de downloadURL terug.
 
 ### Instellingen per opdrachtgever (centraal register, `DB.profiel.opdrachtgevers`)
 Beheerd in twee schermen die dezelfde `_cpOpdrachtgevers`-state delen (state.js):
@@ -146,16 +160,18 @@ beide `voeg*Toe` (default-waarde), anders verdwijnt het bij opslaan.
 
 ### Decimale invoer: komma én punt
 Nederlandse gebruikers typen `7,5`, maar een `<input type="number">` weigert de komma op
-mobiel. Invoervelden voor uren en tarieven zijn daarom `type="text"` met `inputmode="decimal"`,
+mobiel. De invoervelden in het urenscherm (mobiel en eigenaar) zijn daarom `type="text"` met `inputmode="decimal"`,
 en worden uitgelezen via **`parseDecimaalInvoer()`** (kassier.js). Voorinvulling toont het
-getal in komma-notatie. Gebruik dit patroon voor elk nieuw bedrag-/aantalveld.
+getal in komma-notatie. Gebruik dit patroon voor elk nieuw bedrag-/aantalveld. Uitzondering (nog
+niet omgezet): de tariefvelden in het opdrachtgever-register zijn `type="number"` + `parseFloat`.
 
 ## Sales-module (okt 2026)
-Medewerker met module `sales` (vinkje bij de gebruiker) vult in het Facturen-tabblad van de
+Een gebruiker met module `sales` (vinkje bij de gebruiker) vult in het Facturen-tabblad van de
 kassier-app per opdrachtgever per maand één bedrag excl. BTW in; eigenaar keurt goed in
-Rapportages → Salesoverzicht (alleen zichtbaar als een medewerker van dit bedrijf de module heeft,
+Rapportages → Salesoverzicht (alleen zichtbaar als een gebruiker van dit bedrijf de module heeft,
 `updateSalesNav()`) en maakt per opdrachtgever per maand een factuur (`maakSalesFactuur`,
-type `'sales'`, reeks `SF-`, regels aantal 1 × bedrag). Alles in kassier.js, sectie "SALES".
+type `'sales'`, reeks `SF-`, regels aantal 1 × bedrag). Logica in kassier.js, sectie "SALES"; de
+tab- en sectiezichtbaarheid in activa.js.
 - **Opslag: sales-ingaves staan in `DB.uren` met `soort:'sales'`** (zelfde transactionele
   cloud-writes en security rules als uren, buiten `save()`, geen sync-uitbreiding #22). Daarom: **elke doorloop over `DB.uren`
   die uren telt/toont MOET `isSalesIngave(u)` uitsluiten** — nu in `_urenVanMaand`,
@@ -166,6 +182,23 @@ type `'sales'`, reeks `SF-`, regels aantal 1 × bedrag). Alles in kassier.js, se
   `parseDecimaalInvoer()` (die maakt er 2,5 van).
 - Factuurgegevens-dialoog `vraagUrenFactuurGegevens({type})`: alleen een bestaande factuur van
   hetzelfde type mag via het nummer vervangen worden.
+
+## Kassier-app (mobiel) — wat de klant ziet
+Wat een gebruiker ziet, hangt af van de modules die de boekhouder per gebruiker aanvinkt
+(`modDefs` in `openGebruikerDetail`, auth.js): `dashboard`, `kassa`, `uren`, `facturen`,
+`uploads` (Bonnen), `sales` en `btw`. Tabbladen bouwt `mobBouwNav()` (activa.js); de starttab
+staat in auth.js. Voeg je een module of tab toe, raak dan modDefs, `mobBouwNav`, de starttab én
+`mobNav()` (`allTabs`/`titels`). De Uren-tab vraagt ook `DB.profiel.urenAan`; de tab Lijsten volgt
+de module `kassa`.
+- `sales` is geen eigen tab maar zit in Facturen; `btw` is een blok op het Dashboard (en toont
+  daarom ook de Dashboard-tab).
+- **Dashboard** (`renderMobDashboard`): jaarknoppen, jaaromzet, grafiek van 6 maanden met bedrag
+  erboven, cijfers van de getikte maand, BTW per kwartaal (`_renderMobBtw`, module `btw`).
+  Omzet = kassalijsten (afgewezen niet) + ALLE verkoopfacturen. Datums vergelijken op de
+  `'YYYY-MM'`-prefix, niet via `new Date()` (tijdzone).
+- **BTW-blok** rekent via `berekenBtwPeriode` — exact dezelfde berekening als het BTW-rapport (#26).
+- **Facturen-tab**: open, vervallen en ALLE betaalde facturen; "Terugdraaien" alleen bij een
+  betaling die de gebruiker zelf meldde (`markeerFactuurBetaald`, één transactie, #31).
 
 ## Planning
 1. **Maandfacturen-mailflow** — goedgekeurde uren per beveiliger groeperen per opdrachtgever, per opdrachtgever een factuur (PDF) maken, als bijlage mailen én in Storage archiveren. Mailen via Firebase Trigger Email-extensie (schrijf doc naar `mail`-collectie; die collectie bestaat nog niet). Vereist Blaze-plan + SMTP-provider + geverifieerd afzenderdomein. PDF-library moet nog toegevoegd worden.
@@ -184,18 +217,22 @@ Wat de regels toestaan, kort:
   wijzig het overal) mag alles.
 - Een kassier mag alleen bij bedrijven waar zijn e-mail in `bedrijven/{bedrijf}/toegang/lijst`
   (veld `emails`) staat, en schrijft daarbinnen alleen `data/uren`, `data/kassalijsten`,
-  `data/verkoop`, `data/kassierboekingen` en het veld `grootboek` van `data/main`.
-  Dat laatste is precies wat `markeerFactuurBetaald()` nodig heeft.
+  `data/verkoop`, `data/kassierboekingen` en het veld `grootboek` van `data/main`, plus
+  `create`/`update` in de collectie `uploads` (bonnen).
+  Het grootboek-veld is precies wat `markeerFactuurBetaald()` nodig heeft.
 
 Twee dingen om te weten bij het aanpassen:
-- `laadAlles()` leest zes documenten in één `Promise.all`. Weiger je er één, dan faalt het laden
-  van dat bedrijf volledig — niet gedeeltelijk.
+- `laadAlles()` leest zes documenten plus de `uploads`-collectie in één `Promise.all`. Weiger je
+  er één, dan faalt het laden van dat bedrijf volledig — niet gedeeltelijk.
 - `initLogin()` draait VÓÓR het inloggen en leest dan bedrijfsdata. Met regels actief worden die
   reads geweigerd; dat is opgevangen (`.catch(()=>{})` in `laadKassiersVoorLogin()` en
   `laadBedrijfNamenUitFirebase()`, try/catch in `syncBedrijvenVanuitFirebase()`) en het
   loginscherm valt terug op de localStorage-cache. Haal die vangnetten dus niet weg.
 
 ## Veelgemaakte fouten — NOOIT HERHALEN
+
+_De nummers zijn vaste referenties (code-commentaar en agents verwijzen naar "#15", "#22" enz.) —
+niet hernummeren. Daarom staat #6 na #9 en bestaat #12 niet._
 
 ### 1. `function` / `async` keyword valt weg bij PowerShell-vervanging
 Bij elke string replace in PowerShell moet je de volledige regel inclusief `function` of `async function` in zowel `$old` als `$new` zetten. Controleer altijd daarna met `grep -n "^ function \|^ async "` of er regels zijn met een spatie voor `function`.
@@ -209,13 +246,17 @@ Bij een grote string-replace kan een omliggende functie per ongeluk meegenomen w
 ### 4. Nooit dubbele Service Worker registraties
 Er mag maar één `navigator.serviceWorker.register()` in de codebase staan — staat in `src/js/ui.js` bovenaan. Check altijd met `grep -rn "serviceWorker.register"` voor én na een SW-edit. De registratie bevat ook een `controllerchange`-listener die de pagina automatisch herlaadt als een nieuwe SW activeert.
 
-### 5. Syntaxcheck na elke JS-wijziging
-Na elke edit altijd de code-check agent aanroepen (`Agent: code-check`) om syntax errors te vangen vóór push.
-De code-check agent delegeert verplicht naar `js-checker` (voor JS) en `css-checker` (voor CSS) — hij doet de checks nooit zelf inline.
+### 5. Checks na elke wijziging — vanuit de hoofdsessie
+Na elke edit: `node --check` op de gewijzigde JS, en dan de agents uit de tabel "Verplichte
+combinaties" in `.claude/agents/code-check.md` **rechtstreeks vanuit de hoofdsessie** starten
+(parallel waar het kan). Een subagent kan zelf géén subagents starten — `code-check` kan dus niet
+naar js-checker/css-checker delegeren (gebleken okt 2026); hij doet de JS/CSS-basischecks zelf.
+Doel is altijd 0 fouten vóór de push. Logica die je in Node kunt draaien (berekeningen,
+rapportbedragen): test hem ook echt met voorbeelddata, oud vs nieuw.
 
 ### 7. Sessie altijd starten vanuit de juiste map
 Open Claude Code altijd met `Ysboekhouding/` als werkmap, niet de bovenliggende map.
-De hooks in `.claude/settings.json` (automatische js-checker en css-checker na elke edit) zijn alleen actief als de CWD exact `Ysboekhouding/` is.
+De hooks in `.claude/settings.json` (automatische agent-checks na elke edit: js-checker, css-checker, html-checker, factuur-validator, firebase-checker, boekhoud-checker, sync-checker — per bestandstype) zijn alleen actief als de CWD exact `Ysboekhouding/` is.
 Start je vanuit de parent-map, dan vuren de hooks niet en worden wijzigingen niet automatisch gecheckt.
 
 ### 8. `verrijkActieveKassier()` — altijd `.email` als lookup-sleutel, nooit `.naam`
@@ -230,24 +271,25 @@ Zie: `kassier.js` → `document.addEventListener('visibilitychange', ...)`.
 Bij elke nieuwe feature die data toont die een ander apparaat kan wijzigen: controleer of er een `visibilitychange` handler nodig is.
 
 ### 6. Browser cache ≠ server cache
-`<meta http-equiv="Cache-Control">` tags werken niet als de browser al een gecachte versie heeft. De echte oplossing is `sw.js` (Service Worker). Nooit zeggen "hard refresh lost het op" voor klanten — zij weten dat niet.
+`<meta http-equiv="Cache-Control">` tags werken niet als de browser al een gecachte versie heeft. De echte oplossing is `sw.js` (Service Worker): JS en CSS haalt die ALTIJD vers van het netwerk (`cache:'no-store'`, nooit gecachet), HTML network-first met cache alleen als offline-fallback. `CACHE_NAME` ophogen is daardoor alleen nodig als je het gedrag van `sw.js` zelf verandert. Nooit zeggen "hard refresh lost het op" voor klanten — zij weten dat niet. Na een push staat de nieuwe versie pas live als GitHub Pages klaar is (meestal < 1 min).
 
-### 10. Na elke boekhoudkundige actie altijd code-check + boekhoud-checker aanroepen
+### 10. Na elke boekhoudkundige actie altijd js-checker + boekhoud-checker aanroepen
 Elke functie die een factuur aanmaakt, grootboeksaldi wijzigt, BTW berekent of verkoop/inkoop opslaat
 MOET gecontroleerd worden door zowel `js-checker` als `boekhoud-checker`.
-Dit geldt voor: `facturen.js`, `btw-rapport.js`, `bank.js`, `state.js` én **`kassier.js`**
-(want `maakUrenFactuur()` doet grootboekboekingen).
+Dit geldt voor: `facturen.js`, `btw-rapport.js`, `bank.js`, `state.js`, `activa.js` én **`kassier.js`**
+(want `maakUrenFactuur()`/`maakSalesFactuur()` doen grootboekboekingen).
 De verplichte combinaties staan in `.claude/agents/code-check.md`.
 
-### 11. `maakUrenFactuur()` — factuurstelsel vereist drie grootboekboekingen
-Bij het aanmaken van een uren-factuur MOETEN de volgende boekingen plaatsvinden:
+### 11. `maakUrenFactuur()` / `maakSalesFactuur()` — factuurstelsel vereist drie grootboekboekingen
+Beide boeken via de gedeelde `_boekGegenereerdeFactuur()` (kassier.js). Bij het aanmaken MOETEN deze boekingen plaatsvinden:
 - **Debet Debiteuren (1300)** += totaalIncl
 - **Credit Omzet** (type='omzet') += subtotaalExcl
 - **Credit BTW te betalen (1510**, fallback 1530) += btwBedrag (alleen als `!zonderBtw && btwBedrag > 0.01`)
 Boekingen gaan via `DB.grootboek` saldo-updates, daarna `save()`.
 `btwBedrag` **en `btwTarief`** moeten ook opgeslagen worden in de `DB.verkoop`-entry: `btwBedrag`
-voor het terugdraaien bij verwijderen, `btwTarief` omdat de BTW-aangifte een uren-factuur anders
-niet kan indelen in rubriek 1a/1b (die facturen hebben geen `regels`, alleen `totaalExcl`).
+voor het terugdraaien bij verwijderen, `btwTarief` omdat de BTW-aangifte een OUDE uren-factuur anders
+niet kan indelen in rubriek 1a/1b (die hebben geen `regels`, alleen `totaalExcl`; nieuwe uren- en
+salesfacturen hebben wél `regels`).
 
 ### 13. Kassier kan bedrijvenlijst niet lezen — weergavenamen laden aparte stap
 `laadBedrijfNamenUitFirebase()` loopt over `getBedrijven()` (de eigenaar-lijst). Kassiers mogen de
@@ -284,12 +326,12 @@ Elke koppeling van een banktransactie aan een grootboekrekening in `bank.js` (`i
 - BTW-bedrag met een haakjesfout (`...))*100)/100` → gaf voor €15 @ 9% −13,61 i.p.v. +1,24;
 - BTW altijd naar de eerste BTW-rekening (1500, activa) i.p.v. richting-afhankelijk: ontvangst → 1510 'te betalen' (passiva), uitgave → 1500 'te vorderen' (activa);
 - vol bedrag i.p.v. excl. op de rekening, én geen teken op rekeningtype → een uitgave op een kostenrekening werd negatief → balans ~2× scheef.
-`_boekTegenrekening` doet: excl. op de rekening met teken via type (credit-normaal = omzet/passiva/eigen_vermogen → +excl; anders −excl), en het BTW-deel op de richting-juiste BTW-rekening. Bij een gesplitste koppeling moeten de deelbedragen samen exact het bankbedrag dekken vóór er geboekt wordt. Controleer met `node` dat elke variant op €0 balansverschil uitkomt. Zie boekhoud-checker Check 9 en [[project-save-sync-model]] (conventie #17).
+`_boekTegenrekening` doet: excl. op de rekening met teken via type (credit-normaal = omzet/passiva/eigen_vermogen → +excl; anders −excl), en het BTW-deel op de richting-juiste BTW-rekening. Bij een gesplitste koppeling moeten de deelbedragen samen exact het bankbedrag dekken vóór er geboekt wordt. Controleer met `node` dat elke variant op €0 balansverschil uitkomt. Zie boekhoud-checker Check 9 en #17.
 **Terugdraaien MOET spiegelen:** ontkoppelen/verwijderen (`draaiBoekingTerug` in bank.js) draait een grootboek-koppeling terug via `_boekTegenrekening(g, bedrag, btwTarief, -1)` (de `mult=-1` variant) — nooit met `g.saldo -= bedrag` (vol bedrag, geen BTW). Dat laatste liet bij verwijderen een verschil staan (excl + BTW) waardoor de balanscontrole de verwijdering blokkeerde. De BTW-richting blijft op het originele `bedrag` bepaald, zodat terugdraaien dezelfde BTW-rekening raakt. Oude boekingen zonder `t.tegenrekeningId`/`t.btwTarief` vallen terug op `g.saldo -= bedrag` (zo zijn ze destijds geboekt).
 
 ### 19. Grootboekkaart = read-only reconstructie, sluit altijd op `g.saldo`
 De grootboekkaart (drill-down vanuit Balans, P&L en de Grootboek-tab) is een READ-ONLY weergave in `btw-rapport.js` — de wéérgave muteert NOOIT saldi.
-**Eén uitzondering: `gbkVerwijderPost()`** (aug 2026). Zie #19b hieronder; alle andere code in de kaart blijft read-only. `bouwGrootboekkaart(gbId)` reconstrueert de boekingen per rekening uit de bestaande data:
+**Eén uitzondering: `gbkVerwijderPost()` / `gbkVerwijderPaar()`** (aug 2026). Zie #19b hieronder; alle andere code in de kaart blijft read-only. `bouwGrootboekkaart(gbId)` reconstrueert de boekingen per rekening uit de bestaande data:
 - **Facturen** (`DB.verkoop`/`DB.inkoop`): omzet/kosten via `_factuurBoekRegels(f, type)` — dezelfde helper
   als `balansAudit`, die spiegelt hoe facturen.js/kassier.js boeken: per regel naar `r.gbId`, regel zonder
   `gbId` → eerste omzet-/kostenrekening, factuur zonder `regels` (oude urenfactuur) → `totaalExcl` in één
@@ -302,7 +344,7 @@ De grootboekkaart (drill-down vanuit Balans, P&L en de Grootboek-tab) is een REA
 `effect` = de ondertekende mutatie op het saldo van díe rekening (credit-normale rekening → +excl, anders −excl). Omdat niet alles exact te herleiden is (gesplitste bankregels, BTW-excl van bankkoppelingen, betalingsverschillen, transfers), wordt een **sluitregel "Niet-toegewezen / correctie"** = `g.saldo − som(effecten)` toegevoegd, zodat de kaart ALTIJD eindigt op het echte rekeningsaldo. `g.saldo` blijft de bron van waarheid; de kaart mag daar nooit overheen schrijven.
 Ingangen: `openGrootboekkaart(gbId)` (modal `#modal-grootboekkaart` in index.html) vanuit klikbare Balans-regels, per-rekening P&L-rijen (`rij(...,gbId)`) en de "Kaart"-knop in `renderGB`. Regels zijn doorklikbaar via `gbkOpenBron()` naar de factuur/bank/memoriaal. Wil je ooit exacte cent-precisie (ook splitsingen), vervang dit door een echt grootboek-logboek (aanpak B) — dat raakt wél alle boekingscode.
 
-### 19b. `gbkVerwijderPost()` — de enige toegestane eenzijdige saldocorrectie
+### 19b. `gbkVerwijderPost()` / `gbkVerwijderPaar()` — de enige toegestane saldocorrecties zonder brondocument
 De sluitregel "Niet-toegewezen / correctie" op een grootboekkaart is geen boeking maar een
 restpost: `g.saldo − som(herleidbare effecten)`. Staat daar een bedrag dat uit geen enkele
 factuur, bankregel of memoriaalboeking komt, dan staat de balans dáármee scheef en is dat met
@@ -317,7 +359,9 @@ waar de restpost op staat haalt hem weg.
    een sluitregel van hetzelfde bedrag.
 2. **Simuleer eerst**: `g.saldo -= effect`, `_balansVerschil()` opnieuw, en het saldo
    ALTIJD terugzetten — ook bij annuleren. Alleen doorlaten als het verschil daarna
-   ≤ €0,005 is; anders staat er nog een andere fout open en gaat het niet door.
+   ≤ €0,005 is. Sluit de balans na de enkele post niet, dan zoekt hij een tegenhanger op een
+   andere rekening (`_paarKandidaten`, keuze via `gbkToonPaarKeuze`); `gbkVerwijderPaar()` corrigeert
+   dan beide rekeningen in één `saldocorrectie` met twee regels. Geen kandidaat = gaat niet door.
 3. `effect` zit al in `g.saldo`-eenheden (het komt uit `werkelijk − som`), dus er is géén
    type-vertaling nodig zoals bij `_memSaldoEffect`. `g.saldo -= effect` klopt voor zowel
    debet- als credit-normale rekeningen. Gebruik hier nooit alsnog `_memSaldoEffect`.
@@ -325,10 +369,10 @@ waar de restpost op staat haalt hem weg.
 
 **`saldocorrectie` MOET overal uitgesloten worden waar `DB.memoriaal` gereconstrueerd wordt**,
 want de mutatie zit al in `g.saldo`; meetellen laat hem dubbel wegen en geeft direct een nieuwe
-sluitregel van hetzelfde bedrag. Nu uitgesloten in `balansAudit`, de P&L-reconstructie en
-`bouwGrootboekkaart`. Voeg je een nieuwe memoriaal-doorloop toe, sluit dit type dan ook uit.
+sluitregel van hetzelfde bedrag. Nu uitgesloten in `balansAudit`, de P&L-reconstructie,
+`bouwGrootboekkaart` en de BTW-aansluitcontrole `_btwGeboektInPeriode`. Voeg je een nieuwe memoriaal-doorloop toe, sluit dit type dan ook uit.
 (Niet nodig in `voerJaarafsluitingUit` — die telt rechtstreeks `g.saldo` op, waar de correctie
-al in verwerkt zit — en in de BTW-aangifte en het mutatie-overzicht, die geen memoriaal lezen.)
+al in verwerkt zit — en in `berekenBtwPeriode` (BTW-aangifte), die geen memoriaal leest.)
 
 `verwijderMemoriaal()` **blokkeert** dit type, net als `jaarafsluiting` en `afschrijving`. De
 regel heeft bewust geen `effect`, en de terugdraai-fallback gaat ervan uit dat de vooruit-boeking
@@ -342,12 +386,12 @@ wordt gecontroleerd en de ingreep die invariant juist herstelt.
 `berekenPLVoorPeriode` (btw-rapport.js) bouwt `omzetPerRek` en `kostenPerRek` per grootboekrekening uit drie bronnen samen — nooit meer alleen verkoop-/inkoopfacturen:
 1. **Facturen**: per regel via `r.gbId`, met kasstelsel-ratio `_getBetaaldRatio(f)`.
 2. **Directe bankkoppelingen** (`t.gekoppeldType==='grootboek'`): rekening via `t.tegenrekeningId` (of `t.splitsRegels` bij een gesplitste koppeling), anders fallback op de `gekoppeldAan`-tekst; bedrag EXCL. BTW via `t.btwTarief` (0% voor oude data). Alleen `type==='omzet' && bedrag>0` → omzet, `type==='kosten' && bedrag<0` → kosten. Balansrekeningen tellen niet mee.
-3. **Memoriaal** (`m.type!=='jaarafsluiting'`): per regel via `r.gbId`.
+3. **Memoriaal** (`m.type` niet `jaarafsluiting` of `saldocorrectie`): per regel via `r.gbId`.
 `totOmzet`/`totKosten` = som van de maps. `renderPL` toont elke rekening als eigen klikbare regel (→ grootboekkaart, #19).
 
 Nieuw opgeslagen bij het koppelen (bank.js): `t.tegenrekeningId` + `t.btwTarief` (enkel-rekening) en `t.splitsRegels` (gesplitst). Nodig voor exacte, BTW-vrije P&L én grootboekkaart. Voeg dit toe bij ELKE nieuwe grootboek-koppeling.
 
-**KRITIEK — memoriaal-fallback**: waar `r.effect` ontbreekt (o.a. `kassalijst`-boekingen uit `keurKassaGoed`, `opening_saldo` uit `slaGBOp`) MOET de reconstructie het teken via `_memSaldoEffect(g, r.dc, r.bedrag)` bepalen, nooit via het naïeve `r.dc==='debet'?bedrag:-bedrag`. Anders krijgt een credit op een omzet-/passiva-/eigen-vermogenrekening het verkeerde teken (kassa-omzet gaat dan omlaag i.p.v. omhoog). Zet bij voorkeur `r.effect` al bij het aanmaken van memoriaalregels (zoals `slaMemoriaalOp` doet). Zie boekhoud-checker Check 10.
+**KRITIEK — memoriaal-fallback**: waar `r.effect` ontbreekt (`kassalijst`-boekingen uit `keurKassaGoed`, en oude `opening_saldo`-regels van vóór de fix — `slaGBOp` en `voegBankToe` zetten `effect` nu wél) MOET de reconstructie het teken via `_memSaldoEffect(g, r.dc, r.bedrag)` bepalen, nooit via het naïeve `r.dc==='debet'?bedrag:-bedrag`. Anders krijgt een credit op een omzet-/passiva-/eigen-vermogenrekening het verkeerde teken (kassa-omzet gaat dan omlaag i.p.v. omhoog). Zet bij voorkeur `r.effect` al bij het aanmaken van memoriaalregels (zoals `slaMemoriaalOp` doet). Zie boekhoud-checker Check 10.
 
 ### 21. Het boekhoudmodel — kerninvarianten (overzicht)
 Elke boeking/terugdraai/rapportage moet hieraan voldoen. Wijkt code hiervan af, ook als het "toevallig" balanceert, dan is dat fout. Laat de `boekhoud-checker` dit verifiëren na elke wijziging aan `bank.js`, `facturen.js`, `btw-rapport.js`, `kassier.js`, `activa.js` of `state.js`.
@@ -362,7 +406,7 @@ De schrijf-set (`_bouwSaveData()` in state.js → `slaAllesOp()` in firebase-con
 lees-set (`laadAlles()`/`luisterAlles()` → `verwerkCloudData()`) moeten veld voor veld identiek
 zijn. Voeg je een veld aan `DB` toe dat gepersisteerd moet worden, dan raak je **zes** plekken:
 `_bouwSaveData`, `slaAllesOp`, `laadAlles`, `luisterAlles`, `verwerkCloudData` én `maakBedrijf`
-(initiële waarde), plus de resets in de initiële `DB`-declaratie, `loadLokaal()` en `wisselBedrijf()`.
+(initiële waarde), plus de resets in de initiële `DB`-declaratie, `loadLokaal()` en `_wisselBedrijfKern()`.
 
 Een veld dat wél geschreven maar niet gelezen wordt, geeft **actief dataverlies**, niet alleen
 stale data: `slaAllesOp()` doet `.set()` zonder merge op `data/main`, dus een apparaat dat het veld
@@ -400,8 +444,9 @@ onvoorwaardelijke overschrijving terecht (#15).
 Boekingen zoeken rekeningen op **nummer** (`find(g=>g.nummer==='1300')`), maar `checkBalansEvenwicht()`
 (state.js) en `renderBalans` groeperen op **`g.type`**. Die twee zijn niet aan elkaar gekoppeld: een
 rekening met het juiste nummer maar een verkeerd `type` laat een correcte boeking aan de verkeerde
-kant van de balans landen → "Boekhoudkundige fout" terwijl de code niets fout doet. `slaGBOp()` laat
-elk type op elk nummer toe en valideert die combinatie niet.
+kant van de balans landen → "Boekhoudkundige fout" terwijl de code niets fout doet. Sinds de fix
+weigert `slaGBOp()` een afwijkend type op een standaardnummer uit `DEFAULT_GB`, en `herstelGBTypes()`
+(state.js) zet het bij elke load terug. Eigen nummers mogen elk type hebben — dáár kan dit nog optreden.
 
 **Zoek dus eerst in de data, niet in de code.** Diagnose vanuit de alert-tekst zelf:
 1. **Tel beide kanten op.** Is `Activa + (Passiva+EV+Resultaat)` gelijk aan de som van alle bedragen
@@ -432,8 +477,8 @@ gebouwd omdat de eigenaar de BTW-knop bij omzet vergat aan te klikken):
   het inline-koppelformulier (`iwGbGekozen` → `setBTW(tId,std,true)` zodra een rekening
   gekozen wordt), splitsregels (`splitsGbGekozen` → `setSplitsBTW(rowId,std,true)`),
   `snelKoppelGB` (suggestie-kliks: expliciete regel-BTW > 0 wint, anders rekening-standaard,
-  anders 0), `bevestigBulkKoppeling` en `bevestigKoppeling` (fallback als er geen
-  inlineBTW-keuze is).
+  anders 0), `bevestigBulkKoppeling` (altijd de rekening-standaard, geen BTW-knoppen) en
+  `bevestigKoppeling` (fallback als er geen inlineBTW-keuze is).
 - **Handmatige keuze wint ALTIJD**: `setBTW`/`setSplitsBTW` hebben een derde parameter `auto`.
   Zonder `auto` (knop-klik) wordt de keuze gemarkeerd (`inlineBTWHandmatig[tId]` /
   `row.dataset.btwHandmatig='1'`) en de auto-toepassing slaat gemarkeerde transacties/regels
@@ -448,14 +493,14 @@ gebouwd omdat de eigenaar de BTW-knop bij omzet vergat aan te klikken):
 Uit de volledige boekhoudaudit (aug 2026) kwamen acht fouten; de zwaarste waren onzichtbaar,
 want ze gaven geen balansfout maar een te lage BTW-aangifte. Bij elke nieuwe boekings- of
 factuurflow moet je vijf reconstructies langs: `balansAudit`, `berekenPLVoorPeriode`,
-`bouwGrootboekkaart`, `renderBTWAangifte` en `renderJaaropgave` (boekhoud-checker Check 14).
+`bouwGrootboekkaart`, `berekenBtwPeriode` (BTW-aangifte) en `renderJaaropgave` (boekhoud-checker Check 14).
 
 Concreet gerepareerd, en dus nooit opnieuw introduceren:
 - **`window.inlineBTW` bestaat niet.** `inlineBTW` is een `const` op scriptniveau in bank.js;
   `(window.inlineBTW||{})[t.id]` gaf dus altijd 0 → voorbelasting uit bankuitgaven werd nooit
   teruggevraagd (rubriek 5b) en de jaaropgave telde bankkosten inclusief BTW. Het persistente,
   juiste veld is `t.btwTarief` (of `d.btwTarief` per splitsregel).
-- **Regel-loze facturen.** Uren-facturen hebben geen `regels`, alleen `totaalExcl`. Elke
+- **Regel-loze facturen.** Oude uren-facturen hebben geen `regels`, alleen `totaalExcl`. Elke
   factuur-doorloop heeft een fallback nodig (`_factuurBtwPct(f)` bepaalt het tarief uit
   `f.btwTarief`, anders afgeleid uit `btwBedrag/totaalExcl`), anders verdwijnt die omzet
   uit de aangifte terwijl 1510 de BTW wél bevat.
@@ -463,8 +508,10 @@ Concreet gerepareerd, en dus nooit opnieuw introduceren:
   BTW op 1510 en hoort dus in rubriek 1a/1b — niet alleen facturen en kassalijsten tellen mee.
 - **Gedeelde helpers.** `_bankGbDelen(t)` (splitsregels of één regel uit de transactie) en
   `_bankGbRekening(d,t)` (rekening via `gbId`, anders via de `gekoppeldAan`-tekst) staan in
-  btw-rapport.js en worden door P&L, aangifte én jaaropgave gebruikt. Nieuwe code die zelf
-  `t.splitsRegels`/`t.tegenrekeningId` uitpluist, loopt gegarandeerd uit de pas.
+  btw-rapport.js en worden door P&L, aangifte, aansluitcontrole én jaaropgave gebruikt. Nieuwe code
+  die zelf `t.splitsRegels`/`t.tegenrekeningId` uitpluist, loopt gegarandeerd uit de pas.
+  Open punt: `balansAudit` en `bouwGrootboekkaart` doen het nog zelf (de kaart vangt splitsingen
+  op in de sluitregel).
 
 Aansluitcontrole om dit type fout te vangen: rubriek 1a+1b moet aansluiten op wat er in
 dezelfde periode op 1510 geboekt is, en 5b op 1500.
@@ -475,7 +522,7 @@ BTW-blok op het kassier-dashboard (`_renderMobBtw` in activa.js, module `'btw'` 
 gebruiken die. Reken BTW-aangiftebedragen nooit ergens anders opnieuw uit — een tweede kopie
 loopt gegarandeerd uit de pas met het rapport.
 
-### 27. Eenzijdige saldo-mutaties zijn ALTIJD fout (behalve #19b)
+### 27. Eenzijdige saldo-mutaties zijn ALTIJD fout (behalve #19b: gbkVerwijderPost/gbkVerwijderPaar)
 Vier features lagen stil doordat ze een saldo aan één kant muteerden; de balanscontrole
 blokkeerde ze allemaal met een cryptische "boekhoudkundige fout" die op een codebug leek.
 Elke saldo-mutatie hoort een tegenboeking te hebben:
@@ -520,8 +567,9 @@ bestaand document raken, dan wijst hij het zelf aan.
 - De keuze ligt in de dialoog `modal-uren-factuurnr` (index.html) + `vraagUrenFactuurGegevens()`
   / `_ufnControleer()` (kassier.js): factuurnummer, factuurdatum en vervaldatum, voorgevuld maar
   vrij te wijzigen. `_ufnControleer()` geeft live terug wat het ingetypte nummer betekent —
-  onbekend = nieuwe factuur, bestaande uren-factuur = expliciete waarschuwing dát die vervangen
-  wordt, nummer van een handmatige verkoopfactuur of een al betaalde factuur = knop geblokkeerd.
+  onbekend = nieuwe factuur, bestaande factuur van hetzelfde type (`uren`/`sales`) = expliciete
+  waarschuwing dát die vervangen wordt, een factuur van een ander type (ook handmatig) of een al
+  betaalde factuur = knop geblokkeerd.
 - Een Promise-dialoog moet ALTIJD resolven. De globale Escape-handler in `state.js` sluit elke
   open modal maar kent je Promise niet; zonder eigen Escape-afhandeling blijft de aanroeper
   eeuwig hangen. Zie de keydown-listener bij `_ufnAnnuleer()`.
@@ -537,7 +585,7 @@ Neem dus letterlijk de twee formules uit `slaFactuurOp()` (facturen.js) over:
 - `totaalExcl` = **ongeronde** som van `aantal × prijs`;
 - `btwBedrag`  = som van **per regel** afgeronde BTW (`Math.round(excl*pct)/100` per regel).
 
-Die tweede is niet cosmetisch: `renderBTWAangifte` rondt de BTW óók per regel af, dus rond je het
+Die tweede is niet cosmetisch: `berekenBtwPeriode` (BTW-aangifte) rondt de BTW óók per regel af, dus rond je het
 totaal in één keer af, dan wijkt rubriek 1a af van wat er op 1510 staat — een stille fout die de
 aansluitcontrole van #26 pas boven de €0,02 ziet.
 
@@ -566,7 +614,8 @@ Twee regels, allebei verplicht:
    handeling en gebruik díé variabele overal: op het record, in het logboek, in een spiegelboeking.
    Roep `new Date()` nooit een tweede keer aan voor hetzelfde moment.
 2. **Vergelijk tijdstempels nooit met `===`/`!==` om records te koppelen.** Gebruik
-   `zelfdeBoeking()` (state.js) of dezelfde opzet: gelijk óf binnen een marge (nu 60 s). Die marge
+   de helper `zelfdeBoeking` (lokaal in `controleerKassierBoekingen()`, state.js; trek hem naar
+   scriptniveau als je hem elders nodig hebt) of dezelfde opzet: gelijk óf binnen een marge (nu 5 s). Die marge
    is er niet voor de netheid maar voor de al weggeschreven data — records van vóór de fix hebben
    uiteenlopende stempels en gaan anders eeuwig door met vals alarm.
 
@@ -576,9 +625,10 @@ Die worden één keer bepaald en daarna alleen gelezen — geen twee bronnen, ge
 **En hetzelfde geldt voor id's.** `Date.now()` als sleutel is wandkloktijd in een andere jas.
 `state.js` heeft daarvoor `uid()` (= `Date.now()` + random); gebruik die altijd. Twee kassiers op
 twee toestellen die in dezelfde milliseconde indienen, krijgen anders hetzelfde id — en
-`auth.js:99` mergt kassalijsten van álle bedrijven op `x.id===kl.id`, dus dan overschrijft de ene
+`laadKassiersVoorLogin()` (auth.js) mergt kassalijsten van álle bedrijven op `x.id===kl.id`, dus dan overschrijft de ene
 lijst de andere zonder melding. `'kassa_'` (kassier.js, activa.js) en `'bon_'` (activa.js) zijn
-aug 2026 omgezet naar `uid()`; er staat nu nergens meer een kale `Date.now()` als sleutel.
+aug 2026 omgezet naar `uid()`; er staat nu nergens meer een kale `Date.now()` als gepersisteerde
+sleutel (alleen nog als vluchtige DOM-rij-id).
 
 ## Losse eindjes (geen risico)
 - (Verwijderd 2026-07-22: de twee oude "regel ~3976 / ~1751"-notities verwezen naar de
