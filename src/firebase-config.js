@@ -68,6 +68,28 @@
     }
   };
 
+  // ===== UREN / SALES (data/uren) =====
+  // De enige schrijvers van data/uren — save()/slaAllesOp() raakt dit doc niet.
+  // Alles in een transactie: twee toestellen die tegelijk schrijven (eigenaar
+  // keurt goed terwijl een kassier indient) lezen anders dezelfde lijst en de
+  // laatste .set() gooit de wijziging van de ander weg. Firestore herhaalt de
+  // transactie vanzelf als het doc tussen lezen en schrijven veranderde.
+  // muteer(items) past de lijst aan en geeft een resultaat terug; schrijven
+  // gebeurt alleen bij {ok:true} zonder dubbel.
+  async function _urenTransactie(bedrijf, label, muteer){
+    const ref = db.collection('bedrijven').doc(bedrijf).collection('data').doc('uren');
+    try {
+      const uitkomst = await db.runTransaction(async tx=>{
+        const snap = await tx.get(ref);
+        const items = snap.exists ? (snap.data().items||[]) : [];
+        const r = muteer(items);
+        if(r.ok && !r.dubbel) tx.set(ref, {items});
+        return r;
+      });
+      return JSON.stringify(uitkomst);
+    } catch(e){ console.error('['+label+']', e); throw e; }
+  }
+
   window.FB = {
     db, storage,
 
@@ -201,7 +223,10 @@
         ref.doc('inkoop').set({items: d.inkoop||[]}),
         ref.doc('transacties').set({items: d.transacties||[]}),
         ref.doc('kassalijsten').set({items: d.kassalijsten||[]}),
-        ref.doc('uren').set({items: d.uren||[]}),
+        // data/uren staat bewust NIET hier: elke uren-/sales-wijziging loopt via
+        // de transactionele functies hieronder (voegUrenToe e.d.). Een .set() met
+        // de vastgepinde DB.uren zou een ingave die een kassier in het venster van
+        // een onbevestigde save indient stil overschrijven.
       ]);
       return true;
     },
@@ -266,59 +291,49 @@
       return JSON.stringify({ok:true});
     },
 
+    // ===== UREN / SALES (data/uren) — zie _urenTransactie hierboven =====
     async voegUrenToe(bedrijf, urenJson){
       const nieuw = JSON.parse(urenJson);
-      const snap = await db.collection('bedrijven').doc(bedrijf).collection('data').doc('uren').get();
-      const bestaand = snap.exists ? (snap.data().items||[]) : [];
-      // Voorkom duplicaten op basis van id
-      if(bestaand.some(u=>u.id===nieuw.id)){
-        return JSON.stringify({ok:true, dubbel:true});
-      }
-      bestaand.push(nieuw);
-      try {
-        await db.collection('bedrijven').doc(bedrijf).collection('data').doc('uren').set({items:bestaand});
-      } catch(e){ console.error('[voegUrenToe]', e); throw e; }
-      return JSON.stringify({ok:true});
+      return _urenTransactie(bedrijf, 'voegUrenToe', items=>{
+        // Voorkom duplicaten op basis van id
+        if(items.some(u=>u.id===nieuw.id)) return {ok:true, dubbel:true};
+        items.push(nieuw);
+        return {ok:true};
+      });
     },
 
     // Status van één uren-ingave bijwerken (goedkeuren/afwijzen) zonder de rest te raken
     async updateUrenStatus(bedrijf, id, status){
-      const ref = db.collection('bedrijven').doc(bedrijf).collection('data').doc('uren');
-      const snap = await ref.get();
-      const bestaand = snap.exists ? (snap.data().items||[]) : [];
-      const idx = bestaand.findIndex(u=>u.id===id);
-      if(idx === -1) return JSON.stringify({ok:false, reden:'niet gevonden'});
-      bestaand[idx].status = status;
-      try {
-        await ref.set({items:bestaand});
-      } catch(e){ console.error('[updateUrenStatus]', e); throw e; }
-      return JSON.stringify({ok:true});
+      return _urenTransactie(bedrijf, 'updateUrenStatus', items=>{
+        const idx = items.findIndex(u=>u.id===id);
+        if(idx === -1) return {ok:false, reden:'niet gevonden'};
+        items[idx] = { ...items[idx], status };
+        return {ok:true};
+      });
     },
 
     async updateUrenItem(bedrijf, id, updatesJson){
       const updates = JSON.parse(updatesJson);
-      const ref = db.collection('bedrijven').doc(bedrijf).collection('data').doc('uren');
-      const snap = await ref.get();
-      const bestaand = snap.exists ? (snap.data().items||[]) : [];
-      const idx = bestaand.findIndex(u=>u.id===id);
-      if(idx === -1) return JSON.stringify({ok:false, reden:'niet gevonden'});
-      bestaand[idx] = { ...bestaand[idx], ...updates };
-      try {
-        await ref.set({items:bestaand});
-      } catch(e){ console.error('[updateUrenItem]', e); throw e; }
-      return JSON.stringify({ok:true});
+      return _urenTransactie(bedrijf, 'updateUrenItem', items=>{
+        const idx = items.findIndex(u=>u.id===id);
+        if(idx === -1) return {ok:false, reden:'niet gevonden'};
+        items[idx] = { ...items[idx], ...updates };
+        return {ok:true};
+      });
     },
 
-    async verwijderUrenItem(bedrijf, id){
-      const ref = db.collection('bedrijven').doc(bedrijf).collection('data').doc('uren');
-      const snap = await ref.get();
-      const bestaand = snap.exists ? (snap.data().items||[]) : [];
-      const gefilterd = bestaand.filter(u=>u.id!==id);
-      if(gefilterd.length === bestaand.length) return JSON.stringify({ok:false, reden:'niet gevonden'});
-      try {
-        await ref.set({items:gefilterd});
-      } catch(e){ console.error('[verwijderUrenItem]', e); throw e; }
-      return JSON.stringify({ok:true});
+    // vereisteStatus (optioneel): alleen verwijderen als de ingave in de cloud
+    // nog die status heeft. Een kassier trekt in met 'ingediend' — heeft de
+    // eigenaar intussen goedgekeurd (misschien al gefactureerd), dan blijft hij staan.
+    async verwijderUrenItem(bedrijf, id, vereisteStatus){
+      return _urenTransactie(bedrijf, 'verwijderUrenItem', items=>{
+        const idx = items.findIndex(u=>u.id===id);
+        if(idx === -1) return {ok:false, reden:'niet gevonden'};
+        if(vereisteStatus && items[idx].status !== vereisteStatus)
+          return {ok:false, reden:'status', status: items[idx].status};
+        items.splice(idx, 1);
+        return {ok:true};
+      });
     },
 
     // ============================================================

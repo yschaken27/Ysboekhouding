@@ -544,13 +544,17 @@ let _saveTimer = null;
 // Bouw de momentopname die naar de cloud gaat. imports MOET mee: slaAllesOp()
 // overschrijft het hele document, dus zonder imports zou de afschriftgeschiedenis
 // bij elke save gewist worden.
+// uren staat er bewust NIET in: data/uren wordt alleen via de transactionele
+// losse writes (voegUrenToe, updateUrenStatus, updateUrenItem, verwijderUrenItem)
+// geschreven. Een vastgepinde DB.uren-kopie hier overschreef een ingave die een
+// kassier indiende terwijl deze save nog onbevestigd was (CLAUDE.md #22).
 function _bouwSaveData(){
   return JSON.stringify({
     verkoop:DB.verkoop, inkoop:DB.inkoop, transacties:DB.transacties,
     grootboek:DB.grootboek, regels:DB.regels, memoriaal:DB.memoriaal||[],
     vasteActiva:DB.vasteActiva||[], profiel:DB.profiel||{},
     kassalijsten:DB.kassalijsten||[], kassiers:DB.kassiers||[],
-    uren:DB.uren||[], imports:DB.imports||[],
+    imports:DB.imports||[],
     btwNotities:DB.btwNotities||{},
   });
 }

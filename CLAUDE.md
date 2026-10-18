@@ -73,12 +73,30 @@ Bekende modals: `modal-bedrijf`, `modal-opdrachtgevers`, `modal-gebruiker-detail
 ## Architectuur
 - Firebase 10.12.0 (compat SDK: app, firestore, storage, auth)
 - Storage is geïnitialiseerd en in gebruik
-- `slaAllesOp()` shardt de bedrijfsdata over **zes** documenten onder `bedrijven/{bedrijf}/data/`:
+- De bedrijfsdata staat in **zes** documenten onder `bedrijven/{bedrijf}/data/`:
   `main` (profiel, grootboek, memoriaal, vasteActiva, kassiers, imports, btwNotities) plus
   `verkoop`, `inkoop`, `transacties`, `kassalijsten` en `uren` — die laatste vijf als `{items:[]}`.
-  Elk doc wordt met `.set()` **zonder merge** geschreven; het #22-risico geldt dus per document.
-- Kassalijsten en uren hebben daarnaast directe cloud-writes (`voegKassalijstToe`/`voegUrenToe`)
-  voor losse toevoegingen; `save()` schrijft diezelfde docs óók vanuit `_bouwSaveData()`.
+  `laadAlles()`/`luisterAlles()` lezen alle zes. `slaAllesOp()` schrijft er **vijf** (alles behalve
+  `uren`), elk met `.set()` **zonder merge**; het #22-risico geldt dus per document.
+- **`uren` staat sinds okt 2026 BUITEN `save()`** (net als `kassierboekingen`). Het doc wordt
+  alleen geschreven door de vier transactionele functies in firebase-config.js — `voegUrenToe`,
+  `updateUrenStatus`, `updateUrenItem`, `verwijderUrenItem` (via `_urenTransactie`, `db.runTransaction`).
+  Reden: `saveCloud()` pint `_bouwSaveData()` vast, en zolang die save onbevestigd is negeert
+  `verwerkCloudData()` snapshots — een uren- of sales-ingave die een kassier in dat venster indiende
+  werd door de `.set()` van de eigenaar stil overschreven (vooral eind van de maand, factureren).
+  Regels: **elke wijziging aan `DB.uren` moet óók via één van die vier functies naar de cloud** —
+  een lokale mutatie + `save()` persisteert niets meer en verdwijnt bij de volgende snapshot. Doe
+  `checkOnline()` vóór de lokale wijziging (offline is er geen `save()` meer die het later "redt").
+  `verwijderUrenItem(bedrijf, id, vereisteStatus)` weigert (`{ok:false, reden:'status'}`) als de
+  status in de cloud afwijkt — `mobTrekSalesIn` gebruikt `'ingediend'`, zodat een kassier via een
+  verouderd scherm geen al goedgekeurde ingave kan intrekken. Zet `uren` nooit terug in
+  `_bouwSaveData()`/`slaAllesOp()`.
+- **Kassalijsten hebben hetzelfde lek, nog niet gefixt.** `voegKassalijstToe` is een
+  read-modify-write zonder transactie, en `save()` schrijft `data/kassalijsten` vanuit de
+  vastgepinde `DB.kassalijsten` — een kassalijst die een kassier indient terwijl een save van de
+  eigenaar onbevestigd is, wordt overschreven. Niet simpelweg uit `save()` te halen: `keurKassaGoed`,
+  `wijsKassaAf` en `verwijderKassalijst` wijzigen de status samen met het grootboek via `save()`.
+  Een fix vraagt een eigen transactie (kassalijst + grootboek), naar het model van `markeerFactuurBetaald`.
 - **`kassierboekingen`** is een ZEVENDE document en staat bewust BUITEN `slaAllesOp()`:
   een append-only logboek (max 200 regels) van facturen die een medewerker op betaald
   heeft gezet. Omdat `save()` het niet overschrijft, blijft het spoor staan als een
@@ -133,8 +151,8 @@ kassier-app per opdrachtgever per maand één bedrag excl. BTW in; eigenaar keur
 Rapportages → Salesoverzicht (alleen zichtbaar als een medewerker van dit bedrijf de module heeft,
 `updateSalesNav()`) en maakt per opdrachtgever per maand een factuur (`maakSalesFactuur`,
 type `'sales'`, reeks `SF-`, regels aantal 1 × bedrag). Alles in kassier.js, sectie "SALES".
-- **Opslag: sales-ingaves staan in `DB.uren` met `soort:'sales'`** (zelfde cloud-writes en
-  security rules als uren, geen sync-uitbreiding #22). Daarom: **elke doorloop over `DB.uren`
+- **Opslag: sales-ingaves staan in `DB.uren` met `soort:'sales'`** (zelfde transactionele
+  cloud-writes en security rules als uren, buiten `save()`, geen sync-uitbreiding #22). Daarom: **elke doorloop over `DB.uren`
   die uren telt/toont MOET `isSalesIngave(u)` uitsluiten** — nu in `_urenVanMaand`,
   `renderMobUrenLijst` en het mobiele dashboard. Vergeet je dat, dan telt een salesbedrag als uren.
 - Boeken loopt via de gedeelde `_boekGegenereerdeFactuur()` (ook gebruikt door
@@ -350,6 +368,12 @@ Andersom — geschreven naar localStorage maar nooit naar Firebase — geeft sti
 opslag (`btwNotities`, zelfde ronde gefixt). Let op het juiste type-default: `{}` voor objecten
 zoals `btwNotities`, `[]` voor arrays. Laat de `sync-checker` de lijst na elke uitbreiding
 opnieuw veld-voor-veld vergelijken.
+
+**Bewuste uitzondering: `uren`.** Dat veld wordt wél gelezen (`laadAlles`, `luisterAlles`,
+`verwerkCloudData`) maar NIET door `save()` geschreven — net als het doc `kassierboekingen` staat
+het buiten `_bouwSaveData()`/`slaAllesOp()`. De sync-checker moet dit als correct zien, niet als
+asymmetrie. Lezen-zonder-schrijven is hier veilig omdat geen enkele `save()` het doc overschrijft;
+elke uren-/sales-wijziging loopt via de transactionele losse writes (zie Architectuur).
 
 ### 23. De `profiel`-guard in `verwerkCloudData()` is OPZETTELIJK — niet "opruimen"
 ```js

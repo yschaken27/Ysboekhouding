@@ -159,6 +159,25 @@ function slaKassalijstOpCloud(kassalijst){
     });
 }
 
+// Bijwerken/verwijderen van één uren-/sales-ingave in de cloud. Kijkt naar het
+// resultaat van de transactie: {ok:false} betekent dat er NIETS geschreven is
+// (bv. de ingave is op een ander toestel al verwijderd) — dan geen "opgeslagen".
+// De lokale wijziging blijft dan staan tot er een nieuwe snapshot of herlaad komt.
+// alGoed: bij verwijderen is 'niet gevonden' gewoon 'al weg' — geen fout.
+function _urenCloudWrite(aanroep, foutTekst, alGoed){
+  toonSyncStatus('opslaan');
+  return fbAanroep(aanroep)
+    .then(result=>{
+      const r = typeof result === 'string' ? JSON.parse(result) : result;
+      if(r?.ok || (alGoed && r?.reden==='niet gevonden')){ toonSyncStatus('opgeslagen'); return; }
+      toonSyncStatus('fout');
+      toast(r?.reden==='niet gevonden'
+        ? 'Deze ingave staat niet meer in de cloud (elders verwijderd?) — er is niets opgeslagen.'
+        : foutTekst, 'error', 7000);
+    })
+    .catch(()=>{ toonSyncStatus('fout'); toast(foutTekst,'error'); });
+}
+
 // Sla één uren-ingave los op in de cloud (raakt de rest van de data niet)
 function slaUrenOpCloud(ingave){
   if(!checkOnline()) return;
@@ -307,6 +326,7 @@ function mobSlaUrenOp(){
   const notitie = document.getElementById('mob-uren-notitie')?.value.trim() || '';
   const g = _mobUrenGekozenTarief();
 
+  if(!checkOnline()) return;
   if(!datum){ toast('Kies een datum.','error'); return; }
   if(!g){ toast('Kies een opdrachtgever.','error'); return; }
   if(aantal <= 0){ toast('Vul het aantal '+eenheidInfo(g.eenheid).meervoud+' in.','error'); return; }
@@ -668,6 +688,9 @@ function eigenaarVoegUrenToe(){
 
   const bedrag = Math.round(uren * tariefBedrag * 100) / 100;
   const eenheid = tarief.eenheid === 'dag' ? 'dag' : 'uur';
+  // Uren gaan alleen via de losse cloud-write, niet via save() — offline zou de
+  // wijziging bij de volgende snapshot verdwijnen. Dus eerst online controleren.
+  if(!checkOnline()) return;
 
   if(editId){
     // Bewerken
@@ -675,12 +698,7 @@ function eigenaarVoegUrenToe(){
     if(!entry){ toast('Uren-entry niet gevonden.','error'); return; }
     Object.assign(entry, { datum, wie, opdrachtgever: tarief.opdrachtgever, eenheid, tariefLabel, tariefBedrag, uren, bedrag, notitie });
     localStorage.setItem(storageKey(), JSON.stringify(DB));
-    if(checkOnline()){
-      toonSyncStatus('opslaan');
-      fbAanroep(fb=>fb.updateUrenItem(huidigBedrijf, editId, JSON.stringify({ datum, wie, opdrachtgever: tarief.opdrachtgever, eenheid, tariefLabel, tariefBedrag, uren, bedrag, notitie })))
-        .then(()=>toonSyncStatus('opgeslagen'))
-        .catch(()=>{ toonSyncStatus('fout'); toast('Opslaan mislukt — probeer opnieuw.','error'); });
-    }
+    _urenCloudWrite(fb=>fb.updateUrenItem(huidigBedrijf, editId, JSON.stringify({ datum, wie, opdrachtgever: tarief.opdrachtgever, eenheid, tariefLabel, tariefBedrag, uren, bedrag, notitie })), 'Opslaan mislukt — probeer opnieuw.');
     closeModal('modal-eigenaar-uren');
     if(isEigenaarView) renderUrenoverzicht(); else renderMobUrenLijst();
     toast('Uren bijgewerkt.','success');
@@ -710,15 +728,11 @@ function eigenaarVoegUrenToe(){
 function verwijderUrenEigenaar(id){
   const u = (DB.uren||[]).find(x=>x.id===id);
   if(!u) return;
+  if(!checkOnline()) return;
   if(!confirm(`Uren van ${u.wie} op ${u.datum} verwijderen?`)) return;
   DB.uren = (DB.uren||[]).filter(x=>x.id!==id);
   localStorage.setItem(storageKey(), JSON.stringify(DB));
-  if(checkOnline()){
-    toonSyncStatus('opslaan');
-    fbAanroep(fb=>fb.verwijderUrenItem(huidigBedrijf, id))
-      .then(()=>toonSyncStatus('opgeslagen'))
-      .catch(()=>{ toonSyncStatus('fout'); toast('Verwijderen mislukt — probeer opnieuw.','error'); });
-  }
+  _urenCloudWrite(fb=>fb.verwijderUrenItem(huidigBedrijf, id), 'Verwijderen mislukt — probeer opnieuw.', true);
   renderUrenoverzicht();
   toast('Uren verwijderd.','success');
 }
@@ -726,15 +740,11 @@ function verwijderUrenEigenaar(id){
 function urenKeur(id, status){
   const u = (DB.uren||[]).find(x=>x.id===id);
   if(!u) return;
+  if(!checkOnline()) return;
   u.status = status;
   // Lokaal cachen en alleen deze ene status in de cloud bijwerken
   localStorage.setItem(storageKey(), JSON.stringify(DB));
-  if(checkOnline()){
-    toonSyncStatus('opslaan');
-    fbAanroep(fb=>fb.updateUrenStatus(huidigBedrijf, id, status))
-      .then(()=>toonSyncStatus('opgeslagen'))
-      .catch(()=>{ toonSyncStatus('fout'); toast('Bijwerken mislukt — probeer opnieuw.','error'); });
-  }
+  _urenCloudWrite(fb=>fb.updateUrenStatus(huidigBedrijf, id, status), 'Bijwerken mislukt — probeer opnieuw.');
   renderUrenoverzicht();
 }
 
@@ -1132,8 +1142,9 @@ function _boekGegenereerdeFactuur(entry, vervangen){
 //
 // Een sales-ingave staat in hetzelfde document als de uren (DB.uren /
 // data/uren) met soort:'sales'. Zo werken de bestaande directe cloud-writes
-// (voegUrenToe, updateUrenStatus, updateUrenItem, verwijderUrenItem) en de
-// security rules ongewijzigd, en hoeft de sync-set (#22) niet uitgebreid.
+// (voegUrenToe, updateUrenStatus, updateUrenItem, verwijderUrenItem — alle vier
+// transactioneel, en de enige schrijvers van data/uren: save() raakt het niet)
+// en de security rules ongewijzigd, en hoeft de sync-set (#22) niet uitgebreid.
 // Gevolg: ELKE uren-doorloop moet isSalesIngave() uitsluiten, anders telt een
 // salesbedrag als gewerkte uren mee.
 //
@@ -1281,23 +1292,25 @@ async function mobTrekSalesIn(id){
   if(u.status!=='ingediend'){ toast('Deze is al beoordeeld en kan niet meer ingetrokken worden.','error'); return; }
   const ok = await bevestig(`Sales ${_salesMaandLabel(u.maand)} voor ${u.opdrachtgever} (${mobFmtEur(u.bedrag)}) intrekken?`, 'Intrekken', 'Intrekken');
   if(!ok) return;
-  // Verse stand ophalen: dit scherm kan achterlopen (PWA in het geheugen, #9).
-  // Heeft de eigenaar intussen goedgekeurd — misschien al gefactureerd — dan
-  // mag de ingave niet meer weg.
+  // Dit scherm kan achterlopen (PWA in het geheugen, #9). De cloud controleert
+  // in dezelfde transactie als het verwijderen of de status nog 'ingediend' is:
+  // heeft de eigenaar intussen goedgekeurd — misschien al gefactureerd — dan
+  // blijft de ingave staan. Pas na bevestiging lokaal weghalen.
+  toonSyncStatus('opslaan');
+  let r;
   try{
-    const vers = (JSON.parse(await fbAanroep(fb=>fb.laadAlles(huidigBedrijf))||'{}').uren||[]).find(x=>x.id===id);
-    if(vers && vers.status!=='ingediend'){
-      toast('De eigenaar heeft deze al beoordeeld — intrekken kan niet meer.','error',7000);
-      renderMobFacturen();
-      return;
-    }
-  }catch(e){ toast('Geen verbinding — probeer opnieuw.','error'); return; }
+    r = JSON.parse(await fbAanroep(fb=>fb.verwijderUrenItem(huidigBedrijf, id, 'ingediend')) || '{}');
+  }catch(e){ toonSyncStatus('fout'); toast('Intrekken mislukt — probeer opnieuw.','error'); return; }
+  if(!r.ok && r.reden==='status'){
+    toonSyncStatus('fout');
+    toast('De eigenaar heeft deze al beoordeeld — intrekken kan niet meer.','error',7000);
+    renderMobFacturen();
+    return;
+  }
+  // ok, of 'niet gevonden' (al weg in de cloud): lokaal ook weg
+  toonSyncStatus('opgeslagen');
   DB.uren = DB.uren.filter(x=>x.id!==id);
   localStorage.setItem(storageKey(), JSON.stringify(DB));
-  toonSyncStatus('opslaan');
-  fbAanroep(fb=>fb.verwijderUrenItem(huidigBedrijf, id))
-    .then(()=>toonSyncStatus('opgeslagen'))
-    .catch(()=>{ toonSyncStatus('fout'); toast('Intrekken mislukt — probeer opnieuw.','error'); });
   renderMobSales();
 }
 
@@ -1386,30 +1399,22 @@ function renderSalesoverzicht(){
 function salesKeur(id, status){
   const u = (DB.uren||[]).find(x=>x.id===id);
   if(!u || !isSalesIngave(u)) return;
+  if(!checkOnline()) return;
   u.status = status;
   localStorage.setItem(storageKey(), JSON.stringify(DB));
-  if(checkOnline()){
-    toonSyncStatus('opslaan');
-    fbAanroep(fb=>fb.updateUrenStatus(huidigBedrijf, id, status))
-      .then(()=>toonSyncStatus('opgeslagen'))
-      .catch(()=>{ toonSyncStatus('fout'); toast('Bijwerken mislukt — probeer opnieuw.','error'); });
-  }
+  _urenCloudWrite(fb=>fb.updateUrenStatus(huidigBedrijf, id, status), 'Bijwerken mislukt — probeer opnieuw.');
   renderSalesoverzicht();
 }
 
 async function verwijderSales(id){
   const u = (DB.uren||[]).find(x=>x.id===id);
   if(!u || !isSalesIngave(u)) return;
+  if(!checkOnline()) return;
   const ok = await bevestig(`Sales van ${u.wie||'?'} voor ${u.opdrachtgever} over ${_salesMaandLabel(u.maand)} (${fmt(u.bedrag)}) verwijderen?`, 'Verwijderen', 'Verwijderen');
   if(!ok) return;
   DB.uren = DB.uren.filter(x=>x.id!==id);
   localStorage.setItem(storageKey(), JSON.stringify(DB));
-  if(checkOnline()){
-    toonSyncStatus('opslaan');
-    fbAanroep(fb=>fb.verwijderUrenItem(huidigBedrijf, id))
-      .then(()=>toonSyncStatus('opgeslagen'))
-      .catch(()=>{ toonSyncStatus('fout'); toast('Verwijderen mislukt — probeer opnieuw.','error'); });
-  }
+  _urenCloudWrite(fb=>fb.verwijderUrenItem(huidigBedrijf, id), 'Verwijderen mislukt — probeer opnieuw.', true);
   renderSalesoverzicht();
   toast('Sales verwijderd.','success');
 }
@@ -1468,14 +1473,11 @@ function slaSalesModalOp(){
   if(!checkOnline()) return;
 
   const velden = { maand, datum: maand+'-01', wie: kassier.naam, wieEmail: kassier.email, opdrachtgever: opdr, bedrag, notitie };
-  toonSyncStatus('opslaan');
   if(editId){
     const u = (DB.uren||[]).find(x=>x.id===editId);
     if(!u){ toast('Sales-ingave niet gevonden.','error'); return; }
     Object.assign(u, velden);
-    fbAanroep(fb=>fb.updateUrenItem(huidigBedrijf, editId, JSON.stringify(velden)))
-      .then(()=>toonSyncStatus('opgeslagen'))
-      .catch(()=>{ toonSyncStatus('fout'); toast('Opslaan mislukt — probeer opnieuw.','error'); });
+    _urenCloudWrite(fb=>fb.updateUrenItem(huidigBedrijf, editId, JSON.stringify(velden)), 'Opslaan mislukt — probeer opnieuw.');
     toast('Sales bijgewerkt.','success');
   } else {
     const ingave = { id: uid(), soort:'sales', ...velden, status:'goedgekeurd', aangemaakt: new Date().toISOString() };
