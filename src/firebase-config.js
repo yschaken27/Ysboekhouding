@@ -384,15 +384,6 @@
           if(idx === -1) return {ok:false, reden:'Factuur niet gevonden — mogelijk net verwijderd.'};
           const f = facturen[idx];
 
-          // --- Mag deze kassier aan deze factuur komen? ---
-          // Dezelfde regel als in de mobiele lijst, hier nog eens gecontroleerd:
-          // de knop kan van een verouderd scherm komen.
-          const toegestaan = Array.isArray(kassier.opdrachtgevers) ? kassier.opdrachtgevers : null;
-          // opdrachtgeverSleutel staat in auth.js (zelfde regel als de lijst).
-          if(toegestaan && !(opdrachtgeverSleutel(f.klant) && toegestaan.some(o=>opdrachtgeverSleutel(o) === opdrachtgeverSleutel(f.klant)))){
-            return {ok:false, reden:'Deze factuur hoort niet bij jouw opdrachtgevers.'};
-          }
-
           // --- Past de gevraagde actie bij de huidige stand? ---
           if(dir > 0 && f.status === 'betaald'){
             return {ok:false, reden:'Deze factuur staat al op betaald.'};

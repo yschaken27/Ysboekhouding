@@ -1206,8 +1206,7 @@ function renderMobSales(){
   const sel = document.getElementById('mob-sales-opdrachtgever');
   if(sel){
     const vorige = sel.value;
-    const lijst = (DB.profiel?.opdrachtgevers||[]).map(o=>o.naam).filter(n=>
-      n && (typeof kassierMagOpdrachtgever !== 'function' || kassierMagOpdrachtgever(n)));
+    const lijst = (DB.profiel?.opdrachtgevers||[]).map(o=>o.naam).filter(Boolean);
     sel.innerHTML = lijst.length
       ? lijst.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')
       : '<option value="">Geen opdrachtgevers — vraag de eigenaar</option>';

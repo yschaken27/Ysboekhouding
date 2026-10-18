@@ -30,7 +30,7 @@ De app was oorspronkelijk één grote `index.html` (~11.500 regels) en is geslic
 |---|---|
 | `state.js` | `DB`-object, `save()`, `load()`, helpers (`fmt`, `uid`, `esc`, `rond`, `toast`, `bevestig`, `badge`), **`openModal`/`closeModal`**, `fbAanroep`, `wisselBedrijf`, factuurnummers, bedrijfsprofiel, opdrachtgever-register (centraal) |
 | `ui.js` | Klein (~86 regels): service-worker-registratie, `heeftToegang`, `showPage`, `laadAllePaginas`. Let op: `navTo` staat in `activa.js`, de modal-helpers in `state.js` |
-| `auth.js` | Inloggen, rolbepaling, kassier-beheer (CRUD), gebruiker-detail modal, opdrachtgever-koppeling per kassier |
+| `auth.js` | Inloggen, rolbepaling, kassier-beheer (CRUD), gebruiker-detail modal |
 | `facturen.js` | Dashboard, verkoop/inkoop CRUD, BTW-helpers, grootboek |
 | `bank.js` | Banktransacties, CSV-import, reconciliatie |
 | `btw-rapport.js` | BTW-aangifte, grootboek, balans, P&L |
@@ -112,11 +112,11 @@ Bekende modals: `modal-bedrijf`, `modal-opdrachtgevers`, `modal-gebruiker-detail
 - Wie welk bedrijf mag zien: `bedrijven/{bedrijf}/toegang/lijst` (`getGastenlijst`/`setGastenlijst`)
   plus de top-level collectie `bedrijven_toegang`.
 - Inloggen gaat via Firebase Authentication (wachtwoord) — een aparte laag dan de kassierlijst.
-- Opdrachtgever-filter per kassier (`k.opdrachtgevers[bedrijf]`): ontbrekende sleutel = alles zien.
-  `slaGebruikerDetailOp` slaat bij "alles aangevinkt" géén lijst op (anders verdwijnen facturen aan
-  klanten buiten het register zodra een gebruiker wordt opgeslagen). Namen vergelijken altijd via
-  `opdrachtgeverSleutel()` (auth.js; zonder hoofdletters/accenten/leestekens), ook in
-  `markeerFactuurBetaald` — nooit letterlijk.
+- **Geen opdrachtgever-filter per gebruiker** (verwijderd okt 2026). De gebruikers in de
+  kassier-app zijn de bedrijfseigenaren zelf; alleen zij en de hoofdeigenaar hebben toegang, dus
+  iedereen ziet alle facturen en opdrachtgevers. Bouw zo'n filter niet opnieuw in zonder overleg:
+  het verborg eerder alle facturen zodra een gebruiker werd opgeslagen. Oude `k.opdrachtgevers`
+  in de data wordt genegeerd en bij de volgende `slaGebruikerDetailOp` verwijderd.
 
 ## Rolbepaling
 - Hoofdeigenaar = `ymeraldo@hotmail.com` (ziet alles)
@@ -473,8 +473,7 @@ dezelfde periode op 1510 geboekt is, en 5b op 1500.
 btw-rapport.js rekent de rubrieken (1a/1b/1d/5b) uit; `renderBTWAangifte()` (eigenaar) én het
 BTW-blok op het kassier-dashboard (`_renderMobBtw` in activa.js, module `'btw'` per gebruiker)
 gebruiken die. Reken BTW-aangiftebedragen nooit ergens anders opnieuw uit — een tweede kopie
-loopt gegarandeerd uit de pas met het rapport. Het kassier-blok is bedrijfsbreed (géén
-opdrachtgever-filter), anders klopt het te betalen bedrag niet.
+loopt gegarandeerd uit de pas met het rapport.
 
 ### 27. Eenzijdige saldo-mutaties zijn ALTIJD fout (behalve #19b)
 Vier features lagen stil doordat ze een saldo aan één kant muteerden; de balanscontrole

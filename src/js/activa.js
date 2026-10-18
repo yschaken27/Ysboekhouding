@@ -628,17 +628,15 @@ function _renderMobBtw(nu){
 
   const noot = document.getElementById('mob-btw-noot');
   if(noot) noot.textContent = 'Indicatie op basis van de boekhouding (' +
-    (r.kasstelsel ? 'kasstelsel' : 'factuurstelsel') + ') — de aangifte zelf doet de eigenaar.';
+    (r.kasstelsel ? 'kasstelsel' : 'factuurstelsel') + ').';
 }
 
 // ---- Dashboard render ----
 function renderMobDashboard(){
   const nu = new Date();
   // ALLE verkoopfacturen tellen mee — handmatige facturen van de eigenaar net zo
-  // goed als uren- en salesfacturen. Zelfde opdrachtgever-filter als de
-  // Facturen-tab: wat de kassier daar niet mag zien, telt hier ook niet mee.
-  const facturen = (DB.verkoop||[]).filter(f=>f &&
-    (typeof kassierMagOpdrachtgever !== 'function' || kassierMagOpdrachtgever(f.klant)));
+  // goed als uren- en salesfacturen.
+  const facturen = (DB.verkoop||[]).filter(f=>f);
   // Afgewezen kassalijsten zijn nooit geboekt (keurKassaGoed boekt alleen goedgekeurde)
   // en tellen dus niet mee; ingediende wel, als verwachte omzet.
   const lijsten = (DB.kassalijsten||[]).filter(l=>l && l.status!=='afgewezen' && l.status!=='afgekeurd');
@@ -731,9 +729,7 @@ function renderMobDashboard(){
   const subEl = document.getElementById('mob-topbar-sub');
   if(subEl) subEl.textContent = _actieveKassier?.naam||'';
 
-  // BTW per kwartaal: alleen met module 'btw' (de eigenaar vinkt dat aan per
-  // gebruiker). Bedrijfsbreed, dus zonder opdrachtgever-filter — anders klopt
-  // het te betalen bedrag niet.
+  // BTW per kwartaal: alleen met module 'btw' (aan te vinken per gebruiker).
   const btwSectie = document.getElementById('mob-btw-sectie');
   if(btwSectie){
     const heeftBtw = (mobGetModules()||[]).includes('btw') && typeof berekenBtwPeriode === 'function';
@@ -1010,10 +1006,6 @@ let _mobFactuurHtml = null, _mobFactuurNaam = '';
 function mobToonFactuur(id){
   const f = (DB.verkoop||[]).find(x=>x.id===id);
   if(!f){ toast('Factuur niet gevonden — ververs de lijst.','error'); return; }
-  if(typeof kassierMagOpdrachtgever === 'function' && !kassierMagOpdrachtgever(f.klant)){
-    toast('Deze factuur hoort niet bij jouw opdrachtgevers.','error');
-    return;
-  }
 
   _mobFactuurHtml = bouwVerkoopFactuurDocument(f);
   _mobFactuurNaam = 'Factuur-' + String(f.nummer||f.id).replace(/[^\w\-]+/g,'_') + '.html';
@@ -1091,11 +1083,7 @@ function _renderMobFacturenIntern(){
   if(lijstenEl) lijstenEl.style.display = modules.includes('facturen') ? '' : 'none';
   if(!modules.includes('facturen')) return;
 
-  // Alleen de opdrachtgevers die deze kassier van de eigenaar mag zien. Is er
-  // niets ingesteld, dan geeft kassierMagOpdrachtgever() overal true terug.
-  const facturen = (DB.verkoop||[]).filter(f=>
-    typeof kassierMagOpdrachtgever !== 'function' || kassierMagOpdrachtgever(f.klant)
-  );
+  const facturen = (DB.verkoop||[]).filter(f=>f);
   const nu = new Date();
 
   // Top klanten (op totaal gefactureerd, incl. BTW). Handmatige verkoopfacturen
@@ -1205,10 +1193,6 @@ async function _mobZetFactuurStatus(factuurId, richting){
   if(!checkOnline()) return;
   const f = (DB.verkoop||[]).find(x=>x.id===factuurId);
   if(!f){ toast('Factuur niet gevonden — ververs de lijst.','error'); return; }
-  if(typeof kassierMagOpdrachtgever === 'function' && !kassierMagOpdrachtgever(f.klant)){
-    toast('Deze factuur hoort niet bij jouw opdrachtgevers.','error');
-    return;
-  }
 
   const bedrag = mobFmtEur(f.totaalIncl||f.totaal||0);
   const ok = richting > 0
@@ -1224,8 +1208,6 @@ async function _mobZetFactuurStatus(factuurId, richting){
   const kassier = {
     naam: _actieveKassier?.naam || '',
     email: _actieveKassier?.email || '',
-    // De cloud-functie controleert dit nog een keer tegen de verse factuur.
-    opdrachtgevers: typeof kassierOpdrachtgeverFilter === 'function' ? kassierOpdrachtgeverFilter() : null
   };
 
   try {
