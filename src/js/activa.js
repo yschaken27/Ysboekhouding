@@ -877,7 +877,7 @@ function _mobFactuurRegel(f, {regel, bedragKleur, actie}){
         <div class="mob-lijst-datum">${regel}</div>
         <div class="mob-lijst-bedrag" style="font-size:15px;">${esc(f.nummer||f.id)}</div>
       </div>
-      <span style="font-size:15px;font-weight:700;color:${bedragKleur};">${mobFmtEur(f.openstaand||f.totaal||f.totaalIncl||0)}</span>
+      <span style="font-size:15px;font-weight:700;color:${bedragKleur};">${mobFmtEur(f.totaalIncl??f.totaal??0)}</span>
     </div>
     <div class="mob-factuur-knoppen">${bekijk}${knop}</div>
   </div>`;
@@ -982,11 +982,13 @@ function _renderMobFacturenIntern(){
   );
   const nu = new Date();
 
-  // Top klanten (op totaal betaald)
+  // Top klanten (op totaal gefactureerd, incl. BTW). Handmatige verkoopfacturen
+  // hebben alleen totaalIncl, uren-/salesfacturen ook totaal — op f.totaal
+  // alleen kwam een handmatige factuur hier als € 0,00 binnen.
   const klantTotaal = {};
   facturen.forEach(f=>{
     const naam = f.klant||'Onbekend';
-    klantTotaal[naam] = (klantTotaal[naam]||0) + (parseFloat(f.totaal)||0);
+    klantTotaal[naam] = (klantTotaal[naam]||0) + (parseFloat(f.totaalIncl??f.totaal)||0);
   });
   const topKlanten = Object.entries(klantTotaal)
     .sort((a,b)=>b[1]-a[1]).slice(0,5);
@@ -1000,7 +1002,7 @@ function _renderMobFacturenIntern(){
         <div class="mob-lijst-item" style="cursor:default;">
           <div>
             <div class="mob-lijst-datum">#${i+1}</div>
-            <div class="mob-lijst-bedrag" style="font-size:15px;">${naam}</div>
+            <div class="mob-lijst-bedrag" style="font-size:15px;">${esc(naam)}</div>
           </div>
           <span style="font-size:16px;font-weight:700;color:#34d399;">${mobFmtEur(totaal)}</span>
         </div>`).join('');
@@ -1066,10 +1068,32 @@ function _renderMobFacturenIntern(){
       gemeldEl.innerHTML = '<div style="color:rgba(255,255,255,0.25);font-size:14px;padding:16px 0">Je hebt nog geen facturen op betaald gezet.</div>';
     } else {
       gemeldEl.innerHTML = gemeld.slice(0,10).map(f=>_mobFactuurRegel(f, {
-        regel: `${esc(f.klant||'Onbekend')} · betaald ${f.betaaldOp||''}`,
+        regel: `${esc(f.klant||'Onbekend')} · betaald ${esc(f.betaaldOp||'')}`,
         bedragKleur: '#34d399',
         actie: 'terugdraaien'
       })).join('');
+    }
+  }
+
+  // Overige betaalde facturen — door een collega, via de bank of door de
+  // eigenaar. Alleen bekijken: terugdraaien mag alleen wie het zelf gemeld
+  // heeft (zie hierboven), dus hier nooit een actieknop.
+  const overig = facturen.filter(f=>f.status==='betaald' && !gemeld.includes(f))
+    .sort((a,b)=>String(b.betaaldOp||b.datum||'').localeCompare(String(a.betaaldOp||a.datum||'')));
+
+  const overigEl = document.getElementById('mob-betaald-overig');
+  if(overigEl){
+    if(!overig.length){
+      overigEl.innerHTML = '<div style="color:rgba(255,255,255,0.25);font-size:14px;padding:16px 0">Geen betaalde facturen.</div>';
+    } else {
+      overigEl.innerHTML = overig.slice(0,10).map(f=>{
+        const door = f.betaaldDoorKassier?.naam ? ' door '+esc(f.betaaldDoorKassier.naam) : '';
+        return _mobFactuurRegel(f, {
+          regel: `${esc(f.klant||'Onbekend')} · betaald ${esc(f.betaaldOp||'')}${door}`,
+          bedragKleur: '#34d399',
+          actie: null
+        });
+      }).join('');
     }
   }
 }
