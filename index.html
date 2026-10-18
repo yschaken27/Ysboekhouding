@@ -79,38 +79,31 @@
 
   <!-- DASHBOARD pagina -->
   <div id="mob-page-dashboard" class="mob-page active">
-    <!-- Periode filter -->
-    <div class="mob-period-bar" id="mob-period-bar" style="display:flex;align-items:center;gap:6px;padding:8px 12px;overflow:visible;">
-      <button class="mob-period-pill active" id="mob-pill-vandaag" onclick="mobSetPeriode('vandaag')">Vandaag</button>
-      <button class="mob-period-pill" id="mob-pill-week" onclick="mobSetPeriode('week')">Week</button>
-      <!-- Maand dropdown mobiel -->
-      <select id="mob-maand-select" onchange="mobSetPeriodeDropdown(this.value)"
-        style="flex:1;font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:20px;
-        background:var(--surface);color:var(--text);cursor:pointer;min-width:0;
-        -webkit-appearance:none;appearance:none;text-align:center;">
-        <option value="">📅 Maand...</option>
-        <option value="m01">Januari</option>
-        <option value="m02">Februari</option>
-        <option value="m03">Maart</option>
-        <option value="m04">April</option>
-        <option value="m05">Mei</option>
-        <option value="m06">Juni</option>
-        <option value="m07">Juli</option>
-        <option value="m08">Augustus</option>
-        <option value="m09">September</option>
-        <option value="m10">Oktober</option>
-        <option value="m11">November</option>
-        <option value="m12">December</option>
-      </select>
+    <!-- Jaarkeuze — knoppen gevuld door renderMobDashboard() (activa.js) -->
+    <div class="mob-period-bar" id="mob-jaar-bar"></div>
+
+    <!-- Omzet van het gekozen jaar -->
+    <div class="mob-main-card">
+      <div class="mob-main-card-label"><span id="mob-jaar-label">Omzet</span> <span style="font-size:10px;opacity:0.5;font-weight:400;">excl. BTW</span></div>
+      <div class="mob-main-card-val" id="mob-omzet">€ 0,00</div>
+      <div class="mob-main-card-sub" id="mob-jaar-sub"></div>
     </div>
 
-    <!-- Omzet hoofdkaart -->
-    <div class="mob-main-card">
-      <div class="mob-main-card-label">Omzet <span style="font-size:10px;opacity:0.5;font-weight:400;">excl. BTW</span></div>
-      <div class="mob-main-card-val" id="mob-omzet">€ 0,00</div>
-      <div class="mob-main-card-sub" style="display:flex;justify-content:space-between;align-items:center;">
-        <span id="mob-periode-label">Vandaag</span>
-        <span style="font-size:11px;opacity:0.65;">incl. BTW: <span id="mob-omzet-incl">€ 0,00</span></span>
+    <!-- Omzet per maand — tik een maand voor de cijfers eronder -->
+    <div class="mob-section-title">Per maand <span style="font-weight:400;opacity:0.7;">excl. BTW</span></div>
+    <div class="mob-maand-chart" id="mob-maand-chart"></div>
+
+    <!-- Cijfers van de gekozen maand -->
+    <div class="mob-section-title" id="mob-periode-label"></div>
+    <div class="mob-stat-row">
+      <div class="mob-stat">
+        <div class="mob-stat-label">Omzet <span style="font-size:9px;opacity:0.5;font-weight:400;">excl. BTW</span></div>
+        <div class="mob-stat-val" id="mob-maand-omzet">€ 0,00</div>
+        <div class="mob-stat-sub" id="mob-maand-facturen"></div>
+      </div>
+      <div class="mob-stat">
+        <div class="mob-stat-label">Incl. BTW</div>
+        <div class="mob-stat-val" id="mob-maand-omzet-incl">€ 0,00</div>
       </div>
     </div>
 

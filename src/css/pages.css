@@ -468,6 +468,61 @@ body.kassier-mobiel .app { display: none !important; }
 .mob-stat-val.green { color: #34d399; }
 .mob-stat-val.red { color: #f87171; }
 .mob-stat-val.blue { color: #60a5fa; }
+.mob-stat-sub {
+  font-size: 11px;
+  color: rgba(255,255,255,0.4);
+  margin-top: 6px;
+}
+
+/* Omzet per maand (dashboard) — balk per maand met het bedrag erboven */
+.mob-maand-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  background: #1e293b;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px;
+  padding: 14px 10px 10px;
+}
+.mob-maand-col {
+  flex: 1;
+  min-width: 0;
+  height: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mob-maand-col:disabled { cursor: default; }
+.mob-maand-val {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.55);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.mob-maand-bar {
+  display: block;
+  width: 100%;
+  max-width: 34px;
+  border-radius: 4px 4px 0 0;
+  background: #3b82f6;
+  opacity: 0.45;
+}
+.mob-maand-naam {
+  font-size: 11px;
+  color: rgba(255,255,255,0.4);
+}
+.mob-maand-col.sel .mob-maand-bar { opacity: 1; }
+.mob-maand-col.sel .mob-maand-val,
+.mob-maand-col.sel .mob-maand-naam { color: #fff; }
 
 /* Sectie titel */
 .mob-section-title {
