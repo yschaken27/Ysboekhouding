@@ -589,18 +589,22 @@ function renderMobDashboard(){
     .reduce((s,f)=>s+(parseFloat(f.totaalExcl||0)),0);
   const kosten = kostenUitgaven + kostenInkoop;
 
-  // Uren-facturen (type='uren') ook meenemen in omzet en openstaand
-  // Salesfacturen (type='sales', maakSalesFactuur) horen er net zo bij.
-  const urenFacturen = (DB.verkoop||[]).filter(f=>f.type==='uren' || f.type==='sales');
-  const urenFacturenInPeriode = urenFacturen.filter(f=>_inMobPeriode(f.datum||''));
-  const urenExclInPeriode = urenFacturenInPeriode.reduce((s,f)=>s+(parseFloat(f.totaalExcl||0)),0);
-  const urenInclInPeriode = urenFacturenInPeriode.reduce((s,f)=>s+(parseFloat(f.totaalIncl||f.totaal||0)),0);
-  const omzet = omzetLijstenExcl + urenExclInPeriode;
-  const omzetIncl = omzetLijstenIncl + urenInclInPeriode;
+  // ALLE verkoopfacturen tellen mee in omzet en openstaand — handmatige facturen
+  // van de eigenaar net zo goed als uren- (type 'uren') en salesfacturen ('sales').
+  // Voorheen alleen die laatste twee, waardoor een handmatige factuur het
+  // dashboard nooit veranderde. Zelfde opdrachtgever-filter als de Facturen-tab:
+  // wat de kassier daar niet mag zien, telt hier ook niet mee. Op factuurdatum.
+  const facturen = (DB.verkoop||[]).filter(f=>f &&
+    (typeof kassierMagOpdrachtgever !== 'function' || kassierMagOpdrachtgever(f.klant)));
+  const facturenInPeriode = facturen.filter(f=>_inMobPeriode(f.datum||''));
+  const factExclInPeriode = facturenInPeriode.reduce((s,f)=>s+(parseFloat(f.totaalExcl||0)),0);
+  const factInclInPeriode = facturenInPeriode.reduce((s,f)=>s+(parseFloat(f.totaalIncl??f.totaal)||0),0);
+  const omzet = omzetLijstenExcl + factExclInPeriode;
+  const omzetIncl = omzetLijstenIncl + factInclInPeriode;
   const netto = omzet - kosten;
 
   const openstaandLijsten = (DB.kassalijsten||[]).filter(l=>l.status==='ingediend'||l.status==='open').length;
-  const openstaandFacturen = urenFacturen.filter(f=>f.status!=='betaald').length;
+  const openstaandFacturen = facturen.filter(f=>f.status!=='betaald').length;
   const openstaand = openstaandLijsten + openstaandFacturen;
 
   const set = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
@@ -1051,47 +1055,29 @@ function _renderMobFacturenIntern(){
     }
   }
 
-  // Door mij betaald gemeld — hier kan een misklik teruggedraaid worden.
-  // Alleen eigen meldingen: een betaling die de eigenaar via de bank heeft
-  // afgeletterd mag hier nooit ongedaan te maken zijn.
+  // Alle betaalde facturen in één lijst — wie hem op betaald zette (zelf, een
+  // collega, de eigenaar of via de bank) maakt voor het zien niet uit.
+  // Alleen de terugdraaiknop is persoonlijk: die staat alleen bij een betaling
+  // die je zelf gemeld hebt, zodat je een misklik kunt herstellen. Een betaling
+  // van iemand anders of een afgeletterde bankregel mag hier nooit ongedaan.
   const mijnEmail = String(_actieveKassier?.email||'').toLowerCase();
-  const gemeld = facturen.filter(f=>
-    f.status==='betaald' &&
-    f.handmatigBetaald &&
-    String(f.betaaldDoorKassier?.email||'').toLowerCase() === mijnEmail &&
-    mijnEmail
-  ).sort((a,b)=>String(b.betaaldDoorKassier?.op||'').localeCompare(String(a.betaaldDoorKassier?.op||'')));
-
-  const gemeldEl = document.getElementById('mob-betaald-gemeld');
-  if(gemeldEl){
-    if(!gemeld.length){
-      gemeldEl.innerHTML = '<div style="color:rgba(255,255,255,0.25);font-size:14px;padding:16px 0">Je hebt nog geen facturen op betaald gezet.</div>';
-    } else {
-      gemeldEl.innerHTML = gemeld.slice(0,10).map(f=>_mobFactuurRegel(f, {
-        regel: `${esc(f.klant||'Onbekend')} · betaald ${esc(f.betaaldOp||'')}`,
-        bedragKleur: '#34d399',
-        actie: 'terugdraaien'
-      })).join('');
-    }
-  }
-
-  // Overige betaalde facturen — door een collega, via de bank of door de
-  // eigenaar. Alleen bekijken: terugdraaien mag alleen wie het zelf gemeld
-  // heeft (zie hierboven), dus hier nooit een actieknop.
-  const overig = facturen.filter(f=>f.status==='betaald' && !gemeld.includes(f))
+  const doorMij = f => !!mijnEmail && !!f.handmatigBetaald &&
+    String(f.betaaldDoorKassier?.email||'').toLowerCase() === mijnEmail;
+  const betaald = facturen.filter(f=>f.status==='betaald')
     .sort((a,b)=>String(b.betaaldOp||b.datum||'').localeCompare(String(a.betaaldOp||a.datum||'')));
 
-  const overigEl = document.getElementById('mob-betaald-overig');
-  if(overigEl){
-    if(!overig.length){
-      overigEl.innerHTML = '<div style="color:rgba(255,255,255,0.25);font-size:14px;padding:16px 0">Geen betaalde facturen.</div>';
+  const betaaldEl = document.getElementById('mob-betaald');
+  if(betaaldEl){
+    if(!betaald.length){
+      betaaldEl.innerHTML = '<div style="color:rgba(255,255,255,0.25);font-size:14px;padding:16px 0">Geen betaalde facturen.</div>';
     } else {
-      overigEl.innerHTML = overig.slice(0,10).map(f=>{
-        const door = f.betaaldDoorKassier?.naam ? ' door '+esc(f.betaaldDoorKassier.naam) : '';
+      betaaldEl.innerHTML = betaald.slice(0,20).map(f=>{
+        const mij = doorMij(f);
+        const door = mij ? ' door jou' : f.betaaldDoorKassier?.naam ? ' door '+esc(f.betaaldDoorKassier.naam) : '';
         return _mobFactuurRegel(f, {
           regel: `${esc(f.klant||'Onbekend')} · betaald ${esc(f.betaaldOp||'')}${door}`,
           bedragKleur: '#34d399',
-          actie: null
+          actie: mij ? 'terugdraaien' : null
         });
       }).join('');
     }
