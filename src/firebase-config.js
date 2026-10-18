@@ -388,7 +388,8 @@
           // Dezelfde regel als in de mobiele lijst, hier nog eens gecontroleerd:
           // de knop kan van een verouderd scherm komen.
           const toegestaan = Array.isArray(kassier.opdrachtgevers) ? kassier.opdrachtgevers : null;
-          if(toegestaan && !toegestaan.some(o=>String(o||'').toLowerCase() === String(f.klant||'').toLowerCase())){
+          // opdrachtgeverSleutel staat in auth.js (zelfde regel als de lijst).
+          if(toegestaan && !(opdrachtgeverSleutel(f.klant) && toegestaan.some(o=>opdrachtgeverSleutel(o) === opdrachtgeverSleutel(f.klant)))){
             return {ok:false, reden:'Deze factuur hoort niet bij jouw opdrachtgevers.'};
           }
 

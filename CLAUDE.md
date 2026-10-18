@@ -112,6 +112,11 @@ Bekende modals: `modal-bedrijf`, `modal-opdrachtgevers`, `modal-gebruiker-detail
 - Wie welk bedrijf mag zien: `bedrijven/{bedrijf}/toegang/lijst` (`getGastenlijst`/`setGastenlijst`)
   plus de top-level collectie `bedrijven_toegang`.
 - Inloggen gaat via Firebase Authentication (wachtwoord) — een aparte laag dan de kassierlijst.
+- Opdrachtgever-filter per kassier (`k.opdrachtgevers[bedrijf]`): ontbrekende sleutel = alles zien.
+  `slaGebruikerDetailOp` slaat bij "alles aangevinkt" géén lijst op (anders verdwijnen facturen aan
+  klanten buiten het register zodra een gebruiker wordt opgeslagen). Namen vergelijken altijd via
+  `opdrachtgeverSleutel()` (auth.js; zonder hoofdletters/accenten/leestekens), ook in
+  `markeerFactuurBetaald` — nooit letterlijk.
 
 ## Rolbepaling
 - Hoofdeigenaar = `ymeraldo@hotmail.com` (ziet alles)

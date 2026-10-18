@@ -62,11 +62,23 @@ function kassierOpdrachtgeverFilter(){
   return Array.isArray(lijst) ? lijst : null;
 }
 
+// Vergelijkingssleutel voor een opdrachtgever-/klantnaam: zonder hoofdletters,
+// accenten, spaties en leestekens. "Westgeest Direct Sales B.V." en
+// "Westgeest Direct Sales BV" zijn zo dezelfde opdrachtgever — een letterlijke
+// vergelijking verborg een factuur zodra de naam op de factuur een punt of
+// spatie anders had dan in het register. Ook gebruikt door markeerFactuurBetaald
+// (firebase-config.js), zodat lijst en cloud-controle dezelfde regel volgen.
+function opdrachtgeverSleutel(naam){
+  return String(naam||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase().replace(/[^a-z0-9]/g,'');
+}
+
 // Mag de ingelogde kassier deze klantnaam zien? Zonder filter altijd ja.
 function kassierMagOpdrachtgever(naam){
   const toegestaan = kassierOpdrachtgeverFilter();
   if(!toegestaan) return true;
-  return toegestaan.some(o=>String(o||'').toLowerCase() === String(naam||'').toLowerCase());
+  const sleutel = opdrachtgeverSleutel(naam);
+  return !!sleutel && toegestaan.some(o=>opdrachtgeverSleutel(o) === sleutel);
 }
 
 async function laadKassiersVoorLogin(){
@@ -730,7 +742,11 @@ async function slaGebruikerDetailOp(){
     const opdrChecks = document.querySelectorAll('#gd-opdrachtgevers input[type="checkbox"]:checked');
     const gekozenOpdr = [...opdrChecks].map(c=>c.value);
     if(!k.opdrachtgevers || typeof k.opdrachtgevers !== 'object') k.opdrachtgevers = {};
-    k.opdrachtgevers[huidigBedrijf] = gekozenOpdr;
+    // Alles aangevinkt = géén beperking. Een vaste lijst zou facturen verbergen
+    // aan een klant die (nog) niet in het register staat of later is toegevoegd,
+    // alleen omdat de gebruiker ooit is opgeslagen (bv. om een module aan te zetten).
+    if(gekozenOpdr.length === alleOpdr.length) delete k.opdrachtgevers[huidigBedrijf];
+    else k.opdrachtgevers[huidigBedrijf] = gekozenOpdr;
   }
 
   save();
