@@ -593,19 +593,88 @@
       return JSON.stringify({exists:true, bedrijven: Array.isArray(data.bedrijven) ? data.bedrijven : []});
     },
 
-    // Verwijder alle Firebase-data van een bedrijf: data-docs (ook uren en het kassier-
-    // logboek), uploads, toegang en het bedrijf-doc zelf.
+    // Verwijder alle Firebase-data van een bedrijf, in drie fasen. Geeft {ok, mislukt:[...]}
+    // terug met per mislukte stap een leesbare naam.
+    // A. Bijlagepaden uit verkoop/inkoop lezen — moet vóór de data weg is, anders zijn ze
+    //    nooit meer te vinden. Lukt dat niet, dan wordt er niets verwijderd.
+    // B. Factuurbijlagen in Storage + verwijzingen in bedrijven_toegang. Mislukt hier iets,
+    //    dan stopt het vóór fase C: data/main blijft staan, het bedrijf blijft in de lijst
+    //    (getBedrijvenLijst) en verwijderen kan opnieuw.
+    // C. Toegang, data-docs (ook uren en het kassier-logboek) en uploads, het bedrijf-doc
+    //    en als allerlaatste data/main — elke stap alleen als de vorige gelukt is.
+    // Bijlagen van eerder verwijderde facturen staan niet meer in bijlagenMeta en blijven
+    // achter: de map doorzoeken (listAll) valt buiten wat storage.rules zeker toestaat.
     async verwijderBedrijfCloud(naam){
-      const docs = ['main','verkoop','inkoop','transacties','kassalijsten','uren','kassierboekingen'];
-      await Promise.all(docs.map(doc=>
-        db.collection('bedrijven').doc(naam).collection('data').doc(doc).delete().catch(()=>{})
-      ));
-      const upSnap = await db.collection('bedrijven').doc(naam).collection('uploads').get().catch(()=>null);
-      if(upSnap) await Promise.all(upSnap.docs.map(d=>d.ref.delete().catch(()=>{})));
-      const toeSnap = await db.collection('bedrijven').doc(naam).collection('toegang').get().catch(()=>null);
-      if(toeSnap) await Promise.all(toeSnap.docs.map(d=>d.ref.delete().catch(()=>{})));
-      await db.collection('bedrijven').doc(naam).delete().catch(()=>{});
-      return JSON.stringify({ok:true});
+      const bedrijfRef = db.collection('bedrijven').doc(naam);
+      const dataRef = bedrijfRef.collection('data');
+
+      // Fase A
+      let paden;
+      try {
+        const [vkSnap, ikSnap] = await Promise.all([dataRef.doc('verkoop').get(), dataRef.doc('inkoop').get()]);
+        const facturen = [vkSnap, ikSnap].flatMap(s=>s.exists ? (s.data().items||[]) : []);
+        paden = [...new Set(facturen.flatMap(f=>
+          (f.bijlagenMeta||[]).filter(m=>m && m.naam).map(m=>`${naam}/facturen/${f.id}/${m.naam}`)
+        ))];
+      } catch(e){
+        console.error('[verwijderBedrijfCloud] factuurdata lezen', e);
+        return JSON.stringify({ok:false, mislukt:['factuurdata lezen (er is niets verwijderd)']});
+      }
+
+      // Voert taken uit via allSettled en geeft de labels van de mislukte taken terug.
+      const voerUit = async taken=>{
+        const res = await Promise.allSettled(taken.map(t=>t.fn()));
+        return res.flatMap((r,i)=>{
+          if(r.status==='fulfilled') return [];
+          console.error('[verwijderBedrijfCloud]', taken[i].label, r.reason);
+          return [taken[i].label];
+        });
+      };
+
+      // Fase B
+      const takenB = paden.map(pad=>({
+        label: 'bijlage ' + pad.split('/').pop(),
+        fn: ()=>storage.ref(pad).delete().catch(e=>{ if(e?.code!=='storage/object-not-found') throw e; })
+      }));
+      try {
+        const toeSnap = await db.collection('bedrijven_toegang').where('bedrijven','array-contains',naam).get();
+        toeSnap.docs.forEach(d=>{
+          const rest = (d.data().bedrijven||[]).filter(b=>b!==naam);
+          takenB.push({ label: 'toegang van ' + d.id, fn: ()=>window.FB.setBedrijvenVoorKassier(d.id, JSON.stringify(rest)) });
+        });
+      } catch(e){
+        console.error('[verwijderBedrijfCloud] bedrijven_toegang zoeken', e);
+        takenB.push({ label: 'gebruikerstoegang zoeken', fn: ()=>Promise.reject(e) });
+      }
+      const misluktB = await voerUit(takenB);
+      if(misluktB.length) return JSON.stringify({ok:false, mislukt:misluktB});
+
+      // Fase C
+      const takenVoorSub = async sub=>{
+        try {
+          const snap = await bedrijfRef.collection(sub).get();
+          return snap.docs.map(d=>({ label: sub + '/' + d.id, fn: ()=>d.ref.delete() }));
+        } catch(e){
+          console.error('[verwijderBedrijfCloud]', sub, 'ophalen', e);
+          return [{ label: sub + ' ophalen', fn: ()=>Promise.reject(e) }];
+        }
+      };
+      const dataDocs = ['verkoop','inkoop','transacties','kassalijsten','uren','kassierboekingen'];
+      // Stappen in volgorde, elk pas als de vorige helemaal gelukt is:
+      // 1. toegang — daarna kan een nog ingelogde gebruiker niets meer terugschrijven;
+      // 2. data-docs en uploads; 3. bedrijf-doc; 4. data/main als allerlaatste: zolang
+      //    die bestaat vindt getBedrijvenLijst het bedrijf nog en kan verwijderen opnieuw.
+      const stappen = [
+        ()=>takenVoorSub('toegang'),
+        async ()=>[...dataDocs.map(doc=>({ label: 'data/' + doc, fn: ()=>dataRef.doc(doc).delete() })), ...await takenVoorSub('uploads')],
+        async ()=>[{ label: 'bedrijf-document', fn: ()=>bedrijfRef.delete() }],
+        async ()=>[{ label: 'data/main', fn: ()=>dataRef.doc('main').delete() }],
+      ];
+      for(const stap of stappen){
+        const mislukt = await voerUit(await stap());
+        if(mislukt.length) return JSON.stringify({ok:false, mislukt});
+      }
+      return JSON.stringify({ok:true, mislukt:[]});
     },
 
     // Schrijf de bedrijvenlijst van een kassier naar bedrijven_toegang/{email}.

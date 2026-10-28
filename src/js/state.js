@@ -899,18 +899,33 @@ async function verwijderBedrijf(naam){
   if(naam===huidigBedrijf){toast('Wissel eerst naar een ander bedrijf voor je dit verwijdert.','warning');return;}
   const ok=await bevestig(`Bedrijf "${naam}" en alle data permanent verwijderen?\n\nDit verwijdert ook alle data in Firebase.`,'Bedrijf verwijderen','Verwijderen');
   if(!ok) return;
-  // Verwijder lokaal
-  localStorage.removeItem('ledger_'+naam.replace(/\s+/g,'_').toLowerCase());
-  const lijst=getBedrijven().filter(b=>b!==naam);
-  saveBedrijven(lijst);
-  // Verwijder uit Firebase via fbAanroep
-  try{
-    await fbAanroep(fb=>fb.verwijderBedrijfCloud(naam));
-    toast(`Bedrijf "${naam}" volledig verwijderd.`,'info');
-  }catch(e){
-    toast(`Bedrijf lokaal verwijderd — cloud verwijdering mislukt.`,'warning');
-    console.error('Firebase verwijder fout:', e);
+  if(!checkOnline()) return;
+  // Een save die nog onderweg is (bv. van dit bedrijf, van vóór de wissel) zou het na het
+  // verwijderen opnieuw aanmaken — eerst alles wegschrijven.
+  await flushSave();
+  if(_heeftOnbevestigdeSave()){
+    toast('Er staan nog wijzigingen die niet zijn opgeslagen. Probeer het zo opnieuw.','warning');
+    return;
   }
+  // Eerst de cloud; pas als die helemaal gelukt is lokaal weghalen. Mislukt er iets, dan
+  // blijft het bedrijf in de lijst zodat verwijderen opnieuw geprobeerd kan worden.
+  let res;
+  try{
+    res = JSON.parse(await fbAanroep(fb=>fb.verwijderBedrijfCloud(naam)) || '{}');
+  }catch(e){
+    console.error('Firebase verwijder fout:', e);
+    toast(`Bedrijf "${naam}" niet verwijderd — de cloud gaf een fout. Probeer het opnieuw.`,'error');
+    return;
+  }
+  if(!res.ok){
+    const mislukt = res.mislukt||[];
+    const tekst = mislukt.slice(0,5).join(', ') + (mislukt.length>5 ? ` en nog ${mislukt.length-5}` : '');
+    toast(`Bedrijf "${naam}" niet volledig verwijderd. Mislukt: ${tekst}. Probeer het opnieuw.`,'error');
+    return;
+  }
+  localStorage.removeItem('ledger_'+naam.replace(/\s+/g,'_').toLowerCase());
+  saveBedrijven(getBedrijven().filter(b=>b!==naam));
+  toast(`Bedrijf "${naam}" volledig verwijderd.`,'info');
   renderBedrijfList();
 }
 
