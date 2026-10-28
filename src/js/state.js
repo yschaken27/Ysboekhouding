@@ -967,13 +967,13 @@ function slaBedrijfProfielOp(){
     notities:document.getElementById('bp-notities').value.trim(),
     opdrachtgevers: DB.profiel?.opdrachtgevers || [],
   };
+  if(!save()) return;
   // Sla weergavenaam op in profielnamen map zodat bedrijflijst het toont
   if(DB.profiel.naam){
     saveBedrijfProfielNaam(huidigBedrijf, DB.profiel.naam);
     const el=document.getElementById('sidebar-bedrijf-naam');
     if(el) el.textContent=DB.profiel.naam;
   }
-  save();
   renderBedrijfList();
   closeModal('modal-bedrijf');toast('Profiel opgeslagen.');
 }
@@ -1134,7 +1134,7 @@ function slaCentraalOpdrachtgeversOp(){
     .filter(o=>o.naam);
   if(!DB.profiel) DB.profiel={};
   DB.profiel.opdrachtgevers = schoon;
-  save();
+  if(!save()) return;
   closeModal('modal-bedrijf');
   toast('Opdrachtgevers opgeslagen.');
 }
@@ -1263,7 +1263,7 @@ function slaOpdrachtgeversModalOp(){
     .filter(o=>o.naam);
   if(!DB.profiel) DB.profiel={};
   DB.profiel.opdrachtgevers = schoon;
-  save();
+  if(!save()) return;
   closeModal('modal-opdrachtgevers');
   toast('Opdrachtgevers opgeslagen.');
 }

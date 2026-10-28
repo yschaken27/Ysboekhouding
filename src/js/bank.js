@@ -231,7 +231,7 @@ function bevestigImport(){
   // Sla import op in geschiedenis
   if(!DB.imports) DB.imports=[];
   DB.imports.push({id:importId,datum:importDatum,aantalTransacties:count});
-  save(); resetCSV(); renderTransacties(); updateBankStats();
+  if(!save()) return; resetCSV(); renderTransacties(); updateBankStats();
   renderImports();
   if(dubbel>0) toast(`${count} transacties geïmporteerd, ${dubbel} dubbele overgeslagen.`,'info');
   else toast(`${count} transacties geïmporteerd.`,'success');
@@ -390,6 +390,7 @@ async function inlineBevestig(tId, totalBedrag){
   const contact=document.getElementById(`iw-contact-${tId}`)?.value||'';
   const why=document.getElementById(`iw-why-${tId}`)?.value||t.omschrijving;
   const btwTarief=inlineBTW[tId]||0;
+  let deprVraag=null;
 
   if(splitsOpen){
     const rows=document.querySelectorAll(`#iw-splits-rows-${tId} .splits-row`);
@@ -493,13 +494,15 @@ Wil je toch koppelen?`,
             // Aanschafwaarde EXCL. BTW — het bankbedrag is incl. (audit R7)
             totaalExcl:rond(btwTarief>0?Math.abs(bedrag)/((100+btwTarief)/100):Math.abs(bedrag)),
             regels:[{omschrijving:t.omschrijving}]};
-          setTimeout(()=>openDeprVraagModal(fakeFactuur,g),400);
+          // Pas na een geslaagde save() vragen: bij een balansfout is de koppeling teruggedraaid.
+          deprVraag=()=>openDeprVraagModal(fakeFactuur,g);
         }
       }
     }
     if(contact) t.omschrijving=contact+(why&&why!==t.omschrijving?' — '+why:'');
   }
-  save(); updateBankStats(); toast('Gekoppeld.','success'); renderTransacties(false);
+  if(!save()) return; updateBankStats(); toast('Gekoppeld.','success'); renderTransacties(false);
+  if(deprVraag) setTimeout(deprVraag,400);
 }
 
 // ===== DUBBELE BOEKING HELPERS =====
@@ -755,7 +758,7 @@ function bevestigBulkKoppeling(){
     t.tegenrekeningId=g.id; t.btwTarief=bulkTarief;
     t.status='gekoppeld';
   });
-  save();
+  if(!save()) return;
   deselectAll();
   renderTransacties();
   updateBankStats();
@@ -834,7 +837,7 @@ Wil je toch koppelen?`,
   boekBank(t, t.bedrag);
   boekFactuurTegenboeking(t, fType, 'boek');
   if((fType==='verkoop'&&parseFloat(t.bedrag)>0)||(fType==='inkoop'&&parseFloat(t.bedrag)<0)) boekBetalingsverschil(t, f, fType);
-  save(); updateBankStats();
+  if(!save()) return; updateBankStats();
   toast(`Gekoppeld aan ${f.nummer} — ${f.klant}`,'success');
   renderTransacties(false);
 }
@@ -859,7 +862,7 @@ function snelKoppelGB(tId, gId, suggestie){
   t.gekoppeldAan=g.nummer+' — '+g.naam;
   t.gekoppeldType='grootboek'; t.status='gekoppeld';
   t.tegenrekeningId=g.id; t.btwTarief=btwTarief; // voor exacte P&L/grootboekkaart (excl. BTW)
-  save(); updateBankStats();
+  if(!save()) return; updateBankStats();
   toast(`Geboekt op ${g.nummer} — ${g.naam}`,'success');
   renderTransacties(false);
   // Vaste activa detectie via directe bank koppeling (geen factuur)
@@ -1119,7 +1122,7 @@ async function verwijderT(id){
   const t=DB.transacties.find(t=>t.id===id);
   if(t&&t.status==='gekoppeld') draaiBoekingTerug(t);
   DB.transacties=DB.transacties.filter(t=>t.id!==id);
-  save(); updateBankStats(); renderTransacties(false);
+  if(!save()) return; updateBankStats(); renderTransacties(false);
   toast('Transactie verwijderd.','info');
 }
 
@@ -1140,7 +1143,7 @@ function ontkoppel(id){
       DB.transacties = DB.transacties.filter(tx=>tx.id!==tegp.id);
     }
     DB.transacties = DB.transacties.filter(tx=>tx.id!==t.id);
-    save(); updateBankHeader(); renderTransacties(true); updateBankStats();
+    if(!save()) return; updateBankHeader(); renderTransacties(true); updateBankStats();
     toast('Transfer verwijderd — beide transacties teruggedraaid.','info');
     return;
   }
@@ -1154,7 +1157,7 @@ function ontkoppel(id){
   // het soort restpost dat na "alles ontkoppelen" bleef staan.
   t.factuurId=null;
   delete t.tegenrekeningId; delete t.btwTarief; delete t.splitsRegels;
-  save(); renderTransacties(true); updateBankStats(); toast('Transactie ontkoppeld.','info'); switchBankTab('koppelen');
+  if(!save()) return; renderTransacties(true); updateBankStats(); toast('Transactie ontkoppeld.','info'); switchBankTab('koppelen');
 }
 
 function draaiBoekingTerug(t){
@@ -1234,7 +1237,7 @@ function openHandmatigModal(){
 }
 function slaHandmatigOp(){
   DB.transacties.push({id:uid(),datum:document.getElementById('ht-datum').value,omschrijving:document.getElementById('ht-oms').value,bedrag:parseFloat(document.getElementById('ht-bedrag').value)||0,status:'ongekoppeld',gekoppeldAan:null,gekoppeldType:null});
-  save();closeModal('modal-handmatig');renderTransacties();
+  if(!save()) return; closeModal('modal-handmatig');renderTransacties();
 }
 
 function openKoppelModal(id){
@@ -1307,7 +1310,7 @@ function koppelAanMatch(factuurId, type){
   }
   boekBank(t, t.bedrag);
   boekFactuurTegenboeking(t, type, 'boek');
-  save();
+  if(!save()) return;
   closeModal('modal-koppel');
   renderTransacties();
   updateBankStats();
@@ -1365,7 +1368,7 @@ function bevestigKoppeling(){
     }
   }
   t.status='gekoppeld';
-  save(); closeModal('modal-koppel'); updateBankStats(); toast('Gekoppeld.','success'); renderTransacties(false);
+  if(!save()) return; closeModal('modal-koppel'); updateBankStats(); toast('Gekoppeld.','success'); renderTransacties(false);
 }
 
 // ---- Koppel betaling vanuit inkoopfactuur ----
@@ -1735,7 +1738,7 @@ async function verwijderImport(importId){
   DB.transacties=DB.transacties.filter(t=>t.importId!==importId);
   // Verwijder import record
   DB.imports=(DB.imports||[]).filter(i=>i.id!==importId);
-  save(); renderTransacties(); renderImports(); updateBankStats();
+  if(!save()) return; renderTransacties(); renderImports(); updateBankStats();
 }
 let regelBTW=0;
 
@@ -1769,14 +1772,14 @@ function slaRegelOp(){
   const omschrijving=document.getElementById('regel-omschrijving').value.trim();
   if(!kw||!gbId){toast('Vul omschrijving en grootboekrekening in.','error');return;}
   DB.regels.push({id:uid(),keyword:kw,gbId,match,contact,omschrijving,btw:regelBTW});
-  save();closeModal('modal-regel');renderRegels();toast('Boekingsregel opgeslagen.');
+  if(!save()) return; closeModal('modal-regel');renderRegels();toast('Boekingsregel opgeslagen.');
 }
 
 async function verwijderRegel(id){
   const ok=await bevestig('Boekingsregel verwijderen?','Regel verwijderen','Verwijderen');
   if(!ok) return;
   DB.regels=DB.regels.filter(r=>r.id!==id);
-  save();renderRegels();toast('Regel verwijderd.','info');
+  if(!save()) return; renderRegels();toast('Regel verwijderd.','info');
 }
 
 function renderRegels(){

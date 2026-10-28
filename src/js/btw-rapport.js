@@ -113,7 +113,7 @@ function slaGBOp(){
   }
   gbEditId=null;
   DB.grootboek.sort((a,b)=>a.nummer.localeCompare(b.nummer));
-  save();closeModal('modal-gb');renderGB();toast('Grootboekrekening opgeslagen.');
+  if(!save()) return; closeModal('modal-gb');renderGB();toast('Grootboekrekening opgeslagen.');
 }
 
 async function verwijderGB(id){
@@ -140,7 +140,7 @@ async function verwijderGB(id){
   const ok=await bevestig(`Grootboekrekening "${g.naam}" permanent verwijderen?`,'Rekening verwijderen','Verwijderen');
   if(!ok) return;
   DB.grootboek=DB.grootboek.filter(g=>g.id!==id);
-  save();renderGB();toast('Rekening verwijderd.','info');
+  if(!save()) return; renderGB();toast('Rekening verwijderd.','info');
 }
 
 function renderGB(){
@@ -1376,7 +1376,7 @@ function slaMemoriaalOp(){
   // Sla op in memoriaal geschiedenis
   if(!DB.memoriaal) DB.memoriaal=[];
   DB.memoriaal.push({id:uid(),datum,oms:oms||'Memoriaalboeking',relatie,regels,debet,aangemaakt:new Date().toISOString()});
-  save();
+  if(!save()) return;
   resetMemoriaal();
   renderMemLijst();
   toast('Memoriaalboeking opgeslagen.');
@@ -1452,7 +1452,7 @@ async function verwijderMemoriaal(id){
     g.saldo=(parseFloat(g.saldo)||0)-effect;
   });
   DB.memoriaal=DB.memoriaal.filter(m=>m.id!==id);
-  save(); renderMemLijst();
+  if(!save()) return; renderMemLijst();
 }
 
 // ===== BTW AANGIFTE =====
@@ -1752,7 +1752,7 @@ function slaBANotitiesOp(){
   const periodeKey=`btw_notities_${jaar}_${periode}`;
   if(!DB.btwNotities) DB.btwNotities={};
   DB.btwNotities[periodeKey]=document.getElementById('btw-notities')?.value||'';
-  save();
+  if(!save()) return;
   toast('Notities opgeslagen.');
 }
 // Herstel laatste actieve bedrijf
@@ -2092,7 +2092,7 @@ Deze actie kan niet ongedaan worden gemaakt.`,
     aangemaakt: new Date().toISOString()
   });
 
-  save();
+  if(!save()) return;
   renderJaaropgave();
   toast(`Jaarafsluiting ${jaar} uitgevoerd — resultaat ${fmt(resultaat)} geboekt op eigen vermogen.`,'success');
 }
@@ -2146,7 +2146,7 @@ function inlineBevestigPrive(tId, bedrag){
   t.priveRichting = type;
   t.omschrijving  = oms;
 
-  save();
+  if(!save()) return;
   updateBankStats();
   renderTransacties(false);
   toast(`${type==='opname'?'Privé-opname':'Privé-storting'} van ${fmt(abs)} verwerkt.`,'success');
@@ -2185,7 +2185,7 @@ function matchTransferSuggestie(tId){
     // Al gedaan door inlineBevestigTransfer, niet dubbel doen
   }
 
-  save();
+  if(!save()) return;
   updateBankStats();
   renderTransacties(false);
   toast('Transfer gematcht — beide rekeningen zijn bijgewerkt.','success');
@@ -2247,7 +2247,7 @@ function inlineBevestigTransfer(tId, bedrag){
   }
 
   DB.transacties.push(tTegen);
-  save();
+  if(!save()) return;
   updateBankHeader();
   updateBankStats();
   renderTransacties(false);
@@ -2363,7 +2363,7 @@ function verwerkTransfer(){
   naar.saldo = (parseFloat(naar.saldo)||0) + bedrag;
 
   DB.transacties.push(tUit, tIn);
-  save();
+  if(!save()) return;
   closeModal('modal-transfer');
   updateBankHeader();
   updateBankStats();
@@ -2379,7 +2379,7 @@ function getBanken(){
 
 function wisselBankRekening(id){
   DB.huidigeBankId = id;
-  save();
+  if(!save()) return;
   updateBankHeader();
   renderTransacties(true);
   updateBankStats();
@@ -2470,7 +2470,7 @@ function voegBankToe(){
   }
   // Eerste bank automatisch actief maken
   if(!DB.huidigeBankId) DB.huidigeBankId = id;
-  save();
+  if(!save()) return;
   renderBankBeherenLijst();
   updateBankHeader();
   renderGB();
@@ -2495,7 +2495,7 @@ async function verwijderBank(id){
     const eerste = getBanken()[0];
     DB.huidigeBankId = eerste?.id||null;
   }
-  save();
+  if(!save()) return;
   renderBankBeherenLijst();
   updateBankHeader();
   renderGB();
@@ -2711,7 +2711,7 @@ async function voegBijlagenToeViaModal(input){
     loaded++;
   }
   if(loaded>0){
-    save();
+    if(!save()){ input.value=''; return; }
     await renderBijlagenModalLijst(f);
     renderFacturen(_bijlagenModalType);
     toast(`${loaded} bijlage(n) toegevoegd.`,'success');
@@ -2739,7 +2739,7 @@ async function verwijderBijlage(type, id, index){
   }
 
   f.bijlagenMeta.splice(index, 1);
-  save();
+  if(!save()) return;
   await renderBijlagenModalLijst(f);
   renderFacturen(type);
   toast('Bijlage verwijderd.','info');

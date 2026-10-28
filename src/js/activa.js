@@ -173,7 +173,7 @@ function dqOpslaan(){
     factuurId:_dqFactuur.id,
     factuurNummer:_dqFactuur.nummer
   });
-  save();
+  if(!save()) return;
   closeModal('modal-depr-vraag');
   toast(`Afschrijvingsschema aangemaakt voor ${_dqFactuur.regels[0]?.omschrijving||_dqGb.naam}.`,'success');
 }
@@ -215,12 +215,15 @@ function dqUpdate(editId){
   a.methode=document.getElementById('dq-methode').value;
   a.gbKostenId=document.getElementById('dq-gb-kosten').value||a.gbKostenId;
   a.gbAccumId=document.getElementById('dq-gb-accum').value||a.gbAccumId;
+  // Pas na een geslaagde save() de footer terugzetten: anders maakt een nieuwe poging
+  // via de "nieuw schema"-knoppen een tweede schema aan in plaats van dit bij te werken.
+  if(!save()) return;
   // Reset footer
   document.querySelector('#modal-depr-vraag .modal-footer').innerHTML=`
     <button class="btn btn-secondary" onclick="closeModal('modal-depr-vraag')">Nee, niet afschrijven</button>
     <button class="btn btn-secondary" id="dq-btn-ja" onclick="dqToonForm()" style="display:block;">Ja, schema instellen ▸</button>
     <button class="btn btn-primary" id="dq-btn-opslaan" onclick="dqOpslaan()" style="display:none;">Schema opslaan</button>`;
-  save(); closeModal('modal-depr-vraag'); renderVasteActiva();
+  closeModal('modal-depr-vraag'); renderVasteActiva();
   toast('Activum bijgewerkt.','success');
 }
 
@@ -296,7 +299,7 @@ function slaVAOp(editId){
   } else {
     DB.vasteActiva.push({id:uid(),naam,aanschafwaarde:aanschaf,restwaarde:rest,duurMaanden:duur,methode,aanschafdatum:datum,gbActivaId,gbKostenId,gbAccumId,verwerkteMaanden:[]});
   }
-  save(); closeModal('modal-va'); renderVasteActiva();
+  if(!save()) return; closeModal('modal-va'); renderVasteActiva();
   toast(`${naam} opgeslagen.`,'success');
 }
 
@@ -325,7 +328,7 @@ function verwerkAfschrijving(activumId, maandKey, afschrBedrag){
   });
   if(!a.verwerkteMaanden) a.verwerkteMaanden=[];
   a.verwerkteMaanden.push(maandKey);
-  save(); renderVasteActiva();
+  if(!save()) return; renderVasteActiva();
   toast(`Afschrijving ${fmt(afschrBedrag)} verwerkt voor ${a.naam}.`,'success');
 }
 
@@ -444,7 +447,7 @@ async function verwijderVA(id){
     DB.memoriaal = (DB.memoriaal||[]).filter(m=>!(m.type==='afschrijving'&&m.oms?.includes(a.naam)));
   }
   DB.vasteActiva = (DB.vasteActiva||[]).filter(x=>x.id!==id);
-  save(); renderVasteActiva();
+  if(!save()) return; renderVasteActiva();
   toast(`Activum "${a.naam}" verwijderd${aantalVerwerkt>0?' — afschrijvingen teruggedraaid':''}.`,'info');
 }
 
