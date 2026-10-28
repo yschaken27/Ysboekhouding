@@ -162,8 +162,8 @@ beide `voeg*Toe` (default-waarde), anders verdwijnt het bij opslaan.
 Nederlandse gebruikers typen `7,5`, maar een `<input type="number">` weigert de komma op
 mobiel. De invoervelden in het urenscherm (mobiel en eigenaar) zijn daarom `type="text"` met `inputmode="decimal"`,
 en worden uitgelezen via **`parseDecimaalInvoer()`** (kassier.js). Voorinvulling toont het
-getal in komma-notatie. Gebruik dit patroon voor elk nieuw bedrag-/aantalveld. Uitzondering (nog
-niet omgezet): de tariefvelden in het opdrachtgever-register zijn `type="number"` + `parseFloat`.
+getal in komma-notatie. Gebruik dit patroon voor elk nieuw bedrag-/aantalveld. De tariefvelden in het opdrachtgever-register
+volgen het ook.
 
 ## Sales-module (okt 2026)
 Een gebruiker met module `sales` (vinkje bij de gebruiker) vult in het Facturen-tabblad van de

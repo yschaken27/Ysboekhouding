@@ -593,9 +593,10 @@
       return JSON.stringify({exists:true, bedrijven: Array.isArray(data.bedrijven) ? data.bedrijven : []});
     },
 
-    // Verwijder alle Firebase-data van een bedrijf: data-docs, uploads, toegang en het bedrijf-doc zelf.
+    // Verwijder alle Firebase-data van een bedrijf: data-docs (ook uren en het kassier-
+    // logboek), uploads, toegang en het bedrijf-doc zelf.
     async verwijderBedrijfCloud(naam){
-      const docs = ['main','verkoop','inkoop','transacties','kassalijsten'];
+      const docs = ['main','verkoop','inkoop','transacties','kassalijsten','uren','kassierboekingen'];
       await Promise.all(docs.map(doc=>
         db.collection('bedrijven').doc(naam).collection('data').doc(doc).delete().catch(()=>{})
       ));

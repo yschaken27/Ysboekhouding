@@ -1084,8 +1084,8 @@ function _tekenCentraalOpdrachtgevers(){
               <input type="text" value="${esc(t.naam||'')}" placeholder="Omschrijving (bijv. Dag)"
                 oninput="_cpOpdrachtgevers[${i}].tarieven[${ti}].naam=this.value"
                 style="flex:1;font-size:12px;padding:5px 7px;">
-              <input type="number" min="0" step="0.01" value="${t.bedrag!=null?t.bedrag:''}" placeholder="${eenheidInfo(o.eenheid).perInput}"
-                oninput="_cpOpdrachtgevers[${i}].tarieven[${ti}].bedrag=parseFloat(this.value)||null"
+              <input type="text" inputmode="decimal" value="${t.bedrag!=null?String(t.bedrag).replace('.',','):''}" placeholder="${eenheidInfo(o.eenheid).perInput}"
+                oninput="_cpOpdrachtgevers[${i}].tarieven[${ti}].bedrag=parseDecimaalInvoer(this.value)||null"
                 style="width:80px;font-size:12px;padding:5px 7px;">
               <button type="button" onclick="_cpVerwijderTarief(${i},${ti})"
                 style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px;padding:0 4px;">✕</button>
@@ -1213,8 +1213,8 @@ function _tekenOpdrachtgeversModal(){
               <input type="text" value="${esc(t.naam||'')}" placeholder="Omschrijving (bijv. Dag)"
                 oninput="_cpOpdrachtgevers[${i}].tarieven[${ti}].naam=this.value"
                 style="flex:1;font-size:12px;padding:5px 7px;">
-              <input type="number" min="0" step="0.01" value="${t.bedrag!=null?t.bedrag:''}" placeholder="${eenheidInfo(o.eenheid).perInput}"
-                oninput="_cpOpdrachtgevers[${i}].tarieven[${ti}].bedrag=parseFloat(this.value)||null"
+              <input type="text" inputmode="decimal" value="${t.bedrag!=null?String(t.bedrag).replace('.',','):''}" placeholder="${eenheidInfo(o.eenheid).perInput}"
+                oninput="_cpOpdrachtgevers[${i}].tarieven[${ti}].bedrag=parseDecimaalInvoer(this.value)||null"
                 style="width:80px;font-size:12px;padding:5px 7px;">
               <button type="button" onclick="_opmVerwijderTarief(${i},${ti})"
                 style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px;padding:0 4px;">✕</button>

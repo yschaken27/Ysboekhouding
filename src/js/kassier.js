@@ -1825,9 +1825,13 @@ function _kassaRekeningen(btwBedrag, maakBtwAan){
     || DB.grootboek.find(g=>g.type==='omzet');
   let btwRek = DB.grootboek.find(g=>g.nummer==='2300')
     || DB.grootboek.find(g=>g.nummer==='1810')
+    || DB.grootboek.find(g=>g.nummer==='1510') // ook als 1510 hernoemd is: geen dubbele 1510 aanmaken
     || DB.grootboek.find(g=>g.naam.toLowerCase().includes('btw te betalen'));
   if(!btwRek && maakBtwAan && btwBedrag > 0){
-    btwRek = { id:uid(), nummer:'2300', naam:'BTW te betalen', type:'schuld', saldo:0 };
+    // Aanmaken als standaardrekening 1510 uit DEFAULT_GB (type 'passiva'): een eigen
+    // type zoals 'schuld' telt niet mee in de balans en blokkeert de save (CLAUDE.md #24).
+    const std = DEFAULT_GB.find(s=>s.nummer==='1510');
+    btwRek = { ...std, id:'gb_auto_1510', saldo:0 };
     DB.grootboek.push(btwRek);
   }
   const verschilRek = DB.grootboek.find(g=>g.naam.toLowerCase().includes('kassaverschil'))
@@ -1895,9 +1899,10 @@ async function keurKassaGoed(id){
 
   k.status = 'goedgekeurd';
   k.goedgekeurdOp = new Date().toISOString();
-  save();
+  // Bij een balansfout draait save() alles terug (melding + hertekenen) — dan geen succesmelding.
+  if(!save()) return;
   renderKassaoverzicht();
-  toast(`Kassalijst ${k.datum} goedgekeurd — €${fmt(k.totaalOmzet)} geboekt.`, 'success');
+  toast(`Kassalijst ${k.datum} goedgekeurd — ${fmt(k.totaalOmzet)} geboekt.`, 'success');
 }
 
 async function wijsKassaAf(id){
@@ -1907,7 +1912,7 @@ async function wijsKassaAf(id){
   if(!ok) return;
   k.status = 'afgewezen';
   k.afgewezenOp = new Date().toISOString();
-  save();
+  if(!save()) return;
   renderKassaoverzicht();
   toast(`Kassalijst ${k.datum} afgewezen.`, 'info');
 }
