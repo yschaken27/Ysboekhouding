@@ -3,6 +3,9 @@ function renderDashboard(){
   const jaar = new Date().getFullYear();
   const periode = window._dashPeriode || 'ytd';
   const vandaag = new Date();
+  // Zelfde controle als op Balans en W&V: sluit de P&L niet aan op het grootboek,
+  // dan staat dat ook hier bovenaan — de tegels hieronder komen uit die P&L.
+  if(typeof _boekhoudAuditBanner==='function') _boekhoudAuditBanner('page-dashboard');
 
   function inPeriode(datum){
     if(!datum) return false;
@@ -21,30 +24,23 @@ function renderDashboard(){
     return true;
   }
 
-  // Bij kasstelsel: filter op betaaldatum, bij factuurstelsel op factuurdatum
-  const _ks = isKasstelsel();
-  const vkPeriode = _ks
-    ? DB.verkoop.filter(f=>{ const d=getBtwDatum(f); return d&&inPeriode(d); })
-    : DB.verkoop.filter(f=>inPeriode(f.datum));
-  const ikPeriode = _ks
-    ? DB.inkoop.filter(f=>{ const d=getBtwDatum(f); return d&&inPeriode(d); })
-    : DB.inkoop.filter(f=>inPeriode(f.datum));
+  const _ks = isKasstelsel(); // alleen nog voor het label; cijfers volgen de P&L
+  const vkPeriode = DB.verkoop.filter(f=>inPeriode(f.datum));
+  const ikPeriode = DB.inkoop.filter(f=>inPeriode(f.datum));
 
-  // Kassaomzet altijd op kassadatum (inherent kasstelsel), altijd excl BTW
-  const _kassaOmzetDash = (DB.kassalijsten||[])
-    .filter(k=>k.status==='goedgekeurd'&&inPeriode(k.datum))
-    .reduce((a,k)=>a+parseFloat(k.totaalOmzet||0), 0);
-  const omzet = (_ks
-    ? vkPeriode.reduce((a,f)=>a+getOmzetKas(f),0)
-    : vkPeriode.reduce((a,f)=>a+parseFloat(f.totaalExcl||0),0))
-    + _kassaOmzetDash;
-  const inkoopTot = ikPeriode.reduce((a,f)=>a+getInkoopKas(f),0);
-  const marge = omzet - inkoopTot;
+  // Omzet, kosten en resultaat = de P&L van dezelfde periode, saldi = het grootboek
+  // (plVoorMaanden / dashboardSaldi in btw-rapport.js). Nooit zelf optellen.
+  const _plMaanden = periode==='q1'?[1,2,3] : periode==='q2'?[4,5,6] : periode==='q3'?[7,8,9]
+    : periode==='q4'?[10,11,12] : periode.startsWith('m')?[parseInt(periode.slice(1),10)] : null;
+  const _pl = plVoorMaanden(periode==='all' ? '' : jaar, _plMaanden);
+  const omzet = _pl.omzet;
+  const inkoopTot = _pl.kosten;
+  const marge = _pl.resultaat;
   const margePct = omzet>0?((marge/omzet)*100).toFixed(1):0;
-  const openstaand = DB.verkoop.filter(f=>f.status!=='betaald').reduce((a,f)=>a+parseFloat(f.totaalIncl||0),0);
-  const crediteuren = DB.inkoop.filter(f=>f.status!=='betaald').reduce((a,f)=>a+parseFloat(f.totaalIncl||0),0);
-  const bankRek = DB.grootboek.find(g=>g.nummer==='1100'||g.naam?.toLowerCase().includes('bank'));
-  const banksaldo = parseFloat(bankRek?.saldo||0);
+  const _saldi = dashboardSaldi();
+  const openstaand = _saldi.debiteuren;
+  const crediteuren = _saldi.crediteuren;
+  const banksaldo = _saldi.bank;
   const openVK = DB.verkoop.filter(f=>f.status==='verstuurd'||f.status==='concept').length;
   const openIK = DB.inkoop.filter(f=>f.status==='ontvangen'||f.status==='te betalen').length;
 
@@ -58,7 +54,7 @@ function renderDashboard(){
   document.getElementById('s-omzet').textContent = fmt(omzet);
   document.getElementById('s-omzet-sub').textContent = vkPeriode.length + ' facturen';
   document.getElementById('s-inkoop').textContent = fmt(inkoopTot);
-  document.getElementById('s-inkoop-sub').textContent = ikPeriode.length + ' facturen';
+  document.getElementById('s-inkoop-sub').textContent = ikPeriode.length + ' inkoopfacturen + bank/memoriaal';
   const mel = document.getElementById('s-marge');
   mel.textContent = fmt(marge);
   mel.className = 'value ' + (marge>=0?'green':'red');
@@ -77,24 +73,11 @@ function renderDashboard(){
   if(snps) snps.textContent = fmt(prive.stortingen);
   if(snpn){ snpn.textContent = fmt(Math.abs(prive.netto)); snpn.style.color=prive.netto>=0?'#059669':'#7c3aed'; }
 
-  // Maandelijks chart — bij kasstelsel op betaaldatum, bij factuurstelsel op factuurdatum
+  // Maandgrafiek — P&L per maand (zelfde bron als de tegels)
   const maanden = ['Jan','Feb','Mrt','Apr','Mei','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
-  const omzetPerMaand = Array(12).fill(0);
-  const kostenPerMaand = Array(12).fill(0);
-  DB.verkoop.forEach(f=>{
-    const d = _ks ? getBtwDatum(f) : f.datum;
-    if(!d || new Date(d).getFullYear()!==jaar) return;
-    omzetPerMaand[new Date(d).getMonth()] += _ks ? getOmzetKas(f) : parseFloat(f.totaalExcl||0);
-  });
-  // Kassaomzet in maandgrafiek
-  (DB.kassalijsten||[]).filter(k=>k.status==='goedgekeurd'&&new Date(k.datum||'').getFullYear()===jaar).forEach(k=>{
-    omzetPerMaand[new Date(k.datum).getMonth()] += parseFloat(k.totaalOmzet||0);
-  });
-  DB.inkoop.forEach(f=>{
-    const d = _ks ? getBtwDatum(f) : f.datum;
-    if(!d || new Date(d).getFullYear()!==jaar) return;
-    kostenPerMaand[new Date(d).getMonth()] += _ks ? getInkoopKas(f) : parseFloat(f.totaalExcl||0);
-  });
+  const _plM = plPerMaand(jaar);
+  const omzetPerMaand = _plM.map(x=>x.omzet);
+  const kostenPerMaand = _plM.map(x=>x.kosten);
   const ctx = document.getElementById('dash-chart-maand');
   if(ctx){
     if(window._dashChart) window._dashChart.destroy();
@@ -118,10 +101,10 @@ function renderDashboard(){
     });
   }
 
-  // Top klanten — gebruik vkPeriode (al gefilterd op stelsel en periode)
+  // Top klanten — facturen van de periode (factuurdatum)
   const klantMap = {};
   vkPeriode.forEach(f=>{
-    const val = _ks ? getOmzetKas(f) : parseFloat(f.totaalExcl||0);
+    const val = parseFloat(f.totaalExcl||0);
     klantMap[f.klant||'Onbekend'] = (klantMap[f.klant||'Onbekend']||0) + val;
   });
   const topKlanten = Object.entries(klantMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
@@ -219,40 +202,28 @@ function downloadDashboard(){
   const bedrijf = DB.profiel?.bedrijfsnaam || huidigBedrijf;
   const datum = new Date().toLocaleDateString('nl-NL');
   const jaar = new Date().getFullYear();
-  const _kassaOmzetMob = (DB.kassalijsten||[])
-    .filter(k=>k.status==='goedgekeurd'&&new Date(k.datum||'').getFullYear()===jaar)
-    .reduce((a,k)=>a+parseFloat(k.totaalOmzet||0), 0);
-  const omzet = DB.verkoop.reduce((a,f)=>a+parseFloat(f.totaalExcl||0),0) + _kassaOmzetMob;
-  const kosten = DB.inkoop.reduce((a,f)=>a+parseFloat(f.totaalExcl||0),0);
-  const marge = omzet-kosten;
+  // Zelfde bron als het dashboard: P&L van dit jaar + grootboeksaldi.
+  const _pl = plVoorMaanden(jaar, null);
+  const omzet = _pl.omzet;
+  const kosten = _pl.kosten;
+  const marge = _pl.resultaat;
   const margePct = omzet>0?((marge/omzet)*100).toFixed(1):0;
-  const openstaand = DB.verkoop.filter(f=>f.status!=='betaald').reduce((a,f)=>a+parseFloat(f.totaalIncl||0),0);
-  const bankRek = DB.grootboek.find(g=>g.nummer==='1100'||g.naam?.toLowerCase().includes('bank'));
-  const banksaldo = parseFloat(bankRek?.saldo||0);
+  const _saldi = dashboardSaldi();
+  const openstaand = _saldi.debiteuren;
+  const banksaldo = _saldi.bank;
 
   // Maanddata
   const maanden = ['Jan','Feb','Mrt','Apr','Mei','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
-  const omzetM = Array(12).fill(0);
-  const kostenM = Array(12).fill(0);
-  // Maandgrafiek — bij kasstelsel op betaaldatum, bij factuurstelsel op factuurdatum
-  const _mKs = isKasstelsel();
-  DB.verkoop.forEach(f=>{
-    const d = _mKs ? getBtwDatum(f) : f.datum;
-    if(!d || new Date(d).getFullYear()!==jaar) return;
-    omzetM[new Date(d).getMonth()] += _mKs ? getOmzetKas(f) : parseFloat(f.totaalExcl||0);
-  });
-  DB.inkoop.forEach(f=>{
-    const d = _mKs ? getBtwDatum(f) : f.datum;
-    if(!d || new Date(d).getFullYear()!==jaar) return;
-    kostenM[new Date(d).getMonth()] += _mKs ? getInkoopKas(f) : parseFloat(f.totaalExcl||0);
-  });
+  // Maanddata = P&L per maand, telt op tot de jaartotalen hierboven
+  const _plM = plPerMaand(jaar);
+  const omzetM = _plM.map(x=>x.omzet);
+  const kostenM = _plM.map(x=>x.kosten);
 
-  // Top klanten — bij kasstelsel alleen betaalde omzet
+  // Top klanten — facturen van dit jaar (factuurdatum)
   const klantMap = {};
   DB.verkoop.forEach(f=>{
-    const d = _mKs ? getBtwDatum(f) : f.datum;
-    if(!d || new Date(d).getFullYear()!==jaar) return;
-    const val = _mKs ? getOmzetKas(f) : parseFloat(f.totaalExcl||0);
+    if(!f.datum || new Date(f.datum).getFullYear()!==jaar) return;
+    const val = parseFloat(f.totaalExcl||0);
     klantMap[f.klant||'Onbekend'] = (klantMap[f.klant||'Onbekend']||0) + val;
   });
   const topK = Object.entries(klantMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
@@ -340,8 +311,8 @@ function downloadDashboard(){
 
   <div class="grid4">
     <div class="stat"><div class="lbl">Omzet excl. BTW</div><div class="val green">${fmt(omzet)}</div><div class="sub">${DB.verkoop.length} facturen</div></div>
-    <div class="stat"><div class="lbl">Inkoopkosten</div><div class="val red">${fmt(kosten)}</div><div class="sub">${DB.inkoop.length} facturen</div></div>
-    <div class="stat"><div class="lbl">Bruto marge</div><div class="val ${marge>=0?'green':'red'}">${fmt(marge)}</div><div class="sub">${margePct}% van omzet</div></div>
+    <div class="stat"><div class="lbl">Kosten</div><div class="val red">${fmt(kosten)}</div><div class="sub">volgens winst-en-verlies</div></div>
+    <div class="stat"><div class="lbl">Resultaat</div><div class="val ${marge>=0?'green':'red'}">${fmt(marge)}</div><div class="sub">${margePct}% van omzet</div></div>
     <div class="stat"><div class="lbl">Openstaand</div><div class="val blue">${fmt(openstaand)}</div><div class="sub">Debiteuren</div></div>
   </div>
 

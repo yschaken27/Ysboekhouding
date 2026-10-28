@@ -398,54 +398,45 @@ function _factuurBoekRegels(f, fallbackType){
 // BTW-splitsing) die de balans "toevallig" wel laat kloppen maar de verdeling scheef
 // zet — precies het soort stille fout dat je bij veel boekingen niet ziet.
 function balansAudit(){
+  // Eén bron: de P&L over álle periodes. Zou die ooit anders rekenen dan er geboekt
+  // is (zoals terugbetalingen via de bank tot okt 2026), dan valt dat hier op in
+  // plaats van stil in het rapport en de dashboards te staan.
+  const pl = berekenPLVoorPeriode('', '');
   const verwacht = {};
-  // Niet per stap afronden: halve centen (bv. 8,5 u × € 37,28) stapelen anders op
-  // tot een vals verschil van € 0,01. Alleen het eindtotaal wordt afgerond.
   const add = (id, x) => { if(id){ verwacht[id] = (verwacht[id]||0) + x; } };
-  const factuurExcl = (f, fallbackType) => {
-    _factuurBoekRegels(f, fallbackType).forEach(x=>add(x.gbId, x.excl));
-  };
-  (DB.verkoop||[]).forEach(f=>factuurExcl(f, 'omzet'));
-  (DB.inkoop||[]).forEach(f=>factuurExcl(f, 'kosten'));
-  (DB.transacties||[]).filter(t=>t.gekoppeldType==='grootboek').forEach(t=>{
-    const delen = Array.isArray(t.splitsRegels) && t.splitsRegels.length
-      ? t.splitsRegels
-      : [{ gbId: t.tegenrekeningId || null, bedrag: parseFloat(t.bedrag)||0, btwTarief: parseFloat(t.btwTarief)||0 }];
-    delen.forEach(d=>{
-      const g = (d.gbId && DB.grootboek.find(x=>x.id===d.gbId))
-             || DB.grootboek.find(x=>(x.nummer+' — '+x.naam)===t.gekoppeldAan);
-      if(!g || (g.type!=='omzet' && g.type!=='kosten')) return;
-      const bedrag = parseFloat(d.bedrag)||0;
-      const tarief = parseFloat(d.btwTarief)||0;
-      // rond(): _boekTegenrekening rondt het excl.-deel per boeking af (anders dan facturen).
-      const exclSigned = rond(tarief>0 ? bedrag/((100+tarief)/100) : bedrag);
-      // Exact zoals _boekTegenrekening: omzet (credit-normaal) +excl, kosten −excl —
-      // ook bij een terugbetaling (omgekeerd teken), zodat dat geen vals alarm geeft.
-      add(g.id, g.type==='omzet' ? exclSigned : -exclSigned);
-    });
-  });
-  // saldocorrectie ook uitgesloten: die zit al in g.saldo verwerkt en hoort niet
-  // als resultaatmutatie mee te tellen (zie bouwGrootboekkaart).
-  (DB.memoriaal||[]).filter(m=>m.type!=='jaarafsluiting' && m.type!=='saldocorrectie').forEach(m=>{
+  Object.entries(pl.omzetPerRek).forEach(([id, x])=>add(id, x));
+  Object.entries(pl.kostenPerRek).forEach(([id, x])=>add(id, x));
+  // Jaarafsluiting zet omzet/kosten naar 0 (naar eigen vermogen) — dat hoort niet
+  // in de P&L, maar wél in het verwachte saldo; anders gaf elke afgesloten
+  // rekening een vals verschil.
+  (DB.memoriaal||[]).filter(m=>m.type==='jaarafsluiting').forEach(m=>{
     (m.regels||[]).forEach(r=>{
       const g = DB.grootboek.find(x=>x.id===r.gbId);
       if(!g || (g.type!=='omzet' && g.type!=='kosten')) return;
       add(g.id, (r.effect!==undefined) ? r.effect : _memSaldoEffect(g, r.dc, r.bedrag));
     });
   });
+  // Een bedrag dat de P&L op geen rekening kon zetten ('overig', bv. een document
+  // zonder datum of met een verwijderde rekening) ontbreekt in de P&L.
+  const zwevendOmzet  = rond(pl.omzetPerRek.overig||0);
+  const zwevendKosten = rond(pl.kostenPerRek.overig||0);
   const afw = [];
   (DB.grootboek||[]).forEach(g=>{
     if(g.type!=='omzet' && g.type!=='kosten') return;
-    // 8900 Betalingsverschillen / kassaverschil is een plug-rekening die legitiem
-    // afrondings- en kasverschillen opvangt (deels zonder eigen memoriaalregel), dus
-    // daar is een strikte reconciliatie niet zinvol — uitsluiten voorkomt vals alarm.
-    if(String(g.nummer)==='8900' || (g.naam||'').toLowerCase().includes('verschil')) return;
+    // Ook 8900 / kassaverschil: betalings- en kasverschillen staan sinds okt 2026
+    // allebei in de P&L (t.betalingsverschil en het kassalijst-memoriaal).
     const werk = rond(parseFloat(g.saldo)||0);
     const verw = rond(verwacht[g.id]||0);
     if(Math.abs(werk - verw) > 0.01){
       afw.push({ id:g.id, nummer:g.nummer, naam:g.naam, saldo:werk, verwacht:verw, verschil:rond(werk-verw) });
     }
   });
+  if(Math.abs(zwevendOmzet) > 0.01){
+    afw.push({ id:'', nummer:'—', naam:'Omzet zonder rekening', saldo:0, verwacht:zwevendOmzet, verschil:rond(-zwevendOmzet) });
+  }
+  if(Math.abs(zwevendKosten) > 0.01){
+    afw.push({ id:'', nummer:'—', naam:'Kosten zonder rekening', saldo:0, verwacht:zwevendKosten, verschil:rond(-zwevendKosten) });
+  }
   return afw;
 }
 
@@ -461,7 +452,7 @@ function _boekhoudAuditBanner(pageId){
   div.className = 'boekhoud-audit-banner';
   div.style.cssText = 'margin:0 0 14px;padding:12px 16px;border-radius:8px;background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;font-size:13px;line-height:1.55;';
   div.innerHTML = `<strong>⚠ Boekhoudcontrole: ${afw.length} rekening(en) sluiten niet aan op de onderliggende boekingen.</strong><br>`
-    + afw.map(a=>`<a href="#" onclick="openGrootboekkaart('${a.id}');return false;" style="color:#991b1b;font-weight:600;text-decoration:underline;">${a.nummer} — ${a.naam}</a>: saldo ${fmt(a.saldo)}, verwacht ${fmt(a.verwacht)} <strong>(verschil ${fmt(a.verschil)})</strong>`).join('<br>')
+    + afw.map(a=>(a.id ? `<a href="#" onclick="openGrootboekkaart('${a.id}');return false;" style="color:#991b1b;font-weight:600;text-decoration:underline;">${a.nummer} — ${a.naam}</a>` : `<strong>${a.naam}</strong>`)+`: saldo ${fmt(a.saldo)}, verwacht ${fmt(a.verwacht)} <strong>(verschil ${fmt(a.verschil)})</strong>`).join('<br>')
     + `<br><span style="opacity:.85;">Dit wijst op een scheve of ontbrekende boeking. Open de grootboekkaart om te zien wat er mist.</span>`;
   page.prepend(div);
 }
@@ -649,6 +640,8 @@ function vulJaarDropdowns(){
     ...DB.verkoop.map(f=>_parseDatum(f.datum)?.jaar),
     ...DB.inkoop.map(f=>_parseDatum(f.datum)?.jaar),
     ...DB.transacties.map(t=>_parseDatum(t.datum)?.jaar),
+    ...(DB.memoriaal||[]).map(m=>_parseDatum(m.datum)?.jaar),
+    ...(DB.kassalijsten||[]).map(k=>_parseDatum(k.datum)?.jaar),
   ].filter(Boolean).map(String))].sort().reverse();
   if(!jaren.length) jaren.push(new Date().getFullYear().toString());
 
@@ -675,6 +668,14 @@ function _bankGbDelen(t){
     : [{ gbId: t.tegenrekeningId || null, bedrag: parseFloat(t.bedrag)||0, btwTarief: parseFloat(t.btwTarief)||0 }];
 }
 
+// Ondertekend excl.-bedrag van zo'n deelboeking (ontvangst +, uitgave −), afgerond
+// zoals _boekTegenrekening (bank.js) het op de rekening zet.
+function _bankExclSigned(d){
+  const bedrag = parseFloat(d.bedrag)||0;
+  const tarief = parseFloat(d.btwTarief)||0;
+  return rond(tarief>0 ? bedrag/((100+tarief)/100) : bedrag);
+}
+
 // Grootboekrekening van zo'n deelboeking: bij voorkeur via gbId (nieuw),
 // anders via de tekst in gekoppeldAan (oude data).
 function _bankGbRekening(d, t){
@@ -686,9 +687,10 @@ function _bankGbRekening(d, t){
 function berekenPLVoorPeriode(maand, jaar){
   // Bereken omzet en kosten voor een specifieke maand/jaar combinatie
   // maand: 1-12 of '' voor heel jaar, jaar: '2025' of ''
-  // Bij kasstelsel: datum = betaaldatum via getBtwDatum()
-  // Bij factuurstelsel: datum = factuurdatum
-  const ks = isKasstelsel();
+  // ALTIJD op factuurdatum, ook bij het kasstelsel: dat is een BTW-regeling
+  // (berekenBtwPeriode volgt wél de betaaldatum). De winst hoort bij het jaar
+  // waarin de omzet/kosten ontstaan — en alleen zo sluit de P&L aan op het
+  // grootboek, dat facturen bij het aanmaken boekt.
 
   function inPeriode(datumStr){
     const p = _parseDatum(datumStr);
@@ -698,24 +700,9 @@ function berekenPLVoorPeriode(maand, jaar){
     return jaarMatch && maandMatch;
   }
 
-  // Kasstelsel: filter op betaaldatum, factuurstelsel: op factuurdatum
-  const verkoop = DB.verkoop.filter(f=>{
-    const d = ks ? getBtwDatum(f) : f.datum;
-    return d && inPeriode(d);
-  });
-  const inkoop = DB.inkoop.filter(f=>{
-    const d = ks ? getBtwDatum(f) : f.datum;
-    return d && inPeriode(d);
-  });
+  const verkoop = DB.verkoop.filter(f=>f.datum && inPeriode(f.datum));
+  const inkoop = DB.inkoop.filter(f=>f.datum && inPeriode(f.datum));
 
-  // Kasstelsel: omzet proportioneel op betaald bedrag (alleen facturen)
-  const factuurOmzet = ks
-    ? verkoop.reduce((a,f)=>a+getOmzetKas(f), 0)
-    : verkoop.reduce((a,f)=>a+parseFloat(f.totaalExcl||0), 0);
-
-  const inkoopKosten = ks
-    ? inkoop.reduce((a,f)=>a+getInkoopKas(f), 0)
-    : inkoop.reduce((a,f)=>a+parseFloat(f.totaalExcl||0), 0);
 
   // Omzet én kosten PER grootboekrekening uit ALLE bronnen (niet alleen facturen):
   //   1) verkoop-/inkoopfacturen (regel → r.gbId),
@@ -726,24 +713,25 @@ function berekenPLVoorPeriode(maand, jaar){
   const kostenPerRek = {};
   const add = (map, id, bedrag) => { const k = id || 'overig'; map[k] = (map[k]||0) + bedrag; };
 
-  // Verdeel een factuur over grootboekrekeningen: gebruik de regels (per r.gbId) als
-  // die samen het totaal dekken; anders — bv. een uren-factuur die GEEN regels heeft,
-  // alleen totaalExcl — het hele bedrag op de standaard omzet-/kostenrekening. Zo
-  // verdwijnt uren-omzet niet uit de P&L (dat was een regressie).
+  // Verdeel een factuur over grootboekrekeningen precies zoals hij geboekt is
+  // (_factuurBoekRegels: regel zonder gbId → eerste omzet-/kostenrekening, factuur
+  // zonder regels → totaalExcl in één keer). Zo kan balansAudit de P&L zelf tegen
+  // het grootboek leggen.
+  // Een regel op een balansrekening (bv. een inkoopregel op vaste activa) is geen
+  // kosten/omzet en blijft buiten de P&L — zo staat hij ook in het grootboek.
   const verdeelFactuur = (map, f, fallbackType) => {
-    const ratio = _getBetaaldRatio(f);
-    const regels = f.regels||[];
-    const regelSom = regels.reduce((a,r)=>a+(parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0),0);
-    const totExcl = parseFloat(f.totaalExcl||0);
-    if(regels.length && Math.abs(regelSom - totExcl) < 0.02){
-      regels.forEach(r=> add(map, r.gbId, (parseFloat(r.aantal)||0)*(parseFloat(r.prijs)||0)*ratio));
-    } else {
-      const rek = DB.grootboek.find(g=>g.type===fallbackType);
-      add(map, rek?.id, totExcl*ratio);
-    }
+    let som = 0;
+    _factuurBoekRegels(f, fallbackType).forEach(x=>{
+      const g = x.gbId ? DB.grootboek.find(r=>r.id===x.gbId) : null;
+      if(g && g.type!=='omzet' && g.type!=='kosten') return;
+      add(map, x.gbId, x.excl);
+      som += x.excl;
+    });
+    return som;
   };
-  verkoop.forEach(f=> verdeelFactuur(omzetPerRek, f, 'omzet'));
-  inkoop.forEach(f=> verdeelFactuur(kostenPerRek, f, 'kosten'));
+  // Factuurdeel van omzet/kosten (voor de uitsplitsing in W&V en jaaropgave)
+  const factuurOmzet = verkoop.reduce((a,f)=>a+verdeelFactuur(omzetPerRek, f, 'omzet'), 0);
+  const inkoopKosten = inkoop.reduce((a,f)=>a+verdeelFactuur(kostenPerRek, f, 'kosten'), 0);
 
   // Directe bankboekingen op een grootboekrekening. Rekening bij voorkeur via
   // t.tegenrekeningId (nieuw), anders via de tekst in gekoppeldAan (oude data).
@@ -753,13 +741,25 @@ function berekenPLVoorPeriode(maand, jaar){
     _bankGbDelen(t).forEach(d=>{
       const g = _bankGbRekening(d, t);
       if(!g) return;
-      const bedrag = parseFloat(d.bedrag)||0;
-      const tarief = parseFloat(d.btwTarief)||0;
-      const bedragExcl = tarief>0 ? Math.abs(bedrag)/((100+tarief)/100) : Math.abs(bedrag);
-      if(g.type==='omzet' && bedrag>0) add(omzetPerRek, g.id, bedragExcl);
-      else if(g.type==='kosten' && bedrag<0) add(kostenPerRek, g.id, bedragExcl);
+      // Met teken, exact zoals _boekTegenrekening het saldo muteert: een
+      // terugbetaling (kosten +, of een creditering −op omzet) verlaagt de post.
+      // Alleen ontvangsten op omzet / uitgaven op kosten tellen liet de P&L
+      // afwijken van het grootboek.
+      const exclSigned = _bankExclSigned(d);
+      if(g.type==='omzet') add(omzetPerRek, g.id, exclSigned);
+      else if(g.type==='kosten') add(kostenPerRek, g.id, -exclSigned);
     });
   });
+
+  // Betalingsverschillen (boekBetalingsverschil, bank.js) — zelfde rekening en teken:
+  // verkoop −verschil, inkoop +verschil op het saldo van 8900.
+  const bvRek = DB.grootboek.find(g=>g.nummer==='8900'||g.naam==='Betalingsverschillen');
+  if(bvRek && (bvRek.type==='omzet' || bvRek.type==='kosten')){
+    DB.transacties.filter(t=>t.betalingsverschil && inPeriode(t.datum)).forEach(t=>{
+      const v = parseFloat(t.betalingsverschil)||0;
+      add(bvRek.type==='kosten' ? kostenPerRek : omzetPerRek, bvRek.id, t.gekoppeldType==='verkoop' ? -v : v);
+    });
+  }
 
   // Memoriaalboekingen op omzet/kosten (jaarafsluiting uitgesloten — die verplaatst
   // het resultaat naar eigen vermogen en hoort niet als omzet/kosten in de P&L.
@@ -780,6 +780,37 @@ function berekenPLVoorPeriode(maand, jaar){
   const totKosten = Object.values(kostenPerRek).reduce((a,b)=>a+b, 0);
 
   return { omzetPerRek, kostenPerRek, totOmzet, totKosten, factuurOmzet, inkoopKosten };
+}
+
+// ===== DASHBOARDCIJFERS — één bron voor eigenaar- én kassier-dashboard =====
+// Omzet/kosten/resultaat komen ALTIJD uit de P&L (berekenPLVoorPeriode) en saldi
+// uit het grootboek, net als de balans. Een dashboard rekent nooit zelf: dan kan
+// het niet afwijken van het rapport, en balansAudit legt die P&L weer naast het
+// grootboek. maanden = [1..12] of null voor het hele jaar; jaar '' = alle jaren.
+function plVoorMaanden(jaar, maanden){
+  const lijst = maanden && maanden.length ? maanden : [''];
+  let omzet = 0, kosten = 0;
+  lijst.forEach(m=>{
+    const r = berekenPLVoorPeriode(m, jaar==='' ? '' : String(jaar));
+    omzet += r.totOmzet; kosten += r.totKosten;
+  });
+  return { omzet: rond(omzet), kosten: rond(kosten), resultaat: rond(omzet - kosten) };
+}
+
+function plPerMaand(jaar){
+  return [1,2,3,4,5,6,7,8,9,10,11,12].map(m=>plVoorMaanden(jaar, [m]));
+}
+
+// Balansposten voor de dashboards: zelfde rekeningen als de balans.
+function dashboardSaldi(){
+  const saldo = g => parseFloat(g?.saldo)||0;
+  const banken = getBanken();
+  const bankTotaal = banken.length
+    ? banken.reduce((a,g)=>a+saldo(g), 0)
+    : saldo(DB.grootboek.find(g=>g.nummer==='1100'));
+  const deb  = DB.grootboek.find(g=>g.nummer==='1300') || DB.grootboek.find(g=>(g.naam||'').toLowerCase().includes('debiteuren'));
+  const cred = DB.grootboek.find(g=>g.nummer==='2100') || DB.grootboek.find(g=>(g.naam||'').toLowerCase().includes('crediteur'));
+  return { bank: rond(bankTotaal), debiteuren: rond(saldo(deb)), crediteuren: rond(saldo(cred)) };
 }
 
 function renderPL(){
@@ -1444,10 +1475,11 @@ function _factuurBtwPct(f){
 // hetzelfde bedrag tonen. Pure berekening op DB — raakt geen DOM en boekt niets.
 // Wijzig je hier iets, dan verandert het op beide plekken (CLAUDE.md #26).
 function berekenBtwPeriode(jaar, maanden){
+  // _parseDatum, net als de P&L: bank-CSV's bewaren de datum soms als DD-MM-YYYY,
+  // en new Date() las die als ongeldig of met dag en maand omgedraaid.
   function inPeriode(datumStr){
-    if(!datumStr) return false;
-    const d=new Date(datumStr);
-    return d.getFullYear()===jaar && maanden.includes(d.getMonth());
+    const p = _parseDatum(datumStr);
+    return !!p && p.jaar===jaar && maanden.includes(p.maand-1);
   }
 
   // RUBRIEK 1a — omzet 21%, 1b — omzet 9%, 1d — omzet 0% (per factuurregel)
@@ -1514,10 +1546,12 @@ function berekenBtwPeriode(jaar, maanden){
 
   // KASSALIJSTEN — goedgekeurde kassalijsten tellen mee in BTW aangifte
   // Dit is de primaire omzetbron voor kappers, horeca etc die geen facturen maken
+  // Tarief en bedragen via _kassaBedragen (kassier.js): exact wat er geboekt is.
   (DB.kassalijsten||[]).filter(k=>k.status==='goedgekeurd'&&inPeriode(k.datum)).forEach(k=>{
-    const tarief = parseInt(k.btwTarief ?? DB.profiel?.btwStandaard ?? '9');
-    const omzetExcl = parseFloat(k.totaalOmzet||0);
-    const btwBedrag = parseFloat(k.omzetBtw || omzetExcl * tarief / 100 || 0);
+    const kb = _kassaBedragen(k);
+    const tarief = kb.tarief;
+    const omzetExcl = kb.excl;
+    const btwBedrag = kb.btw;
     if(tarief===21){ gs1a+=omzetExcl; btw1a+=btwBedrag; }
     else if(tarief===9){ gs1b+=omzetExcl; btw1b+=btwBedrag; }
     else if(tarief===0){ gs1d+=omzetExcl; }
@@ -1637,12 +1671,15 @@ function _btwGeboektInPeriode(inPeriode){
   });
 
   // 3) Kassalijsten: omzet-BTW op de kassadatum
+  // Zelfde bedrag als _boekKassalijst boekt (_kassaBedragen, kassier.js).
   (DB.kassalijsten||[]).filter(k=>k.status==='goedgekeurd' && inPeriode(k.datum)).forEach(k=>{
-    teBetalen += parseFloat(k.omzetBtw)||0;
+    teBetalen += _kassaBedragen(k).btw;
   });
 
-  // 4) Memoriaalboekingen rechtstreeks op een BTW-rekening (handmatige correcties)
-  (DB.memoriaal||[]).filter(m=>inPeriode(m.datum||'') && m.type!=='jaarafsluiting' && m.type!=='saldocorrectie').forEach(m=>{
+  // 4) Memoriaalboekingen rechtstreeks op een BTW-rekening (handmatige correcties).
+  // 'kassalijst' niet: die BTW is hierboven (3) al geteld — keurKassaGoed schrijft
+  // dezelfde boeking óók als memoriaal, dus meetellen gaf elke kassalijst dubbel.
+  (DB.memoriaal||[]).filter(m=>inPeriode(m.datum||'') && m.type!=='jaarafsluiting' && m.type!=='saldocorrectie' && m.type!=='kassalijst').forEach(m=>{
     (m.regels||[]).forEach(r=>{
       const g = (DB.grootboek||[]).find(x=>x.id===r.gbId); if(!g) return;
       const eff = (r.effect!==undefined) ? r.effect : _memSaldoEffect(g, r.dc, r.bedrag);
@@ -1732,54 +1769,44 @@ function renderJaaropgave(){
   // Vul jaar dropdown
   const sel = document.getElementById('jaar-select');
   if(sel && !sel.children.length){
+    // Elk jaar met een boeking die in de P&L telt — ook alleen bank of memoriaal.
     const jaren = [...new Set([
-      ...DB.verkoop.map(f=>new Date(f.datum||'').getFullYear()),
-      ...DB.inkoop.map(f=>new Date(f.datum||'').getFullYear()),
+      ...[...DB.verkoop, ...DB.inkoop, ...(DB.transacties||[]), ...(DB.memoriaal||[]), ...(DB.kassalijsten||[])]
+        .map(x=>_parseDatum(x.datum)?.jaar),
       huidigJaar
     ])].filter(j=>j>2000).sort((a,b)=>b-a);
     sel.innerHTML = jaren.map(j=>`<option value="${j}" ${j===huidigJaar?'selected':''}>${j}</option>`).join('');
   }
   const jaar = parseInt(sel?.value||huidigJaar);
 
-  function inJaar(datum){ return new Date(datum||'').getFullYear()===jaar; }
+  function inJaar(datum){ return _parseDatum(datum)?.jaar===jaar; }
 
-  // Winst berekening — alleen op basis van facturen en memoriaal van het geselecteerde jaar
-  // Bij kasstelsel: omzet en kosten op betaaldatum, niet factuurdatum
-  const _kasstelsel = isKasstelsel();
-  // Factuuromzet
-  const factuurOmzetJaar = DB.verkoop.reduce((a,f)=>{
-    const d = _kasstelsel ? getBtwDatum(f) : f.datum;
-    if(!d || !inJaar(d)) return a;
-    return a + (_kasstelsel ? getOmzetKas(f) : parseFloat(f.totaalExcl||0));
-  }, 0);
-  // Kassaomzet — altijd op kassadatum (inherent kasstelsel)
+  // Winst = de P&L van dit jaar (berekenPLVoorPeriode) — dezelfde berekening als
+  // het P&L-rapport en de dashboards, en via balansAudit tegen het grootboek
+  // gecontroleerd. Altijd op factuurdatum: het kasstelsel geldt alleen voor de BTW.
+  const pl = berekenPLVoorPeriode('', String(jaar));
+  const omzet = pl.totOmzet;
+  const totaalKosten = pl.totKosten;
+  const winstVoorAftrek = omzet - totaalKosten;
+  // Uitsplitsing alleen ter toelichting; de restregels zorgen dat de regels
+  // altijd optellen tot het P&L-totaal.
+  const factuurOmzetJaar = pl.factuurOmzet;
   const kassaOmzetJaar = (DB.kassalijsten||[])
     .filter(k=>k.status==='goedgekeurd'&&inJaar(k.datum))
     .reduce((a,k)=>a+parseFloat(k.totaalOmzet||0), 0);
-  const inkoopKosten = DB.inkoop.reduce((a,f)=>{
-    const d = _kasstelsel ? getBtwDatum(f) : f.datum;
-    if(!d || !inJaar(d)) return a;
-    return a + getInkoopKas(f); // gebruikt _getBetaaldRatio intern
-  }, 0);
-  // Afschrijvingen uit memoriaal van dit jaar — niet uit grootboeksaldo (dat is cumulatief)
+  const inkoopKosten = pl.inkoopKosten;
   const afschrijvingen = (DB.memoriaal||[]).filter(m=>inJaar(m.datum)&&m.type==='afschrijving').reduce((a,m)=>a+parseFloat(m.debet||0),0);
-  // Directe omzet- en kostenboekingen via bank die niet via factuur lopen.
-  // Zelfde bronregels als de P&L (#20): deelboekingen via _bankGbDelen, rekening via
-  // _bankGbRekening, excl. BTW via het wérkelijk geboekte tarief (t.btwTarief/splitsregels).
   let directeOmzet = 0, directeKosten = 0;
-  DB.transacties.filter(t=>inJaar(t.datum)&&t.status==='gekoppeld'&&t.gekoppeldType==='grootboek').forEach(t=>{
+  DB.transacties.filter(t=>inJaar(t.datum)&&t.gekoppeldType==='grootboek').forEach(t=>{
     _bankGbDelen(t).forEach(d=>{
       const g = _bankGbRekening(d, t); if(!g) return;
-      const bedrag = parseFloat(d.bedrag)||0;
-      const tarief = parseFloat(d.btwTarief)||0;
-      const excl = tarief>0 ? Math.abs(bedrag)/((100+tarief)/100) : Math.abs(bedrag);
-      if(g.type==='omzet' && bedrag>0) directeOmzet += excl;
-      else if(g.type==='kosten' && bedrag<0) directeKosten += excl;
+      const ex = _bankExclSigned(d);
+      if(g.type==='omzet') directeOmzet += ex;
+      else if(g.type==='kosten') directeKosten -= ex;
     });
   });
-  const omzet = factuurOmzetJaar + kassaOmzetJaar + directeOmzet;
-  const totaalKosten = inkoopKosten + afschrijvingen + directeKosten;
-  const winstVoorAftrek = omzet - totaalKosten;
+  const overigeOmzet  = omzet - factuurOmzetJaar - kassaOmzetJaar - directeOmzet;
+  const overigeKosten = totaalKosten - inkoopKosten - afschrijvingen - directeKosten;
 
   // Aftrekposten ophalen uit velden
   const urencriterium = document.getElementById('jaar-urencriterium')?.value==='ja';
@@ -1813,10 +1840,12 @@ function renderJaaropgave(){
   if(winstEl) winstEl.innerHTML = `
     ${factuurOmzetJaar>0?`<div class="report-row"><span class="indent">Omzet facturen (excl. BTW)</span><span class="mono amount-pos">${fmt(factuurOmzetJaar)}</span></div>`:''}
     ${kassaOmzetJaar>0?`<div class="report-row"><span class="indent">Omzet kassalijsten (excl. BTW)</span><span class="mono amount-pos">${fmt(kassaOmzetJaar)}</span></div>`:''}
-    ${directeOmzet>0?`<div class="report-row"><span class="indent">Directe omzetboekingen bank (excl. BTW)</span><span class="mono amount-pos">${fmt(directeOmzet)}</span></div>`:''}
-    ${factuurOmzetJaar===0&&kassaOmzetJaar===0&&directeOmzet===0?`<div class="report-row"><span class="indent">Omzet (excl. BTW)</span><span class="mono amount-pos">${fmt(omzet)}</span></div>`:''}
+    ${Math.abs(directeOmzet)>0.005?`<div class="report-row"><span class="indent">Directe omzetboekingen bank (excl. BTW)</span><span class="mono amount-pos">${fmt(directeOmzet)}</span></div>`:''}
+    ${Math.abs(overigeOmzet)>0.005?`<div class="report-row"><span class="indent">Overige omzetboekingen (memoriaal)</span><span class="mono amount-pos">${fmt(overigeOmzet)}</span></div>`:''}
+    ${Math.abs(omzet)<0.005?`<div class="report-row"><span class="indent">Omzet (excl. BTW)</span><span class="mono amount-pos">${fmt(omzet)}</span></div>`:''}
     <div class="report-row"><span class="indent">Inkoopkosten (facturen)</span><span class="mono amount-neg">- ${fmt(inkoopKosten)}</span></div>
-    ${directeKosten>0?`<div class="report-row"><span class="indent">Directe kostenboekingen (bank)</span><span class="mono amount-neg">- ${fmt(directeKosten)}</span></div>`:''}
+    ${Math.abs(directeKosten)>0.005?`<div class="report-row"><span class="indent">Directe kostenboekingen (bank)</span><span class="mono amount-neg">- ${fmt(directeKosten)}</span></div>`:''}
+    ${Math.abs(overigeKosten)>0.005?`<div class="report-row"><span class="indent">Overige kostenboekingen (memoriaal)</span><span class="mono amount-neg">- ${fmt(overigeKosten)}</span></div>`:''}
     ${afschrijvingen>0?`<div class="report-row"><span class="indent">Afschrijvingen</span><span class="mono amount-neg">- ${fmt(afschrijvingen)}</span></div>`:''}
     <div class="report-row subtotal"><span>Winst uit onderneming</span><span class="mono" style="color:${winstVoorAftrek>=0?'#16a34a':'#dc2626'};font-weight:700;font-size:15px;">${fmt(winstVoorAftrek)}</span></div>`;
 

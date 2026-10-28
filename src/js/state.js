@@ -1368,26 +1368,6 @@ function getBtwDatum(factuur){
   return null; // onbetaald, telt niet mee
 }
 
-// Geeft de belastbare omzet excl BTW terug voor deze factuur in deze periode
-// Bij kasstelsel: proportioneel op basis van betaald bedrag
-function getOmzetKas(factuur){
-  const ratio = _getBetaaldRatio(factuur);
-  return parseFloat(factuur.totaalExcl||0) * ratio;
-}
-
-// Geeft het aftrekbare BTW-bedrag terug voor inkoop
-// Bij kasstelsel: proportioneel op basis van betaald bedrag
-function getBtwBedragKas(factuur){
-  const ratio = _getBetaaldRatio(factuur);
-  return parseFloat(factuur.btwBedrag||0) * ratio;
-}
-
-// Geeft de aftrekbare inkoop excl BTW terug
-// Bij kasstelsel: proportioneel op basis van betaald bedrag
-function getInkoopKas(factuur){
-  const ratio = _getBetaaldRatio(factuur);
-  return parseFloat(factuur.totaalExcl||0) * ratio;
-}
 function today(){ return new Date().toISOString().split('T')[0]; }
 function fmt(n){ return '€ '+parseFloat(n||0).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.'); }
 function fmtRaw(n){ return parseFloat(n||0).toFixed(2).replace('.',','); }

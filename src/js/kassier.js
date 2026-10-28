@@ -1808,7 +1808,7 @@ function _kassaBedragen(k){
   // Kas ontvangt het fysieke geld: incl BTW, tenzij de lijst een contant-telling heeft.
   const kasBedrag = contant > 0 ? contant : incl;
   return {
-    tarief: parseInt(k.btwTarief ?? DB.profiel?.btwStandaard ?? '21'),
+    tarief: (t => isNaN(t) ? 21 : t)(parseInt(k.btwTarief ?? DB.profiel?.btwStandaard ?? '21')),
     incl, excl, btw, contant, uitgaven, kasBedrag,
     kasMutatie: kasBedrag - uitgaven,
     verschil: kasBedrag - excl - btw,
@@ -1836,18 +1836,28 @@ function _kassaRekeningen(btwBedrag, maakBtwAan){
   }
   const verschilRek = DB.grootboek.find(g=>g.naam.toLowerCase().includes('kassaverschil'))
     || DB.grootboek.find(g=>g.nummer==='8900');
-  return { kasRek, omzetRek, btwRek, verschilRek };
+  // Uitgaven uit de kas (zonder bon/BTW-splitsing) → Overige kosten.
+  const kostenRek = DB.grootboek.find(g=>g.nummer==='8300')
+    || DB.grootboek.find(g=>g.type==='kosten');
+  return { kasRek, omzetRek, btwRek, verschilRek, kostenRek };
 }
 
 // mult = 1 boekt de kassalijst, mult = -1 draait exact dezelfde mutaties terug.
 function _boekKassalijst(k, mult){
   const b = _kassaBedragen(k);
   const r = _kassaRekeningen(b.btw, mult > 0);
-  const muteer = (g, bedrag)=>{ if(g) g.saldo = (parseFloat(g.saldo)||0) + mult*bedrag; };
-  muteer(r.kasRek,   b.kasMutatie);   // debet kas — fysiek geld, dus incl BTW
+  const muteer = (g, bedrag)=>{ if(g) g.saldo = rond((parseFloat(g.saldo)||0) + mult*bedrag); };
+  muteer(r.kasRek,   b.kasMutatie);   // debet kas — fysiek geld, dus incl BTW, min uitgaven
   muteer(r.omzetRek, b.excl);         // credit omzet — alleen excl BTW
   if(b.btw > 0) muteer(r.btwRek, b.btw);
-  if(Math.abs(b.verschil) > 0.01) muteer(r.verschilRek, b.verschil);
+  // Tegenboeking van de uitgaven (debet kosten) — zonder deze regel ging alleen de
+  // kas omlaag en blokkeerde de balanscontrole elke lijst met uitgaven.
+  if(b.uitgaven > 0) muteer(r.kostenRek, b.uitgaven);
+  // Kasverschil: overschot = credit, tekort = debet. Teken via het rekeningtype
+  // (#17) — 8900 is een kostenrekening, daar verlaagt een credit het saldo.
+  if(Math.abs(b.verschil) > 0.01 && r.verschilRek){
+    muteer(r.verschilRek, _memSaldoEffect(r.verschilRek, b.verschil > 0 ? 'credit' : 'debet', Math.abs(b.verschil)));
+  }
   return Object.assign({}, b, r);
 }
 
@@ -1860,6 +1870,8 @@ async function keurKassaGoed(id){
     'Kassalijst goedkeuren', 'Goedkeuren'
   );
   if(!ok) return;
+  // Kan intussen (ander scherm, dubbele klik) al goedgekeurd zijn — dan niet nog eens boeken.
+  if(DB.kassalijsten.find(x=>x.id===id)?.status==='goedgekeurd'){ toast('Deze kassalijst is al goedgekeurd.','info'); return; }
 
   const g = _boekKassalijst(k, 1);
   const btwTarief = g.tarief;
@@ -1886,6 +1898,11 @@ async function keurKassaGoed(id){
       ...(kasOmzetBtw > 0 ? [{
         dc:'credit', gbId:btwRek?.id||'', oms:`BTW ${btwTarief}% kassa`, bedrag:kasOmzetBtw
       }] : []),
+      // Uitgaven betaald uit de kas: Debet kosten / Credit kas
+      ...(g.uitgaven > 0 ? [
+        {dc:'debet',  gbId:g.kostenRek?.id||'', oms:'Uitgaven uit kas', bedrag:g.uitgaven},
+        {dc:'credit', gbId:kasRek?.id||'',      oms:'Uitgaven uit kas', bedrag:g.uitgaven},
+      ] : []),
       ...(Math.abs(boekverschil) > 0.01 ? [{
         dc: boekverschil > 0 ? 'credit' : 'debet',
         // Dezelfde rekening als waar _boekKassalijst het verschil op zette —
@@ -1940,7 +1957,7 @@ async function verwijderKassalijst(id){
     }
   }
   DB.kassalijsten = DB.kassalijsten.filter(x=>x.id!==id);
-  save();
+  if(!save()) return; // balans blokkeerde: alles is al teruggezet en hertekend
   renderKassaoverzicht();
   toast(`Kassalijst ${k.datum} verwijderd${wasGoedgekeurd?' — boeking teruggedraaid':''}.`, 'info');
 }
@@ -1950,6 +1967,7 @@ async function trekKassaGBTerug(id){
   if(!DB.grootboek) DB.grootboek = [];
   const k = DB.kassalijsten.find(k=>k.id===id);
   if(!k) return;
+  if(k.status!=='goedgekeurd'){ toast('Deze kassalijst is niet (meer) geboekt.','info'); return; }
   const v = _kassaBedragen(k);
   const ok = await bevestig(
     `Boeking van kassalijst ${k.datum} terugdraaien?\n\nDit wordt teruggeboekt:\n• Kas: -${fmt(v.kasMutatie)}\n• Omzet excl BTW: -${fmt(v.excl)}\n• BTW ${v.tarief}% te betalen: -${fmt(v.btw)}`,
@@ -1962,12 +1980,15 @@ async function trekKassaGBTerug(id){
 
   // Verwijder ook de memoriaalboeking die bij goedkeuren werd aangemaakt,
   // zodat grootboek en memoriaal in sync blijven na het terugdraaien.
+  // Zelfde match als verwijderKassalijst, incl. de fallback voor oude boekingen
+  // zonder kassaId — anders telt de P&L de teruggedraaide omzet nog mee.
   if(DB.memoriaal){
     const idx = DB.memoriaal.findIndex(m=>m.kassaId===k.id);
     if(idx !== -1) DB.memoriaal.splice(idx, 1);
+    else DB.memoriaal = DB.memoriaal.filter(m=>!(!m.kassaId&&m.oms&&m.oms.includes(k.datum)&&m.oms.includes('Kassalijst')));
   }
   k.status = 'ingediend';
-  save();
+  if(!save()) return;
   renderKassaoverzicht();
   toast(`Boeking teruggedraaid — kassalijst staat weer open.`, 'info');
 }

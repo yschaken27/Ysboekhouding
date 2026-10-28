@@ -642,26 +642,27 @@ function renderMobDashboard(){
   const lijsten = (DB.kassalijsten||[]).filter(l=>l && l.status!=='afgewezen' && l.status!=='afgekeurd');
   const inkoop  = (DB.inkoop||[]).filter(f=>f);
 
-  // Omzet = kassalijsten + facturen, op (factuur/kassa)datum. Twee sommen: de
-  // tegels tonen excl. BTW, de subregels incl. BTW — nooit door elkaar.
+  // Omzet, kosten en netto komen uit de P&L (plVoorMaanden, btw-rapport.js) —
+  // exact dezelfde cijfers als het W&V-rapport van de boekhouder, inclusief
+  // bankboekingen en memoriaal. Ingediende kassalijsten staan daar pas na
+  // goedkeuring in; die tonen we apart als "nog goed te keuren".
   const omzetVan = past=>{
     const l = lijsten.filter(x=>past(x.datum));
     const f = facturen.filter(x=>past(x.datum));
+    const wacht = l.filter(x=>x.status==='ingediend'||x.status==='open');
     return {
       lijsten: l, facturen: f,
-      excl: l.reduce((s,x)=>s+(parseFloat(x.totaalOmzet||0)),0)
-          + f.reduce((s,x)=>s+(parseFloat(x.totaalExcl||0)),0),
-      incl: l.reduce((s,x)=>s+(parseFloat(x.totaalOmzetIncl||x.totaalOmzet||0)),0)
-          + f.reduce((s,x)=>s+(parseFloat(x.totaalIncl??x.totaal)||0),0),
+      wachtExcl: wacht.reduce((s,x)=>s+(parseFloat(x.totaalOmzet||0)),0),
     };
   };
+  const plMaand = m => plVoorMaanden(_mobJaar, [m+1]); // m = 0..11
   const set = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
 
   // ---- Jaarknoppen: huidig jaar + elk jaar waarin iets geboekt staat ----
   const jaren = new Set([nu.getFullYear(), _mobJaar]);
-  [...facturen, ...lijsten, ...inkoop].forEach(x=>{
-    const j = String(x.datum||'').slice(0,4);
-    if(/^\d{4}$/.test(j)) jaren.add(parseInt(j,10));
+  [...facturen, ...lijsten, ...inkoop, ...(DB.transacties||[]), ...(DB.memoriaal||[])].forEach(x=>{
+    const j = _parseDatum(x.datum)?.jaar; // zelfde datumlezing als de P&L (ook DD-MM-YYYY)
+    if(j) jaren.add(j);
   });
   const jaarBar = document.getElementById('mob-jaar-bar');
   if(jaarBar){
@@ -672,9 +673,11 @@ function renderMobDashboard(){
 
   // ---- Jaartotaal ----
   const jaar = omzetVan(d=>_mobInJaar(d, _mobJaar));
+  const jaarPL = plVoorMaanden(_mobJaar, null);
   set('mob-jaar-label', 'Omzet ' + _mobJaar);
-  set('mob-omzet', mobFmtEur(jaar.excl));
-  set('mob-jaar-sub', `incl. BTW ${mobFmtEur(jaar.incl)} · ${jaar.facturen.length} factu${jaar.facturen.length===1?'ur':'ren'}`);
+  set('mob-omzet', mobFmtEur(jaarPL.omzet));
+  set('mob-jaar-sub', `${jaar.facturen.length} factu${jaar.facturen.length===1?'ur':'ren'}`
+    + (jaar.wachtExcl > 0.005 ? ` · nog goed te keuren ${mobFmtEur(jaar.wachtExcl)}` : ''));
 
   // ---- Maandgrafiek: zes maanden, eindigend bij de huidige maand (of december
   // voor een eerder jaar). In januari t/m mei: jan–jun, toekomst grijs. ----
@@ -683,7 +686,7 @@ function renderMobDashboard(){
   const maanden = [];
   for(let m=start; m<start+6; m++){
     const toekomst = _mobJaar === nu.getFullYear() && m > nu.getMonth();
-    maanden.push({ m, toekomst, excl: toekomst ? 0 : omzetVan(d=>_mobInMaand(d, _mobJaar, m)).excl });
+    maanden.push({ m, toekomst, excl: toekomst ? 0 : plMaand(m).omzet });
   }
   if(_mobMaand < start || _mobMaand > start+5) _mobMaand = eind;
   const hoogste = Math.max(0, ...maanden.map(x=>x.excl));
@@ -701,18 +704,15 @@ function renderMobDashboard(){
   // ---- Gekozen maand ----
   const inMaand = d=>_mobInMaand(d, _mobJaar, _mobMaand);
   const maand = omzetVan(inMaand);
-  // Kosten = kassa-uitgaven + inkoopfacturen van de maand, excl. BTW zoals de
-  // omzet, anders klopt netto (= omzet − kosten) niet. totUitgaven staat bij de
-  // huidige kassa-invoer altijd op 0; de inkoopfacturen maken de tegel zinvol.
-  const kosten = maand.lijsten.reduce((s,l)=>s+(parseFloat(l.totUitgaven||0)),0)
-    + inkoop.filter(f=>inMaand(f.datum)).reduce((s,f)=>s+(parseFloat(f.totaalExcl||0)),0);
-  const netto = maand.excl - kosten;
+  const maandPL = plMaand(_mobMaand);
+  const kosten = maandPL.kosten;
+  const netto = maandPL.resultaat;
   const openstaand = maand.lijsten.filter(l=>l.status==='ingediend'||l.status==='open').length
     + maand.facturen.filter(f=>f.status!=='betaald').length;
 
   set('mob-periode-label', MOB_MND_LANG[_mobMaand] + ' ' + _mobJaar);
-  set('mob-maand-omzet', mobFmtEur(maand.excl));
-  set('mob-maand-omzet-incl', mobFmtEur(maand.incl));
+  set('mob-maand-omzet', mobFmtEur(maandPL.omzet));
+  set('mob-maand-omzet-incl', mobFmtEur(maand.wachtExcl));
   set('mob-maand-facturen', `${maand.facturen.length} factu${maand.facturen.length===1?'ur':'ren'}`);
   set('mob-kosten', mobFmtEur(kosten));
   set('mob-netto', mobFmtEur(netto));

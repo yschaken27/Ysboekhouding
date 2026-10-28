@@ -194,7 +194,9 @@ de module `kassa`.
   daarom ook de Dashboard-tab).
 - **Dashboard** (`renderMobDashboard`): jaarknoppen, jaaromzet, grafiek van 6 maanden met bedrag
   erboven, cijfers van de getikte maand, BTW per kwartaal (`_renderMobBtw`, module `btw`).
-  Omzet = kassalijsten (afgewezen niet) + ALLE verkoopfacturen. Datums vergelijken op de
+  Omzet, kosten en netto = de P&L (`plVoorMaanden`, zie #32) — dezelfde cijfers als het
+  W&V-rapport. Ingediende kassalijsten staan daar pas na goedkeuring in; die tonen apart als
+  "Nog goed te keuren". Aantallen (facturen, lijsten) vergelijken datums op de
   `'YYYY-MM'`-prefix, niet via `new Date()` (tijdzone).
 - **BTW-blok** rekent via `berekenBtwPeriode` — exact dezelfde berekening als het BTW-rapport (#26).
 - **Facturen-tab**: open, vervallen en ALLE betaalde facturen; "Terugdraaien" alleen bij een
@@ -384,8 +386,10 @@ wordt gecontroleerd en de ingreep die invariant juist herstelt.
 
 ### 20. P&L is categorie-gebaseerd uit ALLE bronnen (niet alleen facturen)
 `berekenPLVoorPeriode` (btw-rapport.js) bouwt `omzetPerRek` en `kostenPerRek` per grootboekrekening uit drie bronnen samen — nooit meer alleen verkoop-/inkoopfacturen:
-1. **Facturen**: per regel via `r.gbId`, met kasstelsel-ratio `_getBetaaldRatio(f)`.
-2. **Directe bankkoppelingen** (`t.gekoppeldType==='grootboek'`): rekening via `t.tegenrekeningId` (of `t.splitsRegels` bij een gesplitste koppeling), anders fallback op de `gekoppeldAan`-tekst; bedrag EXCL. BTW via `t.btwTarief` (0% voor oude data). Alleen `type==='omzet' && bedrag>0` → omzet, `type==='kosten' && bedrag<0` → kosten. Balansrekeningen tellen niet mee.
+1. **Facturen**: via `_factuurBoekRegels(f)` — precies zoals geboekt. **Altijd op factuurdatum, ook
+   bij het kasstelsel**: dat is een BTW-regeling (`berekenBtwPeriode` volgt wél de betaaldatum),
+   de winst hoort bij het jaar waarin de omzet ontstaat. Gebruik hier nooit `_getBetaaldRatio`.
+2. **Directe bankkoppelingen** (`t.gekoppeldType==='grootboek'`): rekening via `t.tegenrekeningId` (of `t.splitsRegels` bij een gesplitste koppeling), anders fallback op de `gekoppeldAan`-tekst; bedrag EXCL. BTW via `t.btwTarief` (0% voor oude data), **met teken** (`_bankExclSigned`): omzet `+excl`, kosten `−excl` — exact zoals `_boekTegenrekening` het saldo muteert. Een terugbetaling op een kostenrekening verlaagt dus de kosten, een creditering op omzet de omzet. (Tot okt 2026 telde alleen "ontvangst op omzet / uitgave op kosten" en week de P&L af van het grootboek.) Balansrekeningen tellen niet mee.
 3. **Memoriaal** (`m.type` niet `jaarafsluiting` of `saldocorrectie`): per regel via `r.gbId`.
 `totOmzet`/`totKosten` = som van de maps. `renderPL` toont elke rekening als eigen klikbare regel (→ grootboekkaart, #19).
 
@@ -630,6 +634,47 @@ lijst de andere zonder melding. `'kassa_'` (kassier.js, activa.js) en `'bon_'` (
 aug 2026 omgezet naar `uid()`; er staat nu nergens meer een kale `Date.now()` als gepersisteerde
 sleutel (alleen nog als vluchtige DOM-rij-id).
 
+### 32. Eén berekening per cijfer, en die berekening wordt tegen het grootboek gecontroleerd
+Okt 2026: P&L, jaaropgave, eigenaar-dashboard en kassier-dashboard rekenden elk hun eigen versie
+van omzet en kosten uit losse documenten. Daardoor liepen ze stil uit elkaar (bankkosten ontbraken
+op de dashboards, terugbetalingen in de P&L, de jaaropgave miste memoriaal). De regel nu:
+- **Omzet / kosten / resultaat komen alleen uit `berekenPLVoorPeriode`**, via `plVoorMaanden(jaar, maanden)`
+  en `plPerMaand(jaar)` (btw-rapport.js). Dashboard-tegels, maandgrafieken, het downloadrapport en de
+  jaaropgave gebruiken die. Een uitsplitsing per bron (jaaropgave) mag, maar sluit met een restregel
+  op het P&L-totaal.
+- **Saldi (bank, debiteuren, crediteuren) komen uit het grootboek** via `dashboardSaldi()` — de som
+  van alle bankrekeningen, niet de eerste die gevonden wordt; openstaand = saldo 1300, niet de som
+  van niet-betaalde facturen (dat telde gedeeltelijk betaalde facturen voor het volle bedrag).
+- **`balansAudit()` legt die P&L zelf (alle periodes, plus `jaarafsluiting`-regels) per rekening naast
+  `g.saldo`.** Er is dus geen tweede kopie van de P&L-logica meer die toevallig wél goed rekent.
+  Reken je in de P&L iets anders dan er geboekt is, dan verschijnt de rode banner op Dashboard,
+  Balans en W&V. Bedragen die de P&L op geen rekening kan zetten komen als "Omzet/Kosten zonder
+  rekening" in de banner; een document zonder datum valt buiten de P&L en geeft een
+  afwijking op zijn rekening. Ook 8900 wordt gecontroleerd: betalingsverschillen
+  (`t.betalingsverschil`) en kasverschillen (kassalijst-memoriaal) staan allebei in de P&L.
+- Een factuurregel op een balansrekening (bv. inkoop op `vaste_activa`) telt NIET als kosten in
+  de P&L — zo staat hij ook in het grootboek.
+- Bouw je een nieuw scherm met omzet/kosten: gebruik `plVoorMaanden`. Nieuwe boekingsbron: zorg dat
+  de P&L hem kent (#26), anders slaat de audit aan — dat is de bedoeling.
+
+**Kassalijst-boeking (`_boekKassalijst`)**: uitgaven krijgen een tegenboeking op 8300 (Debet kosten /
+Credit kas), het kasverschil gaat met het teken van het rekeningtype (`_memSaldoEffect`) naar 8900.
+Zonder die twee blokkeerde de balanscontrole elke lijst met uitgaven of een kastelling.
+De BTW-aansluitcontrole (`_btwGeboektInPeriode`) telt kassalijst-BTW via de kassalijst zelf en
+slaat het memoriaal van type `kassalijst` over — anders telde die BTW dubbel.
+
 ## Losse eindjes (geen risico)
+- BTW-rubrieken bij terugbetalingen via de bank: een terugbetaalde kostenpost met BTW komt in
+  rubriek 1a (omzet) i.p.v. als lagere voorbelasting in 5b, en een creditering op omzet in 5b.
+  Het te betalen saldo klopt en sluit aan op 1510/1500 (`_boekTegenrekening` boekt de BTW op
+  richting), alleen de indeling van de rubrieken niet. Oplossen vraagt een BTW-rekening per
+  rekeningtype in `_boekTegenrekening` + opgeslagen BTW-rekening per transactie voor het terugdraaien.
+- Kassa-BTW gaat naar 2300 of 1810 als zo'n eigen rekening bestaat (`_kassaRekeningen`); de
+  BTW-aansluitcontrole kent alleen 1510/1530. Alleen een risico bij bedrijven met zo'n eigen rekening.
+- Kasstelsel + tekort < €2 dat als betalingsverschil is afgeboekt: de factuur staat op betaald,
+  maar `_getBetaaldRatio` blijft < 1, dus de aangifte telt een paar cent BTW minder dan 1510.
+- Datums altijd lezen met `_parseDatum` (btw-rapport.js): bank-CSV's bewaren soms DD-MM-YYYY,
+  en `new Date('03-04-2026')` geeft 4 maart. P&L, BTW-aangifte, jaaropgave en dashboard-jaarknoppen
+  doen dat nu; de aantallen-tellingen op het kassier-dashboard vergelijken nog op `'YYYY-MM'`.
 - (Verwijderd 2026-07-22: de twee oude "regel ~3976 / ~1751"-notities verwezen naar de
   inmiddels opgesliste monoliet-`index.html` en klopten niet meer met de `src/`-structuur.)
