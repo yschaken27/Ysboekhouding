@@ -142,7 +142,23 @@ Modals (okt 2026): `modal-bedrijf`, `modal-opdrachtgevers`, `modal-gebruiker-det
   `_boekGegenereerdeFactuur()`. Cloud-writes alleen via `voegUrenToe` / `updateUrenStatus` /
   `updateUrenItem` / `verwijderUrenItem` (zie Architectuur).
 - Los daarvan: `uploadBijlage` (bijlagen in de factuurmodal van de eigenaar) zet een bestand in
-  Storage onder `${bedrijf}/facturen/${factuurId}/${naam}` en geeft de downloadURL terug.
+  Storage onder `${bedrijf}/facturen/${factuurId}/${naam}` en geeft de downloadURL terug
+  (`driveUrl` in `bijlagenMeta` = staat in Storage). **Maar die upload draait niet:**
+  `slaaBijlagenOp` bestaat twee keer — de IndexedDB-versie in btw-rapport.js laadt ná state.js en
+  overschrijft de Storage-versie. Bijlagen staan dus alleen in IndexedDB van het apparaat waar ze
+  zijn toegevoegd (niet zichtbaar op andere apparaten). De state.js-versie niet zomaar activeren:
+  bekijken/thumbnails (`openBijlage`, `renderBijlagenModalLijst`) lezen alleen uit IndexedDB.
+  `verwijderBijlage` en `verwijderAlleBijlagen` halen bijlagen mét `driveUrl` ook uit Storage
+  (`verwijderBijlagenCloud`).
+
+## Bedrijf verwijderen (`verwijderBedrijf` → `verwijderBedrijfCloud`)
+Cloud eerst, lokaal pas bij `{ok:true}`; anders blijft het bedrijf in de lijst en kan het opnieuw.
+Volgorde, elke stap alleen als de vorige gelukt is: bijlagepaden verzamelen (`listAll` op
+`{bedrijf}/facturen/`, terugval op `bijlagenMeta`) → Storage + `bedrijven_toegang` bijwerken →
+`toegang` → data-docs + uploads → bedrijf-doc → `data/main` als allerlaatste (zolang die bestaat
+vindt `getBedrijvenLijst` het bedrijf nog). Vooraf `flushSave()`, achteraf de naam uit
+`DB.kassiers[].bedrijven`. **Bekend risico:** heeft een tweede apparaat het bedrijf nog open, dan
+maakt een `save()` daar `data/main` opnieuw aan — sluit het bedrijf eerst op andere apparaten.
 
 ### Instellingen per opdrachtgever (centraal register, `DB.profiel.opdrachtgevers`)
 Beheerd in twee schermen die dezelfde `_cpOpdrachtgevers`-state delen (state.js):
@@ -222,6 +238,9 @@ Wat de regels toestaan, kort:
   `data/verkoop`, `data/kassierboekingen` en het veld `grootboek` van `data/main`, plus
   `create`/`update` in de collectie `uploads` (bonnen).
   Het grootboek-veld is precies wat `markeerFactuurBetaald()` nodig heeft.
+- Storage: alleen de hoofdeigenaar, op `{bedrijf}/facturen/{pad=**}`. De `**` is nodig voor
+  `listAll` bij bedrijf verwijderen (okt 2026) — terugzetten naar `{factuurId}/{bestand}` breekt
+  het opruimen van oude bijlagen (er is dan een terugval, maar die mist losse bestanden).
 
 Twee dingen om te weten bij het aanpassen:
 - `laadAlles()` leest zes documenten plus de `uploads`-collectie in één `Promise.all`. Weiger je

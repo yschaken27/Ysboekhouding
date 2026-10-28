@@ -546,6 +546,22 @@
       return JSON.stringify({ok:true, result:{driveUrl:url, viewUrl:url, naam:b.naam, type:b.type}});
     },
 
+    // Verwijder factuurbijlagen uit Storage (zelfde pad als uploadBijlage). Een bestand
+    // dat er al niet meer is telt als gelukt. Geeft {ok, mislukt:[namen]} terug.
+    async verwijderBijlagenCloud(bedrijf, factuurId, namenJson){
+      const namen = JSON.parse(namenJson||'[]');
+      const res = await Promise.allSettled(namen.map(naam=>
+        storage.ref(`${bedrijf}/facturen/${factuurId}/${naam}`).delete()
+          .catch(e=>{ if(e?.code!=='storage/object-not-found') throw e; })
+      ));
+      const mislukt = namen.filter((naam,i)=>{
+        if(res[i].status==='fulfilled') return false;
+        console.error('[verwijderBijlagenCloud]', naam, res[i].reason);
+        return true;
+      });
+      return JSON.stringify({ok:!mislukt.length, mislukt});
+    },
+
     async uploadBon(bedrijf, jsonStr){
       const b = JSON.parse(jsonStr);
       console.log('[Bonnen] Opslaan in Firestore | bedrijf:', JSON.stringify(bedrijf), '| pad: bedrijven/'+bedrijf+'/uploads/'+b.id);
@@ -595,30 +611,42 @@
 
     // Verwijder alle Firebase-data van een bedrijf, in drie fasen. Geeft {ok, mislukt:[...]}
     // terug met per mislukte stap een leesbare naam.
-    // A. Bijlagepaden uit verkoop/inkoop lezen — moet vóór de data weg is, anders zijn ze
-    //    nooit meer te vinden. Lukt dat niet, dan wordt er niets verwijderd.
+    // A. Bijlagepaden verzamelen: de hele map {naam}/facturen/ via listAll (vangt ook
+    //    bestanden van eerder verwijderde facturen). Weigert Storage dat — storage.rules met
+    //    {pad=**} nog niet gepubliceerd — dan uit bijlagenMeta van verkoop/inkoop; dat moet
+    //    vóór de data weg is. Lukt geen van beide, dan wordt er niets verwijderd.
     // B. Factuurbijlagen in Storage + verwijzingen in bedrijven_toegang. Mislukt hier iets,
     //    dan stopt het vóór fase C: data/main blijft staan, het bedrijf blijft in de lijst
     //    (getBedrijvenLijst) en verwijderen kan opnieuw.
     // C. Toegang, data-docs (ook uren en het kassier-logboek) en uploads, het bedrijf-doc
     //    en als allerlaatste data/main — elke stap alleen als de vorige gelukt is.
-    // Bijlagen van eerder verwijderde facturen staan niet meer in bijlagenMeta en blijven
-    // achter: de map doorzoeken (listAll) valt buiten wat storage.rules zeker toestaat.
     async verwijderBedrijfCloud(naam){
       const bedrijfRef = db.collection('bedrijven').doc(naam);
       const dataRef = bedrijfRef.collection('data');
 
       // Fase A
+      const lijstMap = async ref=>{
+        const r = await ref.listAll();
+        const sub = await Promise.all(r.prefixes.map(lijstMap));
+        return [...r.items.map(i=>i.fullPath), ...sub.flat()];
+      };
       let paden;
       try {
-        const [vkSnap, ikSnap] = await Promise.all([dataRef.doc('verkoop').get(), dataRef.doc('inkoop').get()]);
-        const facturen = [vkSnap, ikSnap].flatMap(s=>s.exists ? (s.data().items||[]) : []);
-        paden = [...new Set(facturen.flatMap(f=>
-          (f.bijlagenMeta||[]).filter(m=>m && m.naam).map(m=>`${naam}/facturen/${f.id}/${m.naam}`)
-        ))];
+        paden = await lijstMap(storage.ref(`${naam}/facturen`));
       } catch(e){
-        console.error('[verwijderBedrijfCloud] factuurdata lezen', e);
-        return JSON.stringify({ok:false, mislukt:['factuurdata lezen (er is niets verwijderd)']});
+        console.warn('[verwijderBedrijfCloud] listAll niet toegestaan, terugval op bijlagenMeta', e);
+      }
+      if(!paden){
+        try {
+          const [vkSnap, ikSnap] = await Promise.all([dataRef.doc('verkoop').get(), dataRef.doc('inkoop').get()]);
+          const facturen = [vkSnap, ikSnap].flatMap(s=>s.exists ? (s.data().items||[]) : []);
+          paden = [...new Set(facturen.flatMap(f=>
+            (f.bijlagenMeta||[]).filter(m=>m && m.naam).map(m=>`${naam}/facturen/${f.id}/${m.naam}`)
+          ))];
+        } catch(e){
+          console.error('[verwijderBedrijfCloud] factuurdata lezen', e);
+          return JSON.stringify({ok:false, mislukt:['factuurdata lezen (er is niets verwijderd)']});
+        }
       }
 
       // Voert taken uit via allSettled en geeft de labels van de mislukte taken terug.

@@ -884,8 +884,6 @@ Let op: deze factuur is gekoppeld aan ${gekoppeldeTs.length} bankbetalingen (sam
     gt.factuurId = null;
   });
 
-  await verwijderAlleBijlagen(id);
-
   // Draai factuur grootboekboeking terug
   draaiFactuurGBTerug(f, type);
 
@@ -926,6 +924,9 @@ Let op: deze factuur is gekoppeld aan ${gekoppeldeTs.length} bankbetalingen (sam
   renderFacturen(type);
   updateBankStats();
   toast('Factuur verwijderd.','info');
+  // Bijlagen pas ná de geslaagde save: geen await midden in de terugdraaiboekingen, en
+  // blokkeert de balans, dan blijven de bijlagen bij de factuur die er nog staat.
+  await verwijderAlleBijlagen(id, f.bijlagenMeta);
 }
 
 // ===== FACTUURDOCUMENT =====

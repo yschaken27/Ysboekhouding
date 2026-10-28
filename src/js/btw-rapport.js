@@ -2612,7 +2612,7 @@ async function slaaBijlagenOp(factuurId){
 }
 
 // Verwijder alle bijlagen van een factuur uit IndexedDB
-async function verwijderAlleBijlagen(factuurId){
+async function verwijderAlleBijlagen(factuurId, bijlagenMeta){
   try {
     const db = await openIDB();
     const alleKeys = await new Promise(res=>{
@@ -2623,6 +2623,17 @@ async function verwijderAlleBijlagen(factuurId){
     const keys = alleKeys.filter(k=>k.startsWith(`factuur_${factuurId}_`));
     for(const k of keys) await idbVerwijder(k);
   } catch(e){ console.warn('verwijderAlleBijlagen error:', e); }
+  // Geüploade bijlagen ook uit Storage (de factuur is dan al uit DB, dus de meta komt
+  // mee als parameter). Mislukt dat, dan blijft het bestand staan tot bedrijf verwijderen.
+  const namen = (bijlagenMeta||[]).filter(m=>m.driveUrl).map(m=>m.naam);
+  if(!USE_CLOUD || !namen.length) return;
+  try {
+    const r = JSON.parse(await fbAanroep(fb=>fb.verwijderBijlagenCloud(huidigBedrijf, factuurId, JSON.stringify(namen))) || '{}');
+    if(!r.ok) toast(`Bijlage(n) niet uit de cloud verwijderd: ${(r.mislukt||[]).join(', ')}`,'warning');
+  } catch(e){
+    console.error('verwijderAlleBijlagen cloud:', e);
+    toast('Bijlage(n) niet uit de cloud verwijderd.','warning');
+  }
 }
 
 // Haal bijlage data op uit IndexedDB en open in nieuw venster
@@ -2722,6 +2733,17 @@ async function voegBijlagenToeViaModal(input){
 async function verwijderBijlage(type, id, index){
   const arr = type==='verkoop'?DB.verkoop:DB.inkoop;
   const f = arr.find(f=>f.id===id); if(!f||!f.bijlagenMeta) return;
+
+  // Eerst uit Storage (als hij daar staat); mislukt dat, dan niets weghalen zodat
+  // opnieuw proberen kan.
+  const b = f.bijlagenMeta[index];
+  if(USE_CLOUD && b?.driveUrl){
+    if(!checkOnline()) return;
+    let r;
+    try { r = JSON.parse(await fbAanroep(fb=>fb.verwijderBijlagenCloud(huidigBedrijf, id, JSON.stringify([b.naam]))) || '{}'); }
+    catch(e){ console.error('verwijderBijlage cloud:', e); r = {ok:false}; }
+    if(!r.ok){ toast('Bijlage niet verwijderd — de cloud gaf een fout. Probeer het opnieuw.','error'); return; }
+  }
 
   // Verwijder uit IDB
   await idbVerwijder(bijlageIdbId(id, index));

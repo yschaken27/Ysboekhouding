@@ -925,6 +925,14 @@ async function verwijderBedrijf(naam){
   }
   localStorage.removeItem('ledger_'+naam.replace(/\s+/g,'_').toLowerCase());
   saveBedrijven(getBedrijven().filter(b=>b!==naam));
+  // Ook uit de bedrijvenlijst per gebruiker (gebruikersbeheer). Pas ná saveBedrijven:
+  // slaKassiersOpCloud schrijft naar alle bedrijven in de lijst en zou het verwijderde
+  // bedrijf anders opnieuw aanmaken.
+  const metBedrijf = (DB.kassiers||[]).filter(k=>Array.isArray(k.bedrijven) && k.bedrijven.includes(naam));
+  if(metBedrijf.length){
+    metBedrijf.forEach(k=>{ k.bedrijven = k.bedrijven.filter(b=>b!==naam); });
+    await slaKassiersOpCloud();
+  }
   toast(`Bedrijf "${naam}" volledig verwijderd.`,'info');
   renderBedrijfList();
 }

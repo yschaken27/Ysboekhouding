@@ -28,7 +28,11 @@ service firebase.storage {
       return ingelogd() && request.auth.token.email.lower() == 'ymeraldo@hotmail.com';
     }
 
-    match /{bedrijf}/facturen/{factuurId}/{bestand} {
+    // {pad=**} i.p.v. {factuurId}/{bestand}: dan mag de eigenaar de map ook doorzoeken
+    // (listAll), zodat verwijderBedrijfCloud ook bijlagen van eerder verwijderde facturen
+    // opruimt. Een list-aanvraag op {bedrijf}/facturen/ valt niet onder een regel met een
+    // vast aantal padstukken.
+    match /{bedrijf}/facturen/{pad=**} {
       allow read, write: if isEigenaar();
     }
 
