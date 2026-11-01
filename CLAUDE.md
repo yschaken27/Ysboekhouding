@@ -174,6 +174,16 @@ beide `voeg*Toe` (default-waarde), anders verdwijnt het bij opslaan.
   tarief, bedrag) i.p.v. de standaard groepering per tarieftype. Lege notitie valt terug op
   het tarieflabel, zodat de factuur altijd geldig blijft.
 
+### Relaties (klanten + leveranciers, `DB.profiel.relaties`, nov 2026)
+Eén lijst `{naam, adres, kvk, btwnr}` per bedrijf, gedeeld door verkoop- en inkoopfacturen (facturen.js,
+sectie "RELATIES"). Staat in `profiel` → synct mee met `data/main`, geen #22-uitbreiding nodig.
+- `slaFactuurOp()` doet `bewaarRelatie(f)` vóór `save()` (toevoegen/bijwerken op naam, hoofdletterongevoelig;
+  alleen ingevulde velden overschrijven). Beheer via 👥 Relaties (`modal-relaties`).
+- Zolang `relaties` nog geen array is, leidt `getRelaties()` de lijst af uit de bestaande facturen.
+- Suggesties in het naamveld = relaties + opdrachtgevers (`_relatieKandidaten`).
+- **`slaBedrijfProfielOp()` bouwt `DB.profiel` opnieuw op** — elk nieuw profielveld moet daar
+  expliciet meegenomen worden (zoals `opdrachtgevers` en `relaties`), anders wist opslaan het.
+
 ### Decimale invoer: komma én punt
 Nederlandse gebruikers typen `7,5`, maar een `<input type="number">` weigert de komma op
 mobiel. De invoervelden in het urenscherm (mobiel en eigenaar) zijn daarom `type="text"` met `inputmode="decimal"`,
@@ -681,6 +691,51 @@ Credit kas), het kasverschil gaat met het teken van het rekeningtype (`_memSaldo
 Zonder die twee blokkeerde de balanscontrole elke lijst met uitgaven of een kastelling.
 De BTW-aansluitcontrole (`_btwGeboektInPeriode`) telt kassalijst-BTW via de kassalijst zelf en
 slaat het memoriaal van type `kassalijst` over — anders telde die BTW dubbel.
+
+### 33. Bankafstemming — de bankrekening wordt tegen de boekingen én het afschrift gecontroleerd
+Okt 2026: het saldo van 1100 werd nergens vergeleken met de echte bank. Een betaling die de klant in
+de kassier-app meldde (`markeerFactuurBetaald`) of die handmatig op betaald stond, boekte bank ↔
+debiteuren zonder banktransactie; kwam diezelfde betaling later via de CSV binnen, dan stelde
+`getSuggestie` alleen niet-betaalde facturen voor en viel hij door naar een regel/historie (vaak een
+omzetrekening) → geld én omzet dubbel. De koppel-modal (`bevestigKoppeling`) toonde zelfs álle
+facturen en boekte zo'n betaling gewoon nog een keer.
+
+**Controle** — `bankAfstemming()` / `bankAfstemmingAfwijkingen()` (btw-rapport.js), per rekening uit `getBanken()`:
+- **A. grootboek ↔ boekingen**: de sluitregel van `bouwGrootboekkaart(bankId)` (één berekening, #32).
+  Elk bedrag op de bank dat uit geen transactie (`t.bankGbId`), gemelde betaling (`f.betaaldGbId`) of
+  memoriaal komt, komt in de rode banner.
+- **B. afschrift ↔ transacties**: `g.afschrift = {datum, saldo, bron, importId?}` (op het
+  bank-grootboekobject, synct mee met `DB.grootboek` — #22 geldt niet) tegenover openingssaldo
+  (memoriaal `opening_saldo`) + ALLE transacties van die bank t/m die datum, gekoppeld of niet.
+  Verschil = ontbrekende/dubbele import of verkeerd openingssaldo.
+- Informatief (geen fout): nog te koppelen transacties, en boekingen zonder banktransactie
+  (gemelde betalingen, overig memoriaal op de bank).
+- Bij welke bank een transactie hoort: `t.bankGbId` (geboekt), anders `t.importBankId` (actieve bank
+  bij de import, sinds okt 2026 door `bevestigImport` gezet), anders de enige bank. Oude ongekoppelde
+  transacties met meerdere banken zijn "bank onbekend" en tellen pas mee na koppelen.
+- Afschriftsaldo komt uit de kaart op de bankpagina (`renderBankAfstemming`, `slaAfschriftSaldoOp`)
+  of uit de optionele CSV-kolom "Saldo" (`_csvEindsaldo`: bepaalt aan de saldo-keten of het bestand
+  oud→nieuw of nieuw→oud loopt; onbepaald = geen eindsaldo, nooit gokken). Een nieuwer afschrift
+  overschrijft; `verwijderImport` wist een afschrift dat uit die import kwam.
+- Bekend gevolg: een transfer die via de app is aangemaakt (`inlineBevestigTransfer`/`verwerkTransfer`)
+  maakt zelf de regel op de andere bank aan. Importeer je daarna ook de CSV van die bank, dan staat de
+  overboeking twee keer in de transacties en meldt controle B dat — terecht; verwijder dan de dubbele.
+
+**Omzetten** — `zetGemeldeBetalingOmNaarBank(tId, fId, type)` (bank.js): `_gemeldBetaaldeMatches(t)`
+vindt facturen met `handmatigBetaald`, zonder bankbetaling, met hetzelfde bedrag (±€0,02) en de goede
+richting. Ze verschijnen als suggestie 'gemeld' (vóór regels/historie), als waarschuwing bij een
+factuurmatch en in de koppel-modal; de gebruiker kiest (#29). Omzetten = `boekHandmatigeBetaling(f,type,-1)`
+(zelfde rekening via `betaaldGbId`), meldvelden opruimen zoals `zetFactuurOnbetaald`
+(**`kassierBoekingTeruggedraaid` verplicht**, anders vals alarm in `controleerKassierBoekingen`), dan
+normaal koppelen. Netto staat het geld één keer op de bank. Bij kasstelsel waarschuwt de dialoog als
+het BTW-kwartaal verschuift.
+- **Alle factuur-koppelflows lopen via `_koppelFactuurBetaling(t,f,type)`** (inlineBevestig,
+  snelKoppelFactuur, koppelAanMatch, bevestigKoppeling, omzetten). Roep hem nooit aan voor een factuur
+  met `handmatigBetaald` — die gaat via het omzetten. (koppelAanMatch en bevestigKoppeling boekten
+  vroeger geen betalingsverschil; nu wel, zoals de rest.)
+- **Vangnet**: elke boeking van een banktransactie op een grootboekrekening (inline, splitsen,
+  snelKoppelGB, bulk, modal) vraagt eerst `_bevestigGeenGemeldeBetaling()` als er zo'n match is.
+  Een nieuwe grootboek-koppelflow moet dat ook doen.
 
 ## Losse eindjes (geen risico)
 - BTW-rubrieken bij terugbetalingen via de bank: een terugbetaalde kostenpost met BTW komt in

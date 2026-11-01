@@ -643,7 +643,7 @@
     <div class="form-grid">
       <div class="form-group"><label>Factuurnummer</label><input id="f-nummer" type="text" placeholder="F-2024-001"></div>
       <div class="form-group"><label>Datum</label><input id="f-datum" type="date"></div>
-      <div class="form-group"><label id="f-partij-label">Klant naam</label><input id="f-klant" type="text" placeholder="Bedrijfsnaam"></div>
+      <div class="form-group relatie-veld"><label id="f-partij-label">Klant naam</label><input id="f-klant" type="text" placeholder="Typ om te zoeken of een nieuwe naam" autocomplete="off" oninput="toonRelatieSuggesties()" onkeydown="relatieSugToets(event)" onblur="verbergRelatieSuggesties()"><div id="f-klant-sug" class="relatie-sug"></div></div>
       <div class="form-group"><label>Vervaldatum</label><input id="f-vervaldatum" type="date"></div>
       <div class="form-group full"><label>Adres</label><input id="f-adres" type="text" placeholder="Straat, postcode, stad"></div>
       <div class="form-group"><label>KvK nummer</label><input id="f-kvk" type="text" placeholder="12345678"></div>
@@ -1064,6 +1064,26 @@
     <div class="modal-footer" style="margin-top:20px;">
       <button class="btn btn-secondary" onclick="closeModal('modal-opdrachtgevers')">Annuleren</button>
       <button class="btn btn-primary" onclick="slaOpdrachtgeversModalOp()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<!-- RELATIES MODAL -->
+<div class="modal-overlay" id="modal-relaties">
+  <div class="modal" style="width:560px;">
+    <div class="modal-header">
+      <h3>Relaties</h3>
+      <button class="modal-close" onclick="closeModal('modal-relaties')">✕</button>
+    </div>
+    <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px;line-height:1.6;">
+      Klanten en leveranciers, gedeeld door verkoop- en inkoopfacturen. Een nieuwe naam komt er vanzelf bij als je een factuur opslaat.
+    </div>
+    <input id="rb-zoek" type="text" placeholder="Zoeken op naam..." oninput="_tekenRelatiesModal()" autocomplete="off" style="margin-bottom:10px;">
+    <div id="rb-lijst" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;max-height:55vh;overflow-y:auto;"></div>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="voegRelatieModalToe()">+ Relatie toevoegen</button>
+    <div class="modal-footer" style="margin-top:20px;">
+      <button class="btn btn-secondary" onclick="closeModal('modal-relaties')">Annuleren</button>
+      <button class="btn btn-primary" onclick="slaRelatiesModalOp()">Opslaan</button>
     </div>
   </div>
 </div>

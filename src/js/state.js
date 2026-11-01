@@ -970,6 +970,7 @@ function laadBedrijfProfiel(){
 }
 
 function slaBedrijfProfielOp(){
+  const _oudProfiel = DB.profiel || {};
   DB.profiel={
     naam:document.getElementById('bp-naam').value.trim(),
     kvk:document.getElementById('bp-kvk').value.trim(),
@@ -990,6 +991,9 @@ function slaBedrijfProfielOp(){
     notities:document.getElementById('bp-notities').value.trim(),
     opdrachtgevers: DB.profiel?.opdrachtgevers || [],
   };
+  // Alleen meenemen als de lijst al bestaat: zolang hij er niet is, bouwt
+  // getRelaties() hem op uit de facturen (facturen.js).
+  if(Array.isArray(_oudProfiel.relaties)) DB.profiel.relaties = _oudProfiel.relaties;
   if(!save()) return;
   // Sla weergavenaam op in profielnamen map zodat bedrijflijst het toont
   if(DB.profiel.naam){

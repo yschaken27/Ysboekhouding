@@ -1,7 +1,10 @@
 ﻿    <div class="page" id="page-verkoop">
       <div class="page-header">
         <div><h2>Verkoopfacturen</h2><p>Facturen die je verstuurt aan klanten</p></div>
-        <button class="btn btn-primary" onclick="openFactuurModal('verkoop')">+ Nieuwe verkoopfactuur</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-secondary" onclick="openRelatiesModal()">👥 Relaties</button>
+          <button class="btn btn-primary" onclick="openFactuurModal('verkoop')">+ Nieuwe verkoopfactuur</button>
+        </div>
       </div>
       <div class="toolbar">
         <input class="search-input" type="text" placeholder="Zoeken op klant of nummer..." oninput="filterF('verkoop',this.value)">
@@ -23,7 +26,10 @@
     <div class="page" id="page-inkoop">
       <div class="page-header">
         <div><h2>Inkoopfacturen</h2><p>Facturen die je ontvangt van leveranciers</p></div>
-        <button class="btn btn-primary" onclick="openFactuurModal('inkoop')">+ Nieuwe inkoopfactuur</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-secondary" onclick="openRelatiesModal()">👥 Relaties</button>
+          <button class="btn btn-primary" onclick="openFactuurModal('inkoop')">+ Nieuwe inkoopfactuur</button>
+        </div>
       </div>
       <div class="toolbar">
         <input class="search-input" type="text" placeholder="Zoeken op leverancier of nummer..." oninput="filterF('inkoop',this.value)">

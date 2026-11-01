@@ -242,6 +242,14 @@ tr:hover td{background:var(--surface2);}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
 .form-group{display:flex;flex-direction:column;gap:5px;}
 .form-group.full{grid-column:1/-1;}
+/* Relatie-suggesties onder het naamveld in de factuurmodal */
+.relatie-veld{position:relative;}
+.relatie-sug{display:none;position:absolute;top:100%;left:0;right:0;z-index:20;margin-top:2px;background:var(--surface);border:1px solid var(--border-light);border-radius:var(--radius);box-shadow:var(--shadow-lg);max-height:260px;overflow-y:auto;}
+.relatie-sug-item{padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);}
+.relatie-sug-item:last-child{border-bottom:none;}
+.relatie-sug-item:hover,.relatie-sug-item.actief{background:var(--accent-dim);}
+.relatie-sug-naam{font-size:13px;font-weight:600;color:var(--text);}
+.relatie-sug-info{font-size:11px;color:var(--text-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 label{
   font-size:11px;color:var(--text-dim);
   font-weight:500;letter-spacing:.02em;

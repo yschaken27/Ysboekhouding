@@ -381,12 +381,177 @@ function downloadDashboard(){
 }
 
 
+// ===== RELATIES (klanten + leveranciers, gedeeld door verkoop en inkoop) =====
+// Opslag: DB.profiel.relaties = [{naam, adres, kvk, btwnr}], per bedrijf in data/main.
+function _relatieSleutel(naam){ return String(naam||'').trim().toLowerCase(); }
+
+// Neemt alleen ingevulde velden over, zodat een factuur met een leeg adres
+// het bekende adres niet wist.
+function _vulRelatieAan(r, bron){
+  ['adres','kvk','btwnr'].forEach(k=>{ const v=String(bron[k]||'').trim(); if(v) r[k]=v; });
+  return r;
+}
+
+// De opgeslagen lijst. Bestaat die nog niet (bedrijf van vóór de relaties),
+// dan opgebouwd uit de bestaande facturen: oudste eerst, nieuwste gegevens winnen.
+function getRelaties(){
+  if(Array.isArray(DB.profiel?.relaties)) return DB.profiel.relaties;
+  const perNaam = new Map();
+  [...(DB.verkoop||[]), ...(DB.inkoop||[])]
+    .slice().sort((a,b)=>String(a.datum||'').localeCompare(String(b.datum||'')))
+    .forEach(f=>{
+      const k=_relatieSleutel(f.klant); if(!k) return;
+      const r = perNaam.get(k) || {naam:String(f.klant).trim(), adres:'', kvk:'', btwnr:''};
+      perNaam.set(k, _vulRelatieAan(r, f));
+    });
+  return [...perNaam.values()];
+}
+
+// Voegt de partij van een factuur toe of werkt hem bij (op naam, hoofdletterongevoelig).
+// Muteert alleen DB.profiel; de aanroeper doet save().
+function bewaarRelatie(f){
+  const k=_relatieSleutel(f.klant); if(!k) return;
+  const lijst = getRelaties().map(r=>({...r}));
+  let r = lijst.find(x=>_relatieSleutel(x.naam)===k);
+  if(!r){ r={naam:String(f.klant).trim(), adres:'', kvk:'', btwnr:''}; lijst.push(r); }
+  _vulRelatieAan(r, f);
+  if(!DB.profiel) DB.profiel={};
+  DB.profiel.relaties = lijst;
+}
+
+// Suggesties: relaties + opdrachtgevers die (nog) geen relatie zijn.
+function _relatieKandidaten(){
+  const lijst = getRelaties().slice();
+  const bekend = new Set(lijst.map(r=>_relatieSleutel(r.naam)));
+  (DB.profiel?.opdrachtgevers||[]).forEach(o=>{
+    const k=_relatieSleutel(o.naam); if(!k || bekend.has(k)) return;
+    bekend.add(k);
+    const plaats=[o.postcode,o.stad].filter(Boolean).join(' ');
+    lijst.push({naam:o.naam, adres:[o.straat,plaats].filter(Boolean).join(', '), kvk:'', btwnr:o.btwNummer||''});
+  });
+  return lijst;
+}
+
+let _relSug = [], _relSugIdx = -1;
+
+function toonRelatieSuggesties(){
+  const el=document.getElementById('f-klant-sug');
+  const q=_relatieSleutel(document.getElementById('f-klant').value);
+  if(!q){ verbergRelatieSuggesties(); return; }
+  const alle=_relatieKandidaten();
+  const begin=alle.filter(r=>_relatieSleutel(r.naam).startsWith(q));
+  const bevat=alle.filter(r=>!_relatieSleutel(r.naam).startsWith(q) && _relatieSleutel(r.naam).includes(q));
+  _relSug=[...begin,...bevat].slice(0,8);
+  _relSugIdx=-1;
+  // Precies de getypte naam en verder niets: niets meer te kiezen.
+  if(!_relSug.length || (_relSug.length===1 && _relatieSleutel(_relSug[0].naam)===q)){ verbergRelatieSuggesties(); return; }
+  el.innerHTML=_relSug.map((r,i)=>`
+    <div class="relatie-sug-item" onmousedown="event.preventDefault();kiesRelatie(${i})">
+      <div class="relatie-sug-naam">${esc(r.naam)}</div>
+      <div class="relatie-sug-info">${esc([r.adres, r.kvk?'KvK '+r.kvk:''].filter(Boolean).join(' · ')||'geen gegevens')}</div>
+    </div>`).join('');
+  el.style.display='block';
+}
+
+function verbergRelatieSuggesties(){
+  const el=document.getElementById('f-klant-sug');
+  if(el){ el.style.display='none'; el.innerHTML=''; }
+  _relSug=[]; _relSugIdx=-1;
+}
+
+function relatieSugToets(e){
+  if(!_relSug.length) return;
+  const items=document.querySelectorAll('#f-klant-sug .relatie-sug-item');
+  if(e.key==='ArrowDown' || e.key==='ArrowUp'){
+    e.preventDefault();
+    const n=_relSug.length;
+    _relSugIdx = e.key==='ArrowDown' ? (_relSugIdx+1)%n : (_relSugIdx-1+n)%n;
+    items.forEach((it,i)=>it.classList.toggle('actief', i===_relSugIdx));
+  } else if(e.key==='Enter' && _relSugIdx>=0){
+    e.preventDefault();
+    kiesRelatie(_relSugIdx);
+  } else if(e.key==='Escape'){
+    // Alleen het lijstje sluiten, niet de hele factuurmodal.
+    e.preventDefault(); e.stopPropagation();
+    verbergRelatieSuggesties();
+  }
+}
+
+function kiesRelatie(i){
+  const r=_relSug[i]; if(!r) return;
+  document.getElementById('f-klant').value=r.naam;
+  document.getElementById('f-adres').value=r.adres||'';
+  document.getElementById('f-kvk').value=r.kvk||'';
+  document.getElementById('f-btwnr').value=r.btwnr||'';
+  verbergRelatieSuggesties();
+}
+
+// ===== RELATIES BEHEREN (modal-relaties) =====
+let _rbRelaties = [];
+
+function openRelatiesModal(){
+  _rbRelaties = getRelaties().map(r=>({...r})).sort((a,b)=>a.naam.localeCompare(b.naam,'nl'));
+  document.getElementById('rb-zoek').value='';
+  _tekenRelatiesModal();
+  openModal('modal-relaties');
+}
+
+function _tekenRelatiesModal(){
+  const el=document.getElementById('rb-lijst');
+  const q=_relatieSleutel(document.getElementById('rb-zoek').value);
+  const rijen=_rbRelaties.map((r,i)=>({r,i})).filter(({r})=>!q || _relatieSleutel(r.naam).includes(q) || !r.naam);
+  if(!rijen.length){
+    el.innerHTML='<div style="font-size:12px;color:var(--text-dim);padding:8px 0;">'+(_rbRelaties.length?'Geen relaties gevonden.':'Nog geen relaties. Ze komen er vanzelf bij als je een factuur opslaat.')+'</div>';
+    return;
+  }
+  el.innerHTML=rijen.map(({r,i})=>`
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+        <input type="text" value="${esc(r.naam||'')}" placeholder="Naam" oninput="_rbRelaties[${i}].naam=this.value" style="flex:1;font-weight:600;">
+        <button class="btn-icon" title="Verwijderen" onclick="verwijderRelatieModal(${i})">✕</button>
+      </div>
+      <input type="text" value="${esc(r.adres||'')}" placeholder="Straat, postcode, stad" oninput="_rbRelaties[${i}].adres=this.value" style="margin-bottom:8px;">
+      <div style="display:flex;gap:8px;">
+        <input type="text" value="${esc(r.kvk||'')}" placeholder="KvK nummer" oninput="_rbRelaties[${i}].kvk=this.value">
+        <input type="text" value="${esc(r.btwnr||'')}" placeholder="BTW nummer" oninput="_rbRelaties[${i}].btwnr=this.value">
+      </div>
+    </div>`).join('');
+}
+
+function voegRelatieModalToe(){
+  _rbRelaties.unshift({naam:'', adres:'', kvk:'', btwnr:''});
+  document.getElementById('rb-zoek').value='';
+  _tekenRelatiesModal();
+}
+
+function verwijderRelatieModal(i){
+  _rbRelaties.splice(i,1);
+  _tekenRelatiesModal();
+}
+
+function slaRelatiesModalOp(){
+  const schoon=[]; const gezien=new Set();
+  for(const r of _rbRelaties){
+    const naam=(r.naam||'').trim(); if(!naam) continue;
+    const k=_relatieSleutel(naam);
+    if(gezien.has(k)){ toast(`"${naam}" staat er twee keer in — haal er één weg.`,'error'); return; }
+    gezien.add(k);
+    schoon.push({naam, adres:(r.adres||'').trim(), kvk:(r.kvk||'').trim(), btwnr:(r.btwnr||'').trim()});
+  }
+  if(!DB.profiel) DB.profiel={};
+  DB.profiel.relaties=schoon;
+  if(!save()) return;
+  closeModal('modal-relaties');
+  toast('Relaties opgeslagen.','success');
+}
+
 function openFactuurModal(type, id){
   DB.editType=type; DB.editId=id||null;
   const isVK=type==='verkoop';
   document.getElementById('f-modal-title').textContent=(id?'Bewerken: ':'Nieuwe ')+(isVK?'Verkoopfactuur':'Inkoopfactuur');
   document.getElementById('f-type-badge').innerHTML=isVK?'<span class="badge badge-green">↑ Verkoopfactuur</span>':'<span class="badge badge-orange">↓ Inkoopfactuur</span>';
   document.getElementById('f-partij-label').textContent=isVK?'Klant naam':'Leverancier naam';
+  verbergRelatieSuggesties();
 
   const statusSel=document.getElementById('f-status');
   if(isVK) statusSel.innerHTML='<option value="concept">Concept</option><option value="verstuurd">Verstuurd</option><option value="betaald">Betaald (handmatig)</option><option value="verlopen">Verlopen</option>';
@@ -633,6 +798,10 @@ async function slaFactuurOp(){
       }
     }
   }
+
+  // Klant/leverancier in de relatielijst zetten; gaat mee in dezelfde save()
+  // (en wordt bij een geblokkeerde save mee teruggedraaid).
+  bewaarRelatie(f);
 
   // Sla direct op zodat factuur altijd bewaard wordt
   const savedType = DB.editType; // bewaar type vóór closeModal
