@@ -208,6 +208,16 @@ tab- en sectiezichtbaarheid in activa.js.
   `parseDecimaalInvoer()` (die maakt er 2,5 van).
 - Factuurgegevens-dialoog `vraagUrenFactuurGegevens({type})`: alleen een bestaande factuur van
   hetzelfde type mag via het nummer vervangen worden.
+- **Meerdere facturen per opdrachtgever per maand (nov 2026).** In het Salesoverzicht vink je per
+  goedgekeurde ingave aan wat op de factuur komt (`_salesVink`, standaard = nog niet gefactureerd).
+  De factuur legt in **`salesIds`** vast welke ingaves erop staan (`_salesFactuurVan(id)`); een ingave
+  mag op maximaal één factuur staan — `maakSalesFactuur` blokkeert een selectie over twee facturen en
+  een ander nummer voor al gefactureerde ingaves. Oude salesfacturen zonder `salesIds` worden alleen
+  gesignaleerd (`_oudeSalesFactuur`, exacte periode, #29), nooit aan ingaves toegewezen.
+  `slaFactuurOp()` bewaart `type`/`periode*`/`salesIds` bij bewerken — anders lijken de ingaves weer open.
+- Eén medewerker mag meerdere bedragen per opdrachtgever per maand hebben, mits de **notitie** verschilt
+  (`_salesDubbel` vergelijkt ook de notitie). Een ingevulde notitie vervangt op de factuurregel de
+  standaardtekst "Sales-/verkoopwerkzaamheden" (bv. "Promotievideo november 2026 — Jan").
 
 ## Kassier-app (mobiel) — wat de klant ziet
 Wat een gebruiker ziet, hangt af van de modules die de boekhouder per gebruiker aanvinkt

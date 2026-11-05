@@ -711,6 +711,14 @@ async function slaFactuurOp(){
     regels, totaalExcl:sub2, btwBedrag:btwTotaal, totaalIncl:sub2+btwTotaal,
     bijlagenMeta: oudeFactuur?.bijlagenMeta || [] // bewaar bestaande bijlagen bij bewerken
   };
+  // Koppeling van een gegenereerde uren-/salesfactuur bewaren bij bewerken. Zonder
+  // `salesIds` lijken de sales-ingaves weer ongefactureerd en staan ze in het
+  // Salesoverzicht klaar voor een tweede factuur.
+  if(oudeFactuur){
+    ['type','periodeVan','periodeTot','periodeLabel','salesIds'].forEach(k=>{
+      if(oudeFactuur[k]!==undefined) f[k]=oudeFactuur[k];
+    });
+  }
   // Gebruik directe referentie naar de juiste array
   if(DB.editType==='verkoop'){
     if(DB.editId){ const i=DB.verkoop.findIndex(x=>x.id===DB.editId); if(i>=0) DB.verkoop[i]=f; }

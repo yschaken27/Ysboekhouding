@@ -1178,13 +1178,16 @@ function _salesHuidigeMaand(){
 }
 
 // Bestaat er voor deze medewerker al een (niet-afgewezen) ingave voor dezelfde
-// opdrachtgever en maand? Eén bedrag per maand — een tweede zou dubbel gefactureerd
-// worden. `behalveId` = de ingave die nu bewerkt wordt.
-function _salesDubbel(wieEmail, wieNaam, opdr, maand, behalveId){
+// opdrachtgever, maand én notitie? Meerdere bedragen per maand mogen (bv. "Sales"
+// en "Promotievideo", die op aparte facturen kunnen), maar twee keer hetzelfde
+// zou dubbel gefactureerd worden. `behalveId` = de ingave die nu bewerkt wordt.
+function _salesDubbel(wieEmail, wieNaam, opdr, maand, notitie, behalveId){
   const email = String(wieEmail||'').toLowerCase();
+  const not = String(notitie||'').trim().toLowerCase();
   return (DB.uren||[]).find(u=>
     isSalesIngave(u) && u.id!==behalveId && u.status!=='afgewezen' &&
     u.opdrachtgever===opdr && u.maand===maand &&
+    String(u.notitie||'').trim().toLowerCase()===not &&
     (email ? String(u.wieEmail||'').toLowerCase()===email : u.wie===wieNaam)
   ) || null;
 }
@@ -1258,10 +1261,10 @@ function mobSlaSalesOp(){
   if(!opdr){ toast('Kies een opdrachtgever.','error'); return; }
   if(!/^\d{4}-\d{2}$/.test(maand)){ toast('Kies een maand.','error'); return; }
   if(!(bedrag > 0)){ toast('Vul het bedrag excl. BTW in.','error'); return; }
-  const dubbel = _salesDubbel(wieEmail, wie, opdr, maand);
+  const dubbel = _salesDubbel(wieEmail, wie, opdr, maand, notitie);
   if(dubbel){
-    toast(`Je hebt voor ${opdr} over ${_salesMaandLabel(maand)} al ${mobFmtEur(dubbel.bedrag)} ingediend. `+
-          (dubbel.status==='ingediend' ? 'Trek die eerst in om een nieuw bedrag op te geven.' : 'Die is al goedgekeurd — vraag de eigenaar om het aan te passen.'),
+    toast(`Je hebt voor ${opdr} over ${_salesMaandLabel(maand)} al ${mobFmtEur(dubbel.bedrag)} ingediend${notitie?` met notitie "${notitie}"`:' zonder notitie'}. `+
+          (dubbel.status==='ingediend' ? 'Trek die eerst in, of geef dit bedrag een andere notitie (bv. "Promotievideo").' : 'Die is al goedgekeurd — vraag de eigenaar om het aan te passen, of geef dit bedrag een andere notitie.'),
           'error', 8000);
     return;
   }
@@ -1320,11 +1323,35 @@ function _salesFilterMaand(){
   return el?.value || _salesHuidigeMaand();
 }
 
-function _zoekBestaandeSalesFactuur(opdr, maand){
-  // Alleen exact op de vastgelegde periode — nooit gokken (CLAUDE.md #29).
+// Op welke factuur staat deze ingave? Een salesfactuur legt in `salesIds` vast
+// welke ingaves erop staan, zodat er per opdrachtgever per maand meerdere
+// facturen kunnen zijn (bv. sales en promotievideo apart).
+function _salesFactuurVan(id){
   return (DB.verkoop||[]).find(f=>
-    f && f.type==='sales' && f.klant===opdr && f.periodeVan===maand && f.periodeTot===maand
+    f && f.type==='sales' && Array.isArray(f.salesIds) && f.salesIds.includes(id)
   ) || null;
+}
+
+// Salesfacturen van vóór de vinkjes (zonder `salesIds`) weten niet welke
+// ingaves erop staan. Alleen exact op de vastgelegde periode — nooit gokken
+// welke ingaves dat waren (CLAUDE.md #29); we waarschuwen alleen.
+function _oudeSalesFactuur(opdr, maand){
+  return (DB.verkoop||[]).find(f=>
+    f && f.type==='sales' && !Array.isArray(f.salesIds) &&
+    f.klant===opdr && f.periodeVan===maand && f.periodeTot===maand
+  ) || null;
+}
+
+// Vinkjes in het Salesoverzicht (alleen in het geheugen). Zonder eigen keuze
+// staat een goedgekeurde ingave aangevinkt zolang hij nog op geen factuur staat.
+const _salesVink = {};
+function _salesAangevinkt(u){
+  if(u.status!=='goedgekeurd') return false;
+  return (u.id in _salesVink) ? _salesVink[u.id] : !_salesFactuurVan(u.id);
+}
+function salesVink(id, aan){
+  _salesVink[id] = !!aan;
+  renderSalesoverzicht();
 }
 
 function renderSalesoverzicht(){
@@ -1351,11 +1378,21 @@ function renderSalesoverzicht(){
   el.innerHTML = Object.keys(perOpdr).sort().map(opdr=>{
     const items = perOpdr[opdr].sort((a,b)=>(a.wie||'').localeCompare(b.wie||''));
     const som = items.filter(u=>u.status!=='afgewezen').reduce((a,u)=>a+(parseFloat(u.bedrag)||0),0);
-    const kanFactureren = items.some(u=>u.status==='goedgekeurd');
+    const gekozen = items.filter(_salesAangevinkt);
+    const kanFactureren = gekozen.length > 0;
     const wacht = items.some(u=>u.status==='ingediend');
-    const bestaande = _zoekBestaandeSalesFactuur(opdr, maand);
+    const oude = _oudeSalesFactuur(opdr, maand);
+    // Staat een gekozen ingave al op een factuur, dan wordt die vervangen
+    // (ook als er nieuwe bedragen bij komen).
+    const gekozenFacturen = new Set(gekozen.map(u=>_salesFactuurVan(u.id)?.nummer).filter(Boolean));
+    const opnieuw = gekozenFacturen.size===1;
 
     const rijen = items.map(u=>{
+      const fct = _salesFactuurVan(u.id);
+      const vink = u.status==='goedgekeurd'
+        ? `<input type="checkbox" ${_salesAangevinkt(u)?'checked':''} onchange="salesVink('${u.id}',this.checked)" title="Op de factuur" style="width:auto;cursor:pointer;">`
+        : '';
+      const opFactuur = fct ? `<span style="font-size:10px;color:var(--text-dim);margin-left:6px;white-space:nowrap;">op ${esc(fct.nummer||'')}</span>` : '';
       const keur = u.status==='goedgekeurd'
         ? '<span style="color:#16a34a;">✓</span>'
         : u.status==='afgewezen'
@@ -1367,9 +1404,10 @@ function renderSalesoverzicht(){
       const knoppen = `<span style="display:inline-flex;gap:4px;align-items:center;">${keur}<button onclick="openSalesModal('${u.id}')" title="Bewerken" style="font-size:12px;padding:2px 6px;border-radius:5px;border:1px solid var(--border);background:var(--surface);cursor:pointer;">✏️</button><button onclick="verwijderSales('${u.id}')" title="Verwijderen" style="font-size:12px;padding:2px 6px;border-radius:5px;border:none;background:#ef4444;color:#fff;cursor:pointer;">🗑</button></span>`;
       const afgewezen = u.status==='afgewezen' ? 'opacity:0.45;text-decoration:line-through;' : '';
       return `<tr style="${afgewezen}">
+        <td style="padding:6px 4px 6px 8px;width:24px;">${vink}</td>
         <td style="padding:6px 8px;font-size:12px;">${esc(u.wie||'')}</td>
         <td style="padding:6px 8px;font-size:12px;text-align:right;font-family:var(--mono);">${fmt(u.bedrag||0)}</td>
-        <td style="padding:6px 8px;font-size:12px;color:var(--text-dim);">${esc(u.notitie||'')}</td>
+        <td style="padding:6px 8px;font-size:12px;color:var(--text-dim);">${esc(u.notitie||'')}${opFactuur}</td>
         <td style="padding:6px 8px;text-align:right;">${knoppen}</td>
       </tr>`;
     }).join('');
@@ -1379,16 +1417,16 @@ function renderSalesoverzicht(){
         <div>
           <strong style="font-size:15px;">${esc(opdr)}</strong>
           <span style="font-size:12px;color:var(--text-mid);margin-left:10px;">${fmt(som)} excl. BTW</span>
-          ${bestaande?`<span style="font-size:11px;color:var(--text-dim);margin-left:10px;">Gefactureerd: ${esc(bestaande.nummer||'')}</span>`:''}
+          ${oude?`<span style="font-size:11px;color:var(--warning);margin-left:10px;" title="Deze factuur is van vóór de vinkjes: niet bekend welke bedragen erop staan">⚠ Oude factuur ${esc(oude.nummer||'')}</span>`:''}
         </div>
         <button onclick="maakSalesFactuur('${encodeURIComponent(opdr)}')" ${kanFactureren?'':'disabled'}
           style="font-size:12px;padding:6px 14px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:${kanFactureren?'pointer':'default'};opacity:${kanFactureren?1:.5};"
-          title="${kanFactureren?(wacht?'Alleen de goedgekeurde bedragen gaan op de factuur':''):'Keur eerst een bedrag goed'}">
-          🧾 ${bestaande?'Factuur opnieuw maken':'Factuur maken'}${wacht?' *':''}
+          title="${kanFactureren?(wacht?'Alleen de aangevinkte, goedgekeurde bedragen gaan op de factuur':'Alleen de aangevinkte bedragen gaan op de factuur'):'Vink een goedgekeurd bedrag aan'}">
+          🧾 ${opnieuw?`${esc([...gekozenFacturen][0])} opnieuw maken`:'Factuur maken'} (${gekozen.length})${wacht?' *':''}
         </button>
       </div>
       <table style="width:100%;border-collapse:collapse;">
-        <thead><tr style="border-bottom:1px solid var(--border);">${th('Medewerker')}${th('Bedrag excl. BTW',1)}${th('Notitie')}${th('Status',1)}</tr></thead>
+        <thead><tr style="border-bottom:1px solid var(--border);"><th></th>${th('Medewerker')}${th('Bedrag excl. BTW',1)}${th('Notitie')}${th('Status',1)}</tr></thead>
         <tbody>${rijen}</tbody>
       </table>
     </div>`;
@@ -1464,9 +1502,9 @@ function slaSalesModalOp(){
   if(!opdr){ toast('Kies een opdrachtgever.','error'); return; }
   if(!/^\d{4}-\d{2}$/.test(maand)){ toast('Kies een maand.','error'); return; }
   if(!(bedrag > 0)){ toast('Vul het bedrag excl. BTW in.','error'); return; }
-  const dubbel = _salesDubbel(kassier.email, kassier.naam, opdr, maand, editId);
+  const dubbel = _salesDubbel(kassier.email, kassier.naam, opdr, maand, notitie, editId);
   if(dubbel){
-    toast(`${kassier.naam} heeft voor ${opdr} over ${_salesMaandLabel(maand)} al ${fmt(dubbel.bedrag)} staan. Eén bedrag per maand — pas die aan.`,'error',8000);
+    toast(`${kassier.naam} heeft voor ${opdr} over ${_salesMaandLabel(maand)} al ${fmt(dubbel.bedrag)} staan${notitie?` met notitie "${notitie}"`:' zonder notitie'}. Pas die aan, of geef dit bedrag een andere notitie (bv. "Promotievideo").`,'error',8000);
     return;
   }
   if(!checkOnline()) return;
@@ -1493,19 +1531,37 @@ function slaSalesModalOp(){
   renderSalesoverzicht();
 }
 
-// Factuur over één maand voor één opdrachtgever, uit de GOEDGEKEURDE bedragen.
-// Per medewerker één regel "Sales-/verkoopwerkzaamheden <maand> — <naam>" met
-// het bedrag — geen aantal of tarief.
+// Factuur over één maand voor één opdrachtgever, uit de AANGEVINKTE goedgekeurde
+// bedragen (zo kunnen bv. sales en een promotievideo op aparte facturen).
+// Per ingave één regel "<notitie of Sales-/verkoopwerkzaamheden> <maand> — <naam>"
+// met het bedrag — geen aantal of tarief.
 async function maakSalesFactuur(opdrEnc){
   const opdr  = decodeURIComponent(opdrEnc);
   const maand = _salesFilterMaand();
   const alle  = (DB.uren||[]).filter(u=>isSalesIngave(u) && u.maand===maand && u.opdrachtgever===opdr);
-  const items = alle.filter(u=>u.status==='goedgekeurd').sort((a,b)=>(a.wie||'').localeCompare(b.wie||''));
-  if(!items.length){ toast('Keur eerst een bedrag goed — alleen goedgekeurde sales worden gefactureerd.','warning'); return; }
+  const items = alle.filter(_salesAangevinkt).sort((a,b)=>(a.wie||'').localeCompare(b.wie||'') || (a.notitie||'').localeCompare(b.notitie||''));
+  if(!items.length){ toast('Vink een goedgekeurd bedrag aan — alleen aangevinkte bedragen worden gefactureerd.','warning'); return; }
+
+  // Een ingave mag maar op één factuur staan. Gekozen ingaves die al op een
+  // factuur staan bepalen welke factuur vervangen wordt — van twee verschillende
+  // facturen tegelijk kan dus niet.
+  const huidigeFacturen = [...new Set(items.map(u=>_salesFactuurVan(u.id)).filter(Boolean))];
+  if(huidigeFacturen.length > 1){
+    toast(`De aangevinkte bedragen staan op verschillende facturen (${huidigeFacturen.map(f=>f.nummer).join(', ')}). Maak die één voor één opnieuw.`,'error',9000);
+    return;
+  }
+  const bestaande = huidigeFacturen[0] || null;
+  const oude = _oudeSalesFactuur(opdr, maand);
+  if(!bestaande && oude){
+    const ok = await bevestig(
+      `Er staat al een salesfactuur ${oude.nummer} voor ${opdr} over ${_salesMaandLabel(maand)}, van vóór de vinkjes. Niet bekend is welke bedragen daarop staan.\n\nControleer dat deze bedragen daar niet al op staan — anders factureer je ze dubbel.`,
+      'Oude factuur in deze maand', 'Toch maken');
+    if(!ok) return;
+  }
   const openstaand = alle.filter(u=>u.status==='ingediend');
   if(openstaand.length){
     const ok = await bevestig(
-      `${openstaand.length} bedrag(en) voor ${opdr} wacht(en) nog op goedkeuring en gaan NIET mee op de factuur.\n\nToch de factuur maken met alleen de goedgekeurde bedragen?`,
+      `${openstaand.length} bedrag(en) voor ${opdr} wacht(en) nog op goedkeuring en gaan NIET mee op de factuur.\n\nToch de factuur maken met alleen de aangevinkte, goedgekeurde bedragen?`,
       'Nog niet alles goedgekeurd', 'Toch maken');
     if(!ok) return;
   }
@@ -1518,8 +1574,9 @@ async function maakSalesFactuur(opdrEnc){
   const maandLabel = _salesMaandLabel(maand);
   // Art. 35a Wet OB vraagt de aard van de dienst en de periode; "Sales" alleen
   // is te vaag, dus de dienst voluit plus wie hem verricht heeft.
+  // Een notitie (bv. "Promotievideo") benoemt de dienst zelf en vervangt dan de standaardtekst.
   const regelLijst = items.map(u=>({
-    omschrijving: `Sales-/verkoopwerkzaamheden ${maandLabel}${u.wie ? ' — '+u.wie : ''}`,
+    omschrijving: `${String(u.notitie||'').trim() || 'Sales-/verkoopwerkzaamheden'} ${maandLabel}${u.wie ? ' — '+u.wie : ''}`,
     bedrag: Math.round((parseFloat(u.bedrag)||0)*100)/100
   }));
 
@@ -1531,15 +1588,14 @@ async function maakSalesFactuur(opdrEnc){
   const btwBedrag = zonderBtw ? 0 : regelLijst.reduce((a,r)=>a+Math.round(r.bedrag*btwPct)/100,0);
   const totaalIncl = subtotaalExcl + btwBedrag;
 
-  const bestaande = _zoekBestaandeSalesFactuur(opdr, maand);
   const standaardDatum = bestaande?.datum || new Date().toISOString().slice(0,10);
   const standaardVerval = bestaande?.vervaldatum
     || (()=>{ const d=new Date(standaardDatum); d.setDate(d.getDate()+30); return d.toISOString().slice(0,10); })();
   const keuze = await vraagUrenFactuurGegevens({
     type: 'sales',
     context: bestaande
-      ? `Er staat al een salesfactuur voor ${esc(opdr)} over ${esc(maandLabel)}. Laat het nummer staan om die te vervangen, of geef een ander nummer op.`
-      : `Salesfactuur voor ${esc(opdr)} over ${esc(maandLabel)} — ${fmt(totaalIncl)} incl. BTW.`,
+      ? `De aangevinkte bedragen staan al op salesfactuur ${esc(bestaande.nummer||'')}. Laat het nummer staan om die te vervangen (${fmt(totaalIncl)} incl. BTW).`
+      : `Salesfactuur voor ${esc(opdr)} over ${esc(maandLabel)} — ${items.length} bedrag(en), ${fmt(totaalIncl)} incl. BTW.`,
     nummer: bestaande?.nummer || nextFactuurNummer('sales'),
     datum: standaardDatum,
     vervaldatum: standaardVerval
@@ -1550,6 +1606,19 @@ async function maakSalesFactuur(opdrEnc){
   const vervangen = (DB.verkoop||[]).find(f=>f && f.type==='sales' && (f.nummer||'').trim()===factuurNr) || null;
   if(vervangen && (vervangen.status==='betaald' || _getBetalingen(vervangen).length)){
     toast(`Factuur ${factuurNr} is al betaald of gekoppeld aan een banktransactie. Draai die betaling eerst terug bij Verkoopfacturen.`,'error',9000);
+    return;
+  }
+  // Een ander nummer gekozen terwijl bedragen al op een factuur staan: dan
+  // zouden ze op twee facturen komen.
+  if(bestaande && (!vervangen || vervangen.id!==bestaande.id)){
+    toast(`De aangevinkte bedragen staan al op ${bestaande.nummer}. Gebruik dat nummer om die factuur te vervangen, of vink ze uit.`,'error',9000);
+    return;
+  }
+  // Het nummer van een andere salesfactuur intypen zou die overschrijven en de
+  // bedragen die erop stonden weer vrijgeven (dubbel factureren). Vervangen kan
+  // alleen door bedragen van die factuur zelf aan te vinken.
+  if(vervangen && !bestaande && (Array.isArray(vervangen.salesIds) || vervangen.klant!==opdr)){
+    toast(`${factuurNr} is een andere salesfactuur${vervangen.klant!==opdr?` (${vervangen.klant})`:''}. Kies een nieuw nummer, of vink de bedragen van die factuur aan om hem opnieuw te maken.`,'error',9000);
     return;
   }
 
@@ -1602,10 +1671,14 @@ async function maakSalesFactuur(opdrEnc){
     type: 'sales',
     periodeVan: maand,
     periodeTot: maand,
-    periodeLabel: maandLabel
+    periodeLabel: maandLabel,
+    salesIds: items.map(u=>u.id)
   };
 
   if(!_boekGegenereerdeFactuur(entry, vervangen)) return;
+  // Vinkjes terug naar de standaard: gefactureerd = uit.
+  items.forEach(u=>{ delete _salesVink[u.id]; });
+  (vervangen?.salesIds||[]).forEach(id=>{ delete _salesVink[id]; });
   renderSalesoverzicht();
   openFactuurVenster(html);
 }
