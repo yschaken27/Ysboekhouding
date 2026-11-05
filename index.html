@@ -285,8 +285,8 @@
         <input type="month" id="mob-sales-maand" class="mob-sales-input">
         <label class="mob-sales-lbl" for="mob-sales-bedrag">Bedrag excl. BTW (€)</label>
         <input type="text" inputmode="decimal" id="mob-sales-bedrag" class="mob-sales-input" placeholder="0,00" autocomplete="off">
-        <label class="mob-sales-lbl" for="mob-sales-notitie">Notitie (optioneel)</label>
-        <input type="text" id="mob-sales-notitie" class="mob-sales-input" placeholder="Bijv. 3 nieuwe klanten" autocomplete="off">
+        <label class="mob-sales-lbl" for="mob-sales-notitie">Omschrijving op de factuur</label>
+        <input type="text" id="mob-sales-notitie" class="mob-sales-input" placeholder="Bijv. Promotievideo november 2026" autocomplete="off">
         <button class="mob-factuur-btn" style="margin-top:12px;" onclick="mobSlaSalesOp()">💼 Indienen</button>
       </div>
       <div class="mob-section-title" style="margin-top:20px;">Jouw ingediende sales</div>
@@ -1163,8 +1163,9 @@
         </div>
       </div>
       <div>
-        <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px;">Notitie (optioneel)</label>
-        <input type="text" id="sm-notitie" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);font-size:14px;box-sizing:border-box;">
+        <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px;">Omschrijving op de factuur</label>
+        <input type="text" id="sm-notitie" placeholder="Bijv. Promotievideo november 2026" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);font-size:14px;box-sizing:border-box;">
+        <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Komt exact zo op de factuurregel. Leeg laten geeft "Sales-/verkoopwerkzaamheden &lt;maand&gt;".</div>
       </div>
     </div>
     <div class="modal-footer" style="margin-top:20px;">

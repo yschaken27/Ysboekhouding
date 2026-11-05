@@ -1425,7 +1425,7 @@ function renderSalesoverzicht(){
         </button>
       </div>
       <table style="width:100%;border-collapse:collapse;">
-        <thead><tr style="border-bottom:1px solid var(--border);"><th></th>${th('Medewerker')}${th('Bedrag excl. BTW',1)}${th('Notitie')}${th('Status',1)}</tr></thead>
+        <thead><tr style="border-bottom:1px solid var(--border);"><th></th>${th('Medewerker')}${th('Bedrag excl. BTW',1)}${th('Omschrijving')}${th('Status',1)}</tr></thead>
         <tbody>${rijen}</tbody>
       </table>
     </div>`;
@@ -1632,16 +1632,19 @@ async function maakSalesFactuur(opdrEnc){
 // Bouwt de verkoopfactuur (entry voor DB.verkoop) uit sales-ingaves. Gedeeld door
 // maakSalesFactuur() en _werkSalesFactuurBij(), zodat een bijgewerkte factuur
 // precies zo wordt opgebouwd en geboekt als een nieuwe.
-// Per ingave één regel "<notitie of Sales-/verkoopwerkzaamheden> <maand>".
+// Per ingave één regel: letterlijk de ingevulde omschrijving. Alleen als die leeg
+// is valt de regel terug op "Sales-/verkoopwerkzaamheden <maand>".
 function _bouwSalesFactuurEntry(opdr, maand, items, {id, nummer, datum, vervaldatum, status}){
   const p = DB.profiel || {};
   const opdrObj = (p.opdrachtgevers||[]).find(o=>o.naam===opdr) || {};
   const maandLabel = _salesMaandLabel(maand);
-  // Art. 35a Wet OB vraagt de aard van de dienst en de periode; "Sales" alleen
-  // is te vaag, dus de dienst voluit plus de maand. GEEN naam erbij: de klanten
-  // zijn zzp'ers zonder personeel, dus een naam zegt hun opdrachtgever niets.
+  // De omschrijving komt ONGEWIJZIGD op de factuur: de gebruiker bepaalt zelf de
+  // volledige regeltekst, dus hier niets aan plakken (geen maand, geen naam — de
+  // klanten zijn zzp'ers zonder personeel). Art. 35a Wet OB vraagt wel de aard van
+  // de dienst en de periode; die horen dus in de omschrijving zelf te staan.
+  // Lege omschrijving valt terug op de oude tekst, zodat een factuurregel nooit leeg is.
   const regelLijst = items.map(u=>({
-    omschrijving: `${String(u.notitie||'').trim() || 'Sales-/verkoopwerkzaamheden'} ${maandLabel}`,
+    omschrijving: String(u.notitie||'').trim() || `Sales-/verkoopwerkzaamheden ${maandLabel}`,
     bedrag: Math.round((parseFloat(u.bedrag)||0)*100)/100
   }));
 

@@ -227,8 +227,10 @@ tab- en sectiezichtbaarheid in activa.js.
 - Factuurdocumenten tonen bedragen via `fmt()` (€ 3.000,00), nooit `toFixed(2)`.
 - Eén gebruiker mag meerdere bedragen per opdrachtgever per maand hebben, mits de **notitie** verschilt
   (`_salesDubbel` vergelijkt ook de notitie). Een ingevulde notitie vervangt op de factuurregel de
-  standaardtekst "Sales-/verkoopwerkzaamheden" (bv. "Promotievideo november 2026"). Geen naam op de
-  regel — zie "Wie gebruikt de app?".
+  standaardtekst volledig: de ingevulde omschrijving komt **ongewijzigd** op de factuurregel — geen
+  maand en geen naam eraan plakken (zie "Wie gebruikt de app?"). Alleen bij een lege omschrijving
+  valt de regel terug op "Sales-/verkoopwerkzaamheden <maand>", zodat een factuurregel nooit leeg is.
+  Gevolg: art. 35a Wet OB (aard van de dienst + periode) moet in die omschrijving zelf staan.
 
 ## Kassier-app (mobiel) — wat de klant ziet
 Wat een gebruiker ziet, hangt af van de modules die de boekhouder per gebruiker aanvinkt
