@@ -1127,7 +1127,7 @@ Let op: deze factuur is gekoppeld aan ${gekoppeldeTs.length} bankbetalingen (sam
 // }
 function bouwFactuurHtml(o){
   const p = o.p || {};
-  const eur = n => '€ ' + (parseFloat(n)||0).toFixed(2);
+  const eur = fmt;  // € 3.000,00 — Nederlandse notatie
   // esc() doet (s||'').replace(...) en klapt dus op een number — altijd eerst String().
   const cel = c => esc(String(c==null?'':c));
   const adresBlok = (o.klantRegels||[]).filter(r=>r&&String(r).trim()).map(cel).join('<br>');
@@ -1303,9 +1303,9 @@ function bouwVerkoopFactuurDocument(f){
       const aantal = parseFloat(r.aantal)||0, prijs = parseFloat(r.prijs)||0;
       return [ r.omschrijving||'',
                String(Math.round(aantal*100)/100).replace('.',','),
-               '€ '+prijs.toFixed(2),
+               fmt(prijs),
                (parseInt(r.btw)||0)+'%',
-               '€ '+(aantal*prijs).toFixed(2) ];
+               fmt(aantal*prijs) ];
     }),
     subtotaalExcl: parseFloat(f.totaalExcl)||0,
     btwRegels,

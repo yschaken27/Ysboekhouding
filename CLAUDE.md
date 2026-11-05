@@ -215,6 +215,11 @@ tab- en sectiezichtbaarheid in activa.js.
   een ander nummer voor al gefactureerde ingaves. Oude salesfacturen zonder `salesIds` worden alleen
   gesignaleerd (`_oudeSalesFactuur`, exacte periode, #29), nooit aan ingaves toegewezen.
   `slaFactuurOp()` bewaart `type`/`periode*`/`salesIds` bij bewerken — anders lijken de ingaves weer open.
+- **Gefactureerde ingave wijzigen/verwijderen/afwijzen** → `_werkSalesFactuurBij(id, nieuweVelden|null)` bouwt
+  de factuur opnieuw op (zelfde nummer/datums, `_bouwSalesFactuurEntry`) en boekt hem opnieuw via
+  `_boekGegenereerdeFactuur`, of verwijdert hem als er niets overblijft. Loopt **vóór** de cloud-write van de
+  ingave; faalt hij (betaald/gekoppeld, balans), dan verandert de ingave ook niet.
+- Factuurdocumenten tonen bedragen via `fmt()` (€ 3.000,00), nooit `toFixed(2)`.
 - Eén medewerker mag meerdere bedragen per opdrachtgever per maand hebben, mits de **notitie** verschilt
   (`_salesDubbel` vergelijkt ook de notitie). Een ingevulde notitie vervangt op de factuurregel de
   standaardtekst "Sales-/verkoopwerkzaamheden" (bv. "Promotievideo november 2026 — Jan").

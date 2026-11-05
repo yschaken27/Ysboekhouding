@@ -989,8 +989,8 @@ async function maakUrenFactuur(opdrEnc){
         : `${eInfo.gewerkt} — ${r.label}`,
       perDienst ? _factuurDatumKort(r.datum) : maandLabel,
       eenheidAantalTekst(r.uren, eInfo.eenheid),
-      '€ '+r.tarief.toFixed(2)+eInfo.per,
-      '€ '+r.bedrag.toFixed(2)
+      fmt(r.tarief)+eInfo.per,
+      fmt(r.bedrag)
     ]),
     subtotaalExcl,
     btwRegels: zonderBtw ? [] : [{label:`BTW ${btwPct}%`, bedrag:btwBedrag}],
@@ -1437,6 +1437,8 @@ function salesKeur(id, status){
   const u = (DB.uren||[]).find(x=>x.id===id);
   if(!u || !isSalesIngave(u)) return;
   if(!checkOnline()) return;
+  // Niet meer goedgekeurd → van de factuur af (factuur eerst, dan de ingave).
+  if(status!=='goedgekeurd' && !_werkSalesFactuurBij(id, {status})) return;
   u.status = status;
   localStorage.setItem(storageKey(), JSON.stringify(DB));
   _urenCloudWrite(fb=>fb.updateUrenStatus(huidigBedrijf, id, status), 'Bijwerken mislukt — probeer opnieuw.');
@@ -1447,8 +1449,14 @@ async function verwijderSales(id){
   const u = (DB.uren||[]).find(x=>x.id===id);
   if(!u || !isSalesIngave(u)) return;
   if(!checkOnline()) return;
-  const ok = await bevestig(`Sales van ${u.wie||'?'} voor ${u.opdrachtgever} over ${_salesMaandLabel(u.maand)} (${fmt(u.bedrag)}) verwijderen?`, 'Verwijderen', 'Verwijderen');
+  const fct = _salesFactuurVan(id);
+  const opFactuur = !fct ? ''
+    : fct.salesIds.length>1 ? `\n\nDit bedrag staat op factuur ${fct.nummer}. Die wordt bijgewerkt en opnieuw geboekt.`
+    : `\n\nDit is het enige bedrag op factuur ${fct.nummer}. Die factuur wordt ook verwijderd.`;
+  const ok = await bevestig(`Sales van ${u.wie||'?'} voor ${u.opdrachtgever} over ${_salesMaandLabel(u.maand)} (${fmt(u.bedrag)}) verwijderen?${opFactuur}`, 'Verwijderen', 'Verwijderen');
   if(!ok) return;
+  // Factuur eerst bijwerken; lukt dat niet, dan blijft de ingave staan.
+  if(!_werkSalesFactuurBij(id, null)) return;
   DB.uren = DB.uren.filter(x=>x.id!==id);
   localStorage.setItem(storageKey(), JSON.stringify(DB));
   _urenCloudWrite(fb=>fb.verwijderUrenItem(huidigBedrijf, id), 'Verwijderen mislukt — probeer opnieuw.', true);
@@ -1513,6 +1521,8 @@ function slaSalesModalOp(){
   if(editId){
     const u = (DB.uren||[]).find(x=>x.id===editId);
     if(!u){ toast('Sales-ingave niet gevonden.','error'); return; }
+    // Staat hij op een factuur, dan die eerst bijwerken en opnieuw boeken.
+    if(!_werkSalesFactuurBij(editId, velden)) return;
     Object.assign(u, velden);
     _urenCloudWrite(fb=>fb.updateUrenItem(huidigBedrijf, editId, JSON.stringify(velden)), 'Opslaan mislukt — probeer opnieuw.');
     toast('Sales bijgewerkt.','success');
@@ -1567,26 +1577,12 @@ async function maakSalesFactuur(opdrEnc){
   }
 
   const p = DB.profiel || {};
-  const bedrijf = p.naam || huidigBedrijf;
   const opdrObj = (p.opdrachtgevers||[]).find(o=>o.naam===opdr) || {};
   if(!await _bevestigFactuurVelden(p, opdrObj, opdr)) return;
 
   const maandLabel = _salesMaandLabel(maand);
-  // Art. 35a Wet OB vraagt de aard van de dienst en de periode; "Sales" alleen
-  // is te vaag, dus de dienst voluit plus wie hem verricht heeft.
-  // Een notitie (bv. "Promotievideo") benoemt de dienst zelf en vervangt dan de standaardtekst.
-  const regelLijst = items.map(u=>({
-    omschrijving: `${String(u.notitie||'').trim() || 'Sales-/verkoopwerkzaamheden'} ${maandLabel}${u.wie ? ' — '+u.wie : ''}`,
-    bedrag: Math.round((parseFloat(u.bedrag)||0)*100)/100
-  }));
-
-  const zonderBtw = !!p.urenZonderBtw;
-  const btwPct = 21;
-  // Zelfde formules als slaFactuurOp() (CLAUDE.md #30): subtotaal = som van
-  // aantal × prijs (aantal is hier 1), BTW per regel afgerond.
-  const subtotaalExcl = regelLijst.reduce((a,r)=>a+r.bedrag,0);
-  const btwBedrag = zonderBtw ? 0 : regelLijst.reduce((a,r)=>a+Math.round(r.bedrag*btwPct)/100,0);
-  const totaalIncl = subtotaalExcl + btwBedrag;
+  const voorlopig = _bouwSalesFactuurEntry(opdr, maand, items, {});
+  const totaalIncl = voorlopig.totaalIncl;
 
   const standaardDatum = bestaande?.datum || new Date().toISOString().slice(0,10);
   const standaardVerval = bestaande?.vervaldatum
@@ -1622,33 +1618,47 @@ async function maakSalesFactuur(opdrEnc){
     return;
   }
 
-  const dFmt = d => new Date(d).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
-  const html = bouwFactuurHtml({
-    bedrijf, p,
-    klantNaam: opdr,
-    klantRegels: [
-      opdrObj.straat || opdrObj.adres || '',
-      (String(opdrObj.postcode||'')+' '+String(opdrObj.stad||'')).trim(),
-      opdrObj.btwNummer ? 'BTW: '+opdrObj.btwNummer : ''
-    ],
-    factuurNr,
-    factuurdatumFmt: dFmt(keuze.datum),
-    vervaldatumFmt: dFmt(keuze.vervaldatum),
-    termijnLabel: berekenTermijnLabel(keuze.datum, keuze.vervaldatum),
-    kolommen: ['Omschrijving','Bedrag'],
-    rijen: regelLijst.map(r=>[r.omschrijving, '€ '+r.bedrag.toFixed(2)]),
-    subtotaalExcl,
-    btwRegels: zonderBtw ? [] : [{label:`BTW ${btwPct}%`, bedrag:btwBedrag}],
-    totaalIncl,
-    zonderBtw
+  const entry = _bouwSalesFactuurEntry(opdr, maand, items, {
+    id: vervangen?.id, nummer: factuurNr, datum: keuze.datum, vervaldatum: keuze.vervaldatum
   });
 
-  const gbOmzetRek = _zorgFactuurRekeningen();
-  const entry = {
-    id: vervangen?.id || uid(),
-    nummer: factuurNr,
-    datum: keuze.datum,
-    vervaldatum: keuze.vervaldatum,
+  if(!_boekGegenereerdeFactuur(entry, vervangen)) return;
+  // Vinkjes terug naar de standaard: gefactureerd = uit.
+  items.forEach(u=>{ delete _salesVink[u.id]; });
+  (vervangen?.salesIds||[]).forEach(id=>{ delete _salesVink[id]; });
+  renderSalesoverzicht();
+  openFactuurVenster(bouwVerkoopFactuurDocument(entry));
+}
+
+// Bouwt de verkoopfactuur (entry voor DB.verkoop) uit sales-ingaves. Gedeeld door
+// maakSalesFactuur() en _werkSalesFactuurBij(), zodat een bijgewerkte factuur
+// precies zo wordt opgebouwd en geboekt als een nieuwe.
+// Per ingave één regel "<notitie of Sales-/verkoopwerkzaamheden> <maand> — <naam>".
+function _bouwSalesFactuurEntry(opdr, maand, items, {id, nummer, datum, vervaldatum, status}){
+  const p = DB.profiel || {};
+  const opdrObj = (p.opdrachtgevers||[]).find(o=>o.naam===opdr) || {};
+  const maandLabel = _salesMaandLabel(maand);
+  // Art. 35a Wet OB vraagt de aard van de dienst en de periode; "Sales" alleen
+  // is te vaag, dus de dienst voluit plus wie hem verricht heeft.
+  const regelLijst = items.map(u=>({
+    omschrijving: `${String(u.notitie||'').trim() || 'Sales-/verkoopwerkzaamheden'} ${maandLabel}${u.wie ? ' — '+u.wie : ''}`,
+    bedrag: Math.round((parseFloat(u.bedrag)||0)*100)/100
+  }));
+
+  const zonderBtw = !!p.urenZonderBtw;
+  const btwPct = 21;
+  // Zelfde formules als slaFactuurOp() (CLAUDE.md #30): subtotaal = som van
+  // aantal × prijs (aantal is hier 1), BTW per regel afgerond.
+  const subtotaalExcl = regelLijst.reduce((a,r)=>a+r.bedrag,0);
+  const btwBedrag = zonderBtw ? 0 : regelLijst.reduce((a,r)=>a+Math.round(r.bedrag*btwPct)/100,0);
+  const totaalIncl = subtotaalExcl + btwBedrag;
+
+  const gbOmzetRek = nummer ? _zorgFactuurRekeningen() : null;
+  return {
+    id: id || uid(),
+    nummer,
+    datum,
+    vervaldatum,
     klant: opdr,
     adres: _opdrachtgeverAdres(opdrObj),
     btwnr: opdrObj.btwNummer || '',
@@ -1667,20 +1677,56 @@ async function maakSalesFactuur(opdrEnc){
     totaal: totaalIncl,
     btwBedrag,
     btwTarief: zonderBtw ? 0 : btwPct,
-    status: 'verstuurd',
+    status: status || 'verstuurd',
     type: 'sales',
     periodeVan: maand,
     periodeTot: maand,
     periodeLabel: maandLabel,
     salesIds: items.map(u=>u.id)
   };
+}
 
-  if(!_boekGegenereerdeFactuur(entry, vervangen)) return;
-  // Vinkjes terug naar de standaard: gefactureerd = uit.
-  items.forEach(u=>{ delete _salesVink[u.id]; });
-  (vervangen?.salesIds||[]).forEach(id=>{ delete _salesVink[id]; });
-  renderSalesoverzicht();
-  openFactuurVenster(html);
+// Een sales-ingave op een factuur wordt gewijzigd, verwijderd of afgewezen.
+// `wijziging(u)` past de ingave lokaal toe (of `null` = weghalen). Bouwt de
+// factuur opnieuw op uit de ingaves die er dan nog bij horen en boekt hem opnieuw
+// (oude boeking eerst gespiegeld) — of verwijdert hem als er niets overblijft.
+// Doet save() en geeft true/false; de aanroeper schrijft de ingave pas daarna
+// naar de cloud, zodat factuur en ingave nooit uit elkaar lopen.
+// Staat de ingave op geen factuur, dan is er niets te doen: true.
+function _werkSalesFactuurBij(id, nieuweVelden){
+  const fct = _salesFactuurVan(id);
+  if(!fct) return true;
+  if(fct.status==='betaald' || _getBetalingen(fct).length){
+    toast(`Dit bedrag staat op factuur ${fct.nummer}, die al betaald is of aan een banktransactie hangt. Draai die betaling eerst terug bij Verkoopfacturen.`,'error',9000);
+    return false;
+  }
+  // De ingaves zoals ze ná de wijziging zijn. Alleen wat nog goedgekeurd is en
+  // bij deze opdrachtgever en maand hoort, blijft op de factuur.
+  const items = fct.salesIds.map(sid=>{
+    const u = (DB.uren||[]).find(x=>x.id===sid && isSalesIngave(x));
+    if(!u) return null;
+    if(sid!==id) return u;
+    return nieuweVelden ? {...u, ...nieuweVelden} : null;
+  }).filter(u=>u && u.status==='goedgekeurd' && u.opdrachtgever===fct.klant && u.maand===fct.periodeVan);
+
+  if(!items.length){
+    draaiFactuurGBTerug(fct, 'verkoop');
+    DB.verkoop = DB.verkoop.filter(f=>f.id!==fct.id);
+    if(!save()){ toast('Factuur niet verwijderd: de balans zou niet meer kloppen. Er is niets gewijzigd.','error',9000); return false; }
+    toast(`Factuur ${fct.nummer} verwijderd — er stond geen bedrag meer op.`,'info',6000);
+    // Net als verwijderFactuur(): bijlagen pas ná de geslaagde save opruimen.
+    verwijderAlleBijlagen(fct.id, fct.bijlagenMeta);
+  } else {
+    const entry = _bouwSalesFactuurEntry(fct.klant, fct.periodeVan, items, {
+      id: fct.id, nummer: fct.nummer, datum: fct.datum, vervaldatum: fct.vervaldatum, status: fct.status
+    });
+    // Velden die niet uit de ingaves komen (notities, bijlagen) blijven staan.
+    ['notities','kvk','bijlagenMeta'].forEach(k=>{ if(fct[k]!==undefined) entry[k]=fct[k]; });
+    if(!_boekGegenereerdeFactuur(entry, fct)) return false;
+  }
+  if(typeof renderFacturen==='function') renderFacturen('verkoop');
+  if(typeof renderDashboard==='function') renderDashboard();
+  return true;
 }
 
 // Herlaad kassaoverzicht periodiek als eigenaar actief is — zodat ingediende kassalijsten verschijnen
