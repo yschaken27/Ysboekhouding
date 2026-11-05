@@ -888,7 +888,6 @@ async function maakUrenFactuur(opdrEnc){
     regelLijst = items.map(u=>({
       label: u.notitie || u.tariefLabel || eInfo.gewerkt,
       datum: u.datum || '',
-      wie: u.wie || '',
       tarief: parseFloat(u.tariefBedrag)||0,
       uren: parseFloat(u.uren)||0,
       bedrag: parseFloat(u.bedrag)||0
@@ -985,7 +984,7 @@ async function maakUrenFactuur(opdrEnc){
       : ['Omschrijving','Periode','Aantal',eInfo.tariefLabel,'Bedrag'],
     rijen: regelLijst.map(r=>[
       perDienst
-        ? `${r.label}${r.wie?' ('+r.wie+')':''}`
+        ? r.label
         : `${eInfo.gewerkt} — ${r.label}`,
       perDienst ? _factuurDatumKort(r.datum) : maandLabel,
       eenheidAantalTekst(r.uren, eInfo.eenheid),
@@ -1005,7 +1004,7 @@ async function maakUrenFactuur(opdrEnc){
   const gbOmzetRek = _zorgFactuurRekeningen();
   const verkoopRegels = regelLijst.map(r=>({
     omschrijving: perDienst
-      ? `${r.label}${r.wie?' ('+r.wie+')':''}${r.datum?' — '+_factuurDatumKort(r.datum):''}`
+      ? `${r.label}${r.datum?' — '+_factuurDatumKort(r.datum):''}`
       : `${eInfo.gewerkt} — ${r.label} (${maandLabel})`,
     aantal: r.uren,          // al afgerond op 2 decimalen, en r.bedrag = aantal × tarief
     prijs: parseFloat(r.tarief)||0,

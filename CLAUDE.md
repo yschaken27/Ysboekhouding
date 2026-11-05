@@ -11,6 +11,11 @@ bedrijven**, die via de mobiele kassier-app hun eigen bedrijf zien en invoer doe
 hebben alleen de boekhouder en die eigenaar(s) toegang. Ga er dus niet van uit dat het personeel is,
 en bouw geen afscherming tussen gebruikers van hetzelfde bedrijf (zie Gebruikers).
 
+Deze klanten zijn meestal zzp'ers **zonder personeel**. Zet daarom nooit een gebruikersnaam op een
+factuurregel ("Beveiliging — hoofdpodium (Jan)"): de klant van de zzp'er heeft niets aan die naam,
+en het suggereert medewerkers die er niet zijn. Namen horen hooguit in de interne overzichten.
+Gebruik in UI-teksten "gebruiker", niet "medewerker".
+
 De app was oorspronkelijk één grote `index.html` (~11.500 regels) en is gesliced naar losse bestanden.
 `index.html` is nu de shell (~1.270 regels): laadt CSS/JS in en bevat de vaste HTML-structuur
 (topbar, sidebar) plus ALLE modals — die modals zijn het leeuwendeel van de regels.
@@ -170,7 +175,7 @@ beide `voeg*Toe` (default-waarde), anders verdwijnt het bij opslaan.
 - `flexibelTarief` — kassier mag zélf het tarief invullen bij het schrijven van uren.
   Voorinvulling = het vaste tarief; wijkt het ingevulde bedrag af, dan krijgt de regel
   het label 'Eigen tarief'. Zichtbaar in het mobiele urenscherm én in de eigenaar-urenmodal.
-- `regelPerDienst` — factuur krijgt een regel per ingave (notitie + medewerker, datum, aantal,
+- `regelPerDienst` — factuur krijgt een regel per ingave (notitie, datum, aantal,
   tarief, bedrag) i.p.v. de standaard groepering per tarieftype. Lege notitie valt terug op
   het tarieflabel, zodat de factuur altijd geldig blijft.
 
@@ -220,7 +225,7 @@ tab- en sectiezichtbaarheid in activa.js.
   `_boekGegenereerdeFactuur`, of verwijdert hem als er niets overblijft. Loopt **vóór** de cloud-write van de
   ingave; faalt hij (betaald/gekoppeld, balans), dan verandert de ingave ook niet.
 - Factuurdocumenten tonen bedragen via `fmt()` (€ 3.000,00), nooit `toFixed(2)`.
-- Eén medewerker mag meerdere bedragen per opdrachtgever per maand hebben, mits de **notitie** verschilt
+- Eén gebruiker mag meerdere bedragen per opdrachtgever per maand hebben, mits de **notitie** verschilt
   (`_salesDubbel` vergelijkt ook de notitie). Een ingevulde notitie vervangt op de factuurregel de
   standaardtekst "Sales-/verkoopwerkzaamheden" (bv. "Promotievideo november 2026 — Jan").
 
