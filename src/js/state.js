@@ -788,6 +788,9 @@ async function _wisselBedrijfKern(naam){
   const _bewaardeKassiers = DB.kassiers ? [...DB.kassiers] : [];
   huidigBedrijf=naam;
   localStorage.setItem('ledger_actief_bedrijf', naam);
+  // Alleen voor de sortering van de bedrijvenlijst — lokaal, buiten de cloud-save.
+  // Staat hier ná de flushSave() hierboven; die volgorde mag nooit wijzigen (#15).
+  _markeerBedrijfGeopend(naam);
   DB={ verkoop:[], inkoop:[], transacties:[], grootboek:[], regels:[], imports:[],
        btwNotities:{}, profiel:{}, memoriaal:[], vasteActiva:[], kassalijsten:[], kassiers:[], uren:[],
        editId:null, editType:null, koppelId:null,
@@ -938,14 +941,15 @@ async function verwijderBedrijf(naam){
 }
 
 function switchBedrijfTab(tab){
-  ['lijst','profiel','opdrachtgevers'].forEach(t=>{
+  // Het opdrachtgever-register heeft sinds okt 2026 een eigen modal
+  // (⚙ Opdrachtgevers); hier zijn alleen deze twee tabs over.
+  ['lijst','profiel'].forEach(t=>{
     const tabEl = document.getElementById('bedrijf-tab-'+t);
     const wrapEl = document.getElementById('bedrijf-wrap-'+t);
     if(tabEl) tabEl.classList.toggle('active',t===tab);
     if(wrapEl) wrapEl.style.display=t===tab?'':'none';
   });
   if(tab==='profiel') laadBedrijfProfiel();
-  if(tab==='opdrachtgevers') renderCentraalOpdrachtgevers();
 }
 
 function laadBedrijfProfiel(){
@@ -1005,33 +1009,116 @@ function slaBedrijfProfielOp(){
   closeModal('modal-bedrijf');toast('Profiel opgeslagen.');
 }
 
-function renderBedrijfList(){
+// ===== BEDRIJVENLIJST =====
+// "Laatst geopend" is bewust PUUR LOKAAL (localStorage): het is apparaat-eigen
+// en mag nooit de cloud-save raken, dus geen veld in DB/profiel en daarmee ook
+// geen uitbreiding van de lees-/schrijfset uit #22.
+const _BEDRIJF_LAATST_KEY = 'ledger_bedrijf_laatst';
+
+function _bedrijfLaatstMap(){
+  try{ return JSON.parse(localStorage.getItem(_BEDRIJF_LAATST_KEY)||'{}') || {}; }
+  catch(e){ return {}; }
+}
+function _markeerBedrijfGeopend(naam){
+  try{
+    const m = _bedrijfLaatstMap();
+    m[naam] = new Date().toISOString();
+    localStorage.setItem(_BEDRIJF_LAATST_KEY, JSON.stringify(m));
+  }catch(e){ /* private mode / vol: niet erg, het is alleen sortering */ }
+}
+
+// "gisteren", "3 dagen geleden" — alleen voor weergave, nooit voor berekeningen.
+function _bedrijfLaatstTekst(iso){
+  if(!iso) return 'Nog niet geopend op dit apparaat';
+  const dagen = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  if(!isFinite(dagen) || dagen < 0) return 'Laatst geopend: onbekend';
+  if(dagen === 0)  return 'Vandaag geopend';
+  if(dagen === 1)  return 'Gisteren geopend';
+  if(dagen < 7)    return `Laatst geopend: ${dagen} dagen geleden`;
+  if(dagen < 14)   return 'Laatst geopend: vorige week';
+  if(dagen < 31)   return `Laatst geopend: ${Math.floor(dagen/7)} weken geleden`;
+  if(dagen < 365)  return `Laatst geopend: ${Math.max(1,Math.round(dagen/30))} maanden geleden`;
+  return 'Laatst geopend: meer dan een jaar geleden';
+}
+
+// Max twee letters uit de weergavenaam, voor de avatar op de kaart.
+function _bedrijfInitialen(naam){
+  const woorden = String(naam||'?').trim().split(/\s+/).filter(Boolean);
+  if(!woorden.length) return '?';
+  if(woorden.length === 1) return woorden[0].slice(0,2).toUpperCase();
+  return (woorden[0][0] + woorden[1][0]).toUpperCase();
+}
+
+let _bedrijfZoek = '';
+function filterBedrijfList(term){
+  _bedrijfZoek = String(term||'');
+  renderBedrijfList(true);
+}
+
+// behoudZoek=true laat het zoekveld staan (anders springt de focus weg tijdens typen)
+function renderBedrijfList(behoudZoek){
   const lijst=getBedrijven();
   const el=document.getElementById('bedrijf-list');
   if(!el) return;
-  el.innerHTML=lijst.map(b=>{
+  if(!behoudZoek) _bedrijfZoek = '';
+
+  const laatst = _bedrijfLaatstMap();
+  const zoek = _bedrijfZoek.trim().toLowerCase();
+
+  // Actief bovenaan, daarna het meest recent geopend, dan alfabetisch.
+  const gesorteerd = [...lijst].sort((a,b)=>{
+    if(a===huidigBedrijf) return -1;
+    if(b===huidigBedrijf) return 1;
+    const la = laatst[a] || '', lb = laatst[b] || '';
+    if(la !== lb) return lb.localeCompare(la);
+    return getBedrijfWeergavenaam(a).localeCompare(getBedrijfWeergavenaam(b),'nl');
+  });
+
+  const zichtbaar = zoek
+    ? gesorteerd.filter(b => (getBedrijfWeergavenaam(b)+' '+b).toLowerCase().includes(zoek))
+    : gesorteerd;
+
+  // Zoekveld pas vanaf 6 bedrijven — daaronder is het ruis.
+  const toonZoek = lijst.length >= 6;
+  const kop = `
+    <div class="list-kop">
+      <span class="list-telling">${lijst.length} ${lijst.length===1?'bedrijf':'bedrijven'}</span>
+      ${toonZoek?`<input type="text" class="list-zoek" id="bedrijf-zoek" placeholder="Zoeken…"
+         value="${esc(_bedrijfZoek)}" oninput="filterBedrijfList(this.value)">`:''}
+    </div>`;
+
+  const kaarten = zichtbaar.map(b=>{
     const weergave = getBedrijfWeergavenaam(b);
     const isActief = b===huidigBedrijf;
+    const veilig   = b.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const magWeg   = lijst.length>1 && !isActief;
     return `
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:6px;margin-bottom:6px;background:${isActief?'rgba(0,255,135,.08)':'var(--surface2)'};border:1px solid ${isActief?'rgba(0,255,135,.3)':'var(--border)'};">
-      <div>
-        <div style="font-size:13px;font-weight:500;">${weergave}</div>
-        ${weergave!==b?`<div style="font-size:10px;color:var(--text-dim);margin-top:1px;">${b}</div>`:''}
-        ${isActief?'<div style="font-size:11px;color:var(--accent);margin-top:2px;">Actief</div>':''}
+    <div class="entity-card${isActief?' is-actief':''}"
+         ${isActief?'':`onclick="wisselBedrijf('${veilig}')" title="Open ${esc(weergave)}"`}>
+      <div class="entity-avatar">${esc(_bedrijfInitialen(weergave))}</div>
+      <div class="entity-body">
+        <div class="entity-naam">${esc(weergave)}${isActief?'<span class="badge badge-blue">Actief</span>':''}</div>
+        ${weergave!==b?`<div class="entity-sub">${esc(b)}</div>`:''}
+        <div class="entity-meta">${isActief?'Je werkt nu in deze administratie':esc(_bedrijfLaatstTekst(laatst[b]))}</div>
       </div>
-      <div style="display:flex;gap:6px;">
-        ${!isActief?`<button class="btn btn-primary btn-sm" onclick="wisselBedrijf('${b}')">Wissel</button>`:''}
-        ${lijst.length>1&&!isActief?`<button class="btn btn-danger btn-sm" onclick="verwijderBedrijf('${b}')">✕</button>`:''}
+      <div class="entity-acties">
+        ${magWeg?`<button class="entity-del" title="Bedrijf verwijderen"
+           onclick="event.stopPropagation();verwijderBedrijf('${veilig}')">🗑</button>`:''}
+        ${isActief?'':'<span class="entity-chevron">›</span>'}
       </div>
     </div>`;
   }).join('');
+
+  const leeg = zoek && !zichtbaar.length
+    ? `<div class="entity-leeg">Geen bedrijf gevonden voor "${esc(_bedrijfZoek)}".</div>` : '';
+
+  // Scrollen pas vanaf zes kaarten, zodat "nieuw bedrijf" altijd in beeld blijft.
+  const scrollKlasse = zichtbaar.length > 5 ? ' entity-scroll' : '';
+  el.innerHTML = kop + `<div class="entity-list${scrollKlasse}">${kaarten}${leeg}</div>`;
 }
 
 function openBedrijfModal(){
   renderBedrijfList();
-  // Opdrachtgevers-tab alleen tonen als uren-registratie actief is
-  const opdrTab = document.getElementById('bedrijf-tab-opdrachtgevers');
-  if(opdrTab) opdrTab.style.display = isUrenAan() ? '' : 'none';
   switchBedrijfTab('lijst');
   openModal('modal-bedrijf');
 }

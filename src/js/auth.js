@@ -576,35 +576,28 @@ function renderGebruikersBeheer(){
   if(!el) return;
   const kassiers = DB.kassiers||[];
   if(!kassiers.length){
-    el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:8px 0;">Geen gebruikers aangemaakt.</div>';
+    el.innerHTML = '<div class="entity-leeg">Geen gebruikers aangemaakt.</div>';
     return;
   }
 
+  // Zelfde kaartopmaak als de bedrijvenlijst (.entity-card in components.css),
+  // zodat Instellingen en Bedrijven er hetzelfde uitzien.
   el.innerHTML = `
-    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:4px;">
+    <div class="entity-list" style="margin-bottom:var(--sp-1);">
       ${kassiers.map(k=>{
         const modules = k.modules||['dashboard','kassa','uploads'];
         const modLabels = modules.map(m=>({dashboard:'📊',kassa:'💰',facturen:'🧾',uploads:'📎',uren:'⏱',sales:'💼'}[m]||m)).join(' ');
         const initials = (k.naam||'?').charAt(0).toUpperCase();
+        const bedrijven = (k.bedrijven||[]).map(getBedrijfWeergavenaam).join(', ');
         return `
-          <div onclick="openGebruikerDetail('${k.id}')" style="
-            display:flex;align-items:center;gap:14px;
-            background:var(--surface);border:1px solid var(--border);
-            border-radius:var(--radius);padding:12px 16px;
-            cursor:pointer;transition:border-color .15s,background .15s;"
-            onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--surface2)'"
-            onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
-            <div style="width:40px;height:40px;border-radius:50%;background:var(--accent-dim);
-              display:flex;align-items:center;justify-content:center;
-              font-size:16px;font-weight:700;color:var(--accent);flex-shrink:0;">
-              ${initials}
+          <div class="entity-card" onclick="openGebruikerDetail('${k.id}')">
+            <div class="entity-avatar" style="border-radius:50%;">${esc(initials)}</div>
+            <div class="entity-body">
+              <div class="entity-naam">${esc(k.naam)}</div>
+              <div class="entity-sub">${esc(k.email||'(geen e-mail)')}</div>
+              <div class="entity-meta">${modLabels}${bedrijven?' · '+esc(bedrijven):''}</div>
             </div>
-            <div style="flex:1;min-width:0;">
-              <div style="font-size:14px;font-weight:600;color:var(--text);">${esc(k.naam)}</div>
-              <div style="font-size:11px;color:var(--text-mid);margin-top:1px;font-family:var(--mono,monospace);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(k.email||'(geen e-mail)')}</div>
-              <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">${modLabels} · ${esc((k.bedrijven||[]).map(getBedrijfWeergavenaam).join(', '))}</div>
-            </div>
-            <div style="color:var(--text-dim);font-size:18px;">›</div>
+            <div class="entity-acties"><span class="entity-chevron">›</span></div>
           </div>`;
       }).join('')}
     </div>`;

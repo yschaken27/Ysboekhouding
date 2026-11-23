@@ -521,3 +521,73 @@ textarea{resize:vertical;min-height:80px;}
 
 /* KEYBOARD HINT */
 .kbd{display:inline-block;background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 5px;font-size:10px;font-family:var(--mono);color:var(--text-dim);}
+
+/* ===== ENTITY CARDS =====
+   Eén kaartpatroon voor lijsten van "dingen met een naam": bedrijven in de
+   Bedrijven-modal en gebruikers in Instellingen. Gebruikt de spacingtokens
+   uit base.css. Vóór deze klassen stond dezelfde opmaak twee keer als inline
+   style in state.js en auth.js. */
+.entity-list{display:flex;flex-direction:column;gap:var(--sp-2);}
+.entity-card{
+  display:flex;align-items:center;gap:var(--sp-3);
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-left:3px solid transparent;
+  border-radius:var(--radius);
+  padding:var(--sp-3) var(--sp-3);
+  cursor:pointer;
+  transition:border-color .15s,background .15s,box-shadow .15s;
+}
+.entity-card:hover{background:var(--surface2);border-color:var(--border-light);border-left-color:var(--ys-navy,var(--accent));box-shadow:var(--shadow);}
+.entity-card.is-actief{background:#dbeafe;border-color:#bfd4fb;border-left-color:var(--ys-navy,var(--accent));cursor:default;}
+.entity-card.is-actief:hover{box-shadow:none;background:#dbeafe;}
+.entity-avatar{
+  width:40px;height:40px;border-radius:10px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;font-weight:700;
+  background:var(--accent-dim);color:var(--ys-navy,var(--accent));
+}
+.entity-card.is-actief .entity-avatar{background:var(--ys-navy,var(--accent));color:#fff;}
+.entity-body{flex:1;min-width:0;}
+.entity-naam{font-size:14px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;}
+.entity-sub{font-size:11px;color:var(--text-mid);font-family:var(--mono);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.entity-meta{font-size:11px;color:var(--text-dim);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.entity-acties{display:flex;align-items:center;gap:var(--sp-1);flex-shrink:0;}
+.entity-chevron{color:var(--text-dim);font-size:18px;line-height:1;}
+.entity-del{
+  background:none;border:none;color:var(--text-dim);cursor:pointer;
+  font-size:14px;padding:6px var(--sp-2);border-radius:6px;line-height:1;
+  opacity:0;transition:opacity .12s,color .12s,background .12s;
+}
+.entity-card:hover .entity-del{opacity:1;}
+.entity-del:hover{color:var(--danger);background:var(--danger-dim);}
+/* Op touch bestaat hover niet — daar moet de knop altijd zichtbaar zijn. */
+@media (hover:none){ .entity-del{opacity:.55;} }
+.entity-add{
+  display:flex;align-items:center;gap:var(--sp-3);
+  border:1px dashed var(--border-light);border-radius:var(--radius);
+  padding:var(--sp-3);background:transparent;cursor:pointer;width:100%;
+  font-family:var(--sans);font-size:13px;color:var(--text-mid);text-align:left;
+  transition:border-color .15s,color .15s,background .15s;
+}
+.entity-add:hover{border-color:var(--ys-navy,var(--accent));color:var(--ys-navy,var(--accent));background:var(--surface2);}
+.entity-add .entity-avatar{background:var(--surface3);color:var(--text-dim);font-size:18px;font-weight:400;}
+.entity-leeg{font-size:12px;color:var(--text-dim);padding:var(--sp-2) 0;}
+
+/* Kop boven een entity-list: telling links, zoekveld rechts */
+.list-kop{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);margin-bottom:var(--sp-3);}
+.list-telling{font-family:var(--mono);font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.07em;}
+.list-zoek{width:200px;max-width:50%;}
+
+/* Scrollt pas als er meer dan vijf kaarten zijn (5 × 66 + 4 × 8 gap) */
+.entity-scroll{max-height:368px;overflow-y:auto;padding-right:var(--sp-1);}
+
+/* Groepskop binnen een lang formulier (profiel) */
+.form-groep{margin-bottom:var(--sp-5);}
+.form-groep:last-of-type{margin-bottom:0;}
+.form-groep-kop{
+  font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.1em;
+  color:var(--ys-navy,var(--accent));font-weight:600;
+  padding-bottom:5px;border-bottom:1px solid var(--border);margin-bottom:var(--sp-3);
+}
+.label-opt{color:var(--text-dim);font-weight:400;}

@@ -1177,7 +1177,7 @@
 
 <!-- BEDRIJF MODAL -->
 <div class="modal-overlay" id="modal-bedrijf">
-  <div class="modal" style="width:580px;">
+  <div class="modal" style="width:720px;">
     <div class="modal-header"><h3>Bedrijven</h3><button class="modal-close" onclick="closeModal('modal-bedrijf')">✕</button></div>
 
     <div class="tabs" style="margin-bottom:20px;">
@@ -1185,44 +1185,68 @@
       <div class="tab" id="bedrijf-tab-profiel" onclick="switchBedrijfTab('profiel')">Profiel actief bedrijf</div>
     </div>
 
-    <!-- TAB: LIJST -->
+    <!-- TAB: LIJST — kaarten worden getekend door renderBedrijfList() (state.js) -->
     <div id="bedrijf-wrap-lijst">
-      <div id="bedrijf-list" style="margin-bottom:16px;"></div>
-      <div class="divider"></div>
-      <div style="margin-top:16px;">
-        <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px;">Nieuw bedrijf toevoegen</div>
-        <div style="display:flex;gap:8px;">
-          <input id="nieuw-bedrijf-naam" type="text" placeholder="Bedrijfsnaam..." style="flex:1;">
-          <button class="btn btn-primary" onclick="voegBedrijfToe()">Toevoegen</button>
-        </div>
+      <div id="bedrijf-list" style="margin-bottom:var(--sp-3);"></div>
+      <!-- Toevoegen staat als gestippelde kaart onder de lijst, zodat het
+           visueel bij de lijst hoort en niet als los formulier aanvoelt. -->
+      <div class="entity-add" onclick="document.getElementById('nieuw-bedrijf-naam').focus()">
+        <span class="entity-avatar">+</span>
+        <input id="nieuw-bedrijf-naam" type="text" placeholder="Naam van het nieuwe bedrijf…"
+               style="flex:1;" onclick="event.stopPropagation()"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();voegBedrijfToe();}">
+        <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();voegBedrijfToe()">Toevoegen</button>
       </div>
     </div>
 
     <!-- TAB: PROFIEL -->
     <div id="bedrijf-wrap-profiel" style="display:none;">
-      <div class="form-grid">
-        <div class="form-group full"><label>Bedrijfsnaam</label><input id="bp-naam" type="text" placeholder="Naam B.V."></div>
-        <div class="form-group"><label>KvK nummer</label><input id="bp-kvk" type="text" placeholder="12345678"></div>
+      <!-- Velden staan in vier semantische groepen (bedrijf / adres / contact /
+           fiscaal). De id's zijn bewust ONGEWIJZIGD: laadBedrijfProfiel() en
+           slaBedrijfProfielOp() lezen en schrijven er stuk voor stuk op. -->
+      <div class="form-groep">
+        <div class="form-groep-kop">Bedrijf</div>
+        <div class="form-grid">
+          <div class="form-group full"><label>Bedrijfsnaam</label><input id="bp-naam" type="text" placeholder="Naam B.V."></div>
+          <div class="form-group"><label>Rechtsvorm</label>
+            <select id="bp-rechtsvorm">
+              <option value="">— Kies —</option>
+              <option value="BV">B.V.</option>
+              <option value="Eenmanszaak">Eenmanszaak</option>
+              <option value="VOF">V.O.F.</option>
+              <option value="NV">N.V.</option>
+              <option value="Stichting">Stichting</option>
+              <option value="Vereniging">Vereniging</option>
+              <option value="Anders">Anders</option>
+            </select>
+          </div>
+          <div class="form-group"><label>KvK nummer <span class="label-opt">(optioneel)</span></label><input id="bp-kvk" type="text" placeholder="12345678"></div>
+        </div>
+      </div>
+
+      <div class="form-groep">
+        <div class="form-groep-kop">Adres</div>
+        <div class="form-grid">
+          <div class="form-group full"><label>Straatnaam + huisnummer</label><input id="bp-straat" type="text" placeholder="Straatnaam 12"></div>
+          <div class="form-group"><label>Postcode</label><input id="bp-postcode" type="text" placeholder="1234 AB"></div>
+          <div class="form-group"><label>Stad / Gemeente</label><input id="bp-stad" type="text" placeholder="Amsterdam"></div>
+        </div>
+      </div>
+
+      <div class="form-groep">
+        <div class="form-groep-kop">Contact</div>
+        <div class="form-grid">
+          <div class="form-group"><label>Telefoon <span class="label-opt">(optioneel)</span></label><input id="bp-tel" type="text" placeholder="+31 6 00000000"></div>
+          <div class="form-group"><label>E-mail <span class="label-opt">(optioneel)</span></label><input id="bp-email" type="email" placeholder="info@bedrijf.nl"></div>
+          <div class="form-group full"><label>Website <span class="label-opt">(optioneel)</span></label><input id="bp-website" type="text" placeholder="www.bedrijf.nl"></div>
+        </div>
+      </div>
+
+      <div class="form-groep">
+        <div class="form-groep-kop">Fiscaal</div>
+        <div class="form-grid">
         <div class="form-group"><label>BTW nummer</label><input id="bp-btw" type="text" placeholder="NL123456789B01"></div>
         <div class="form-group"><label>IBAN</label><input id="bp-iban" type="text" placeholder="NL02KNAB0000000000"></div>
-        <div class="form-group"><label>Telefoon</label><input id="bp-tel" type="text" placeholder="+31 6 00000000"></div>
-        <div class="form-group"><label>E-mail</label><input id="bp-email" type="email" placeholder="info@bedrijf.nl"></div>
-        <div class="form-group full"><label>Straatnaam + huisnummer</label><input id="bp-straat" type="text" placeholder="Straatnaam 12"></div>
-        <div class="form-group"><label>Postcode</label><input id="bp-postcode" type="text" placeholder="1234 AB"></div>
-        <div class="form-group"><label>Stad / Gemeente</label><input id="bp-stad" type="text" placeholder="Amsterdam"></div>
-        <div class="form-group"><label>Website</label><input id="bp-website" type="text" placeholder="www.bedrijf.nl"></div>
-        <div class="form-group"><label>Rechtsvorm</label>
-          <select id="bp-rechtsvorm">
-            <option value="">— Kies —</option>
-            <option value="BV">B.V.</option>
-            <option value="Eenmanszaak">Eenmanszaak</option>
-            <option value="VOF">V.O.F.</option>
-            <option value="NV">N.V.</option>
-            <option value="Stichting">Stichting</option>
-            <option value="Vereniging">Vereniging</option>
-            <option value="Anders">Anders</option>
-          </select>
-        </div>
         <div class="form-group"><label>Boekjaar start</label>
           <select id="bp-boekjaar">
             <option value="1">Januari</option>
@@ -1248,6 +1272,12 @@
             Kasstelsel is verplicht voor ondernemers die vooral aan particulieren leveren (kappers, horeca, etc.). Raadpleeg uw boekhouder bij twijfel.
           </div>
         </div>
+        </div>
+      </div>
+
+      <div class="form-groep">
+        <div class="form-groep-kop">Modules en notities</div>
+        <div class="form-grid">
         <div class="form-group full">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
             <input type="checkbox" id="bp-uren-aan" style="width:auto;">
@@ -1266,7 +1296,8 @@
             Vink aan als je valt onder de KOR of BTW-vrijstelling. Uren-facturen tonen dan geen BTW-regel en vermelden "BTW niet van toepassing".
           </div>
         </div>
-        <div class="form-group full"><label>Notities</label><textarea id="bp-notities" rows="3" placeholder="Bijv. accountantgegevens, login portalen, etc."></textarea></div>
+        <div class="form-group full"><label>Notities <span class="label-opt">(optioneel)</span></label><textarea id="bp-notities" rows="3" placeholder="Bijv. accountantgegevens, login portalen, etc."></textarea></div>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeModal('modal-bedrijf')">Annuleren</button>

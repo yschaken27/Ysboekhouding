@@ -25,6 +25,18 @@
   --radius-lg:12px;
   --shadow:0 1px 3px rgba(30,42,59,.08),0 4px 12px rgba(30,42,59,.06);
   --shadow-lg:0 8px 32px rgba(30,42,59,.12);
+
+  /* SPACING — soft grid op basis 4px.
+     Gebruik in nieuwe of aangepaste CSS alleen deze waarden voor padding,
+     margin en gap. Zo blijft het ritme voorspelbaar en is "overal iets
+     ruimer" later één wijziging in plaats van honderd losse getallen.
+     Bestaande regels zijn nog niet omgezet; dat gebeurt per scherm mee. */
+  --sp-1:4px;
+  --sp-2:8px;
+  --sp-3:12px;
+  --sp-4:16px;
+  --sp-5:24px;
+  --sp-6:32px;
 }
 
 /* RESET */
