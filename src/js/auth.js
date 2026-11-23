@@ -498,11 +498,17 @@ function pasNavAanRol(){
   // Kassier tab tonen/verbergen
   const kassierTab = document.getElementById('nav-tab-kassalijst');
   if(kassierTab) kassierTab.style.display = isKassier ? 'flex' : 'none';
-  // Wissel knop verbergen voor kassier
+  // Wisselpijl verbergen voor kassier — die kan niet van bedrijf wisselen.
   const wisselBtn = document.getElementById('wissel-btn');
   if(wisselBtn) wisselBtn.style.display = isKassier ? 'none' : '';
-  const bedrijfEl = document.getElementById('sidebar-bedrijf-naam');
-  if(bedrijfEl) bedrijfEl.style.cursor = isKassier ? 'default' : 'pointer';
+  // De HELE pil, niet de naam erin: anders houdt de pil hover en cursor:pointer
+  // en lijkt hij klikbaar, terwijl de onclick (index.html) alleen iets doet voor
+  // een eigenaar. Met .is-vast wordt het een rustig label (components.css).
+  const bedrijfKnop = document.getElementById('topbar-bedrijf-knop');
+  if(bedrijfKnop){
+    bedrijfKnop.classList.toggle('is-vast', isKassier);
+    bedrijfKnop.title = isKassier ? '' : 'Wissel van bedrijf';
+  }
   // Instellingen knop alleen voor eigenaar
   const instBtn = document.getElementById('inst-btn');
   if(instBtn) instBtn.style.display = isKassier ? 'none' : '';

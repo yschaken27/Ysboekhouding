@@ -28,6 +28,10 @@
   transition:background .12s,border-color .12s;
 }
 .topbar-bedrijf:hover{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.3);}
+/* Kassier kan niet van bedrijf wisselen: dan is het geen knop maar een label.
+   auth.js zet deze klasse; zonder dit houdt de pil hover en cursor:pointer. */
+.topbar-bedrijf.is-vast{cursor:default;background:none;border-color:transparent;}
+.topbar-bedrijf.is-vast:hover{background:none;border-color:transparent;}
 .topbar-bedrijf-naam{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px;}
 .topbar-bedrijf-pijl{font-size:10px;color:rgba(255,255,255,.65);line-height:1;}
 .topbar-spacer{flex:1;}

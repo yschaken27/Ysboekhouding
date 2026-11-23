@@ -1113,7 +1113,12 @@ function renderBedrijfList(behoudZoek){
   const kaarten = zichtbaar.map(b=>{
     const weergave = getBedrijfWeergavenaam(b);
     const isActief = b===huidigBedrijf;
-    const veilig   = b.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    // Twee lagen escaping, in deze volgorde: eerst backslash en apostrof voor de
+    // JS-string, daarna esc() voor het HTML-attribuut. Zonder die tweede laag
+    // sluit een dubbele aanhalingsteken in de bedrijfsnaam het onclick-attribuut
+    // af en werkt de handler niet meer. De browser decodeert de entiteiten vóór
+    // het uitvoeren, dus de backslash uit stap 1 blijft staan.
+    const veilig   = esc(b.replace(/\\/g,'\\\\').replace(/'/g,"\\'"));
     const magWeg   = lijst.length>1 && !isActief;
     return `
     <div class="entity-card${isActief?' is-actief':''}"
