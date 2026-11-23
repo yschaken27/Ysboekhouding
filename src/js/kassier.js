@@ -2064,7 +2064,7 @@ async function verwijderKassalijst(id){
   const bevestigTekst = wasGoedgekeurd
     ? `Kassalijst van ${k.datum} verwijderen?\n\nLet op: de grootboekboeking wordt ook teruggedraaid.`
     : `Kassalijst van ${k.datum} definitief verwijderen?`;
-  const ok = await bevestig(bevestigTekst, 'Verwijderen', 'Verwijderen');
+  const ok = await bevestig(bevestigTekst, 'Kassalijst verwijderen', 'Ja, verwijder deze kassalijst');
   if(!ok) return;
   // Als goedgekeurd: draai grootboek eerst terug — exacte spiegel van het boeken.
   if(wasGoedgekeurd){

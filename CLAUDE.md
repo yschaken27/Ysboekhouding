@@ -166,10 +166,11 @@ vindt `getBedrijvenLijst` het bedrijf nog). Vooraf `flushSave()`, achteraf de na
 maakt een `save()` daar `data/main` opnieuw aan — sluit het bedrijf eerst op andere apparaten.
 
 ### Instellingen per opdrachtgever (centraal register, `DB.profiel.opdrachtgevers`)
-Beheerd in twee schermen die dezelfde `_cpOpdrachtgevers`-state delen (state.js):
-`_tekenCentraalOpdrachtgevers` (Bedrijven-modal) en `_tekenOpdrachtgeversModal` (⚙ Opdrachtgevers).
-**Wijzig je een veld, doe het in ALLEBEI** — en neem het mee in beide `sla*Op`-functies én in
-beide `voeg*Toe` (default-waarde), anders verdwijnt het bij opslaan.
+Beheerd in één scherm: de ⚙ Opdrachtgevers-modal (`modal-opdrachtgevers`), getekend door
+`_tekenOpdrachtgeversModal` (state.js). Het tweede scherm in de Bedrijven-modal is nov 2026
+verwijderd. Een nieuw veld moet op drie plekken mee: `_tekenOpdrachtgeversModal` (invoer),
+`slaOpdrachtgeversModalOp` (opslaan — anders verdwijnt het) en `voegOpdrachtgeverModalToe`
+(default-waarde).
 - `eenheid` — 'uur' of 'dag' (bepaalt labels en tariefweergave, zie `eenheidInfo`)
 - `tarieven[]` — vaste tarieven (`naam` + `bedrag`)
 - `flexibelTarief` — kassier mag zélf het tarief invullen bij het schrijven van uren.

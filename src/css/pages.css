@@ -99,7 +99,9 @@
     z-index: 1000;
   }
   .topbar img { height: 28px !important; }
-  .topbar-bedrijf { font-size: 11px; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Op mobiel moet de knop smal blijven; de naam zelf krijgt de ellipsis. */
+  .topbar-bedrijf { font-size: 11px; padding: 3px 7px; }
+  .topbar-bedrijf-naam { max-width: 90px; }
 
   /* Nav rij — horizontaal scrollbaar op mobiel */
   .nav-row {

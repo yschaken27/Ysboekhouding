@@ -17,13 +17,19 @@
   white-space:nowrap;flex-shrink:0;
 }
 .topbar-sep{width:1px;height:16px;background:var(--border);flex-shrink:0;}
+/* Actief bedrijf in de topbar: naam + pijl als één klikbaar geheel. */
 .topbar-bedrijf{
-  font-size:12px;color:var(--text-mid);font-weight:500;
+  display:flex;align-items:center;gap:7px;
+  font-size:13px;color:#fff;font-weight:600;
   cursor:pointer;white-space:nowrap;
-  padding:4px 8px;border-radius:5px;
-  transition:all .12s;
+  padding:4px 10px;border-radius:6px;
+  background:rgba(255,255,255,.12);
+  border:1px solid rgba(255,255,255,.18);
+  transition:background .12s,border-color .12s;
 }
-.topbar-bedrijf:hover{background:var(--surface2);color:var(--text);}
+.topbar-bedrijf:hover{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.3);}
+.topbar-bedrijf-naam{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px;}
+.topbar-bedrijf-pijl{font-size:10px;color:rgba(255,255,255,.65);line-height:1;}
 .topbar-spacer{flex:1;}
 .topbar-sync{font-size:11px;font-family:var(--mono);color:var(--text-dim);white-space:nowrap;}
 

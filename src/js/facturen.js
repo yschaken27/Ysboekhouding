@@ -1049,7 +1049,7 @@ Let op: deze factuur is gekoppeld aan een bankbetaling van ${fmt(gekoppeldeTs[0]
 Let op: deze factuur is gekoppeld aan ${gekoppeldeTs.length} bankbetalingen (samen ${fmt(totaalBedrag)}). Die koppelingen worden ook ongedaan gemaakt.`;
   }
 
-  const ok=await bevestig(bevestigTekst,'Factuur verwijderen','Verwijderen');
+  const ok=await bevestig(bevestigTekst,'Factuur verwijderen','Ja, verwijder deze factuur');
   if(!ok) return;
 
   // Ontkoppel ALLE gekoppelde transacties eerst

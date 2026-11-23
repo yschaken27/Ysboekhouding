@@ -687,7 +687,7 @@ async function verwijderKassierViaDetail(){
   if(!checkOnline()) return;
   const k = (DB.kassiers||[]).find(k=>k.id===_gdKassierId);
   if(!k) return;
-  const ok = await bevestig(`Gebruiker "${k.naam}" verwijderen? Zij kunnen daarna niet meer inloggen.`,'Gebruiker verwijderen','Verwijderen');
+  const ok = await bevestig(`Gebruiker "${k.naam}" verwijderen? Zij kunnen daarna niet meer inloggen.`,'Gebruiker verwijderen','Ja, verwijder deze gebruiker');
   if(!ok) return;
   // Haal het e-mailadres van alle toegangslijsten af (lege selectie = overal weg).
   if(k.email) await syncToegangVoorEmail(k.email, []);

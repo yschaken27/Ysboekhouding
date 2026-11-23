@@ -488,15 +488,38 @@ function checkBalansEvenwicht(){
   // Halve cent marge tegen afrondingsruis van kommagetallen — alleen een ÉCHTE
   // afwijking (≥ 1 cent) blokkeert, zodat er geen valse balansfouten ontstaan.
   if(verschil > 0.005){
-    const msg = `Boekhoudkundige fout — deze handeling brengt de balans uit evenwicht.
+    // De melding noemt niet alleen WAT er mis is maar ook waar je moet kijken.
+    // Vuistregel uit #24: staat een bedrag aan de verkeerde kant van de balans, dan
+    // telt het dubbel door — verschil ÷ 2 is dus het (netto) misgeplaatste bedrag.
+    // Géén rekening bij naam noemen op basis van dat halve bedrag: in het
+    // gedocumenteerde geval (1300 van € 90,75 en 1510 van € 15,75 verwisseld, verschil
+    // € 150) is de helft € 75 en dat is het saldo van de omzetrekening, die juist
+    // goed staat. Zo'n gok stuurt de gebruiker naar de verkeerde rekening.
+    // Wat wél betrouwbaar is: standaardnummers worden bewaakt door herstelGBTypes()
+    // en slaGBOp(), dus een verkeerd type kan alleen nog op een EIGEN nummer staan.
+    const helft = verschil / 2;
+    const eigenNummers = (DB.grootboek||[])
+      .filter(g => !DEFAULT_GB.some(s => String(s.nummer) === String(g.nummer)))
+      .map(g => `${g.nummer} ${g.naam} — nu type "${g.type}", saldo ${fmt(g.saldo||0)}`);
 
-Activa: ${fmt(totActiva)}
-Passiva + EV + Resultaat: ${fmt(passivaPlusEV)}
-Verschil: ${fmt(verschil)}
+    const msg = `Niet opgeslagen — de balans klopt niet.
 
-Een balans moet altijd kloppen (Activa = Passiva + Eigen vermogen + Resultaat). Daarom is de laatste handeling automatisch teruggedraaid en NIET opgeslagen — de balans blijft in evenwicht.`;
+Activa:                    ${fmt(totActiva)}
+Passiva + EV + resultaat:  ${fmt(passivaPlusEV)}
+Verschil:                  ${fmt(verschil)}
+
+Je laatste handeling is teruggedraaid, er is niets kwijtgeraakt.
+
+WAT JE KUNT DOEN
+Meestal is niet de boeking fout, maar het type van een grootboekrekening: dan komt een correcte boeking aan de verkeerde kant van de balans terecht. Zo'n bedrag telt dubbel door, dus het gaat om ${fmt(helft)} — de helft van het verschil, of het verschil tussen twee bedragen die allebei verkeerd staan.
+
+Standaardrekeningen worden automatisch goedgezet, dus kijk bij Grootboek naar rekeningen met een eigen nummer.${
+  eigenNummers.length
+    ? `\n\nDat zijn er ${eigenNummers.length}:\n• ${eigenNummers.join('\n• ')}`
+    : `\n\nJe hebt geen eigen nummers, dus controleer de laatste handeling zelf — en open het Grootboek om te zien welke rekening eruit springt.`
+}`;
     alert(msg);
-    console.error('BALANS FOUT:', {totActiva, passivaPlusEV, verschil});
+    console.error('BALANS FOUT:', {totActiva, passivaPlusEV, verschil, helft, eigenNummers});
     return false;
   }
   return true;
@@ -900,7 +923,7 @@ async function _slaaBijlagenIDB(factuurId){
 
 async function verwijderBedrijf(naam){
   if(naam===huidigBedrijf){toast('Wissel eerst naar een ander bedrijf voor je dit verwijdert.','warning');return;}
-  const ok=await bevestig(`Bedrijf "${naam}" en alle data permanent verwijderen?\n\nDit verwijdert ook alle data in Firebase.`,'Bedrijf verwijderen','Verwijderen');
+  const ok=await bevestig(`Bedrijf "${naam}" en alle data permanent verwijderen?\n\nDit verwijdert ook alle data in Firebase.`,'Bedrijf verwijderen','Ja, verwijder dit bedrijf');
   if(!ok) return;
   if(!checkOnline()) return;
   // Een save die nog onderweg is (bv. van dit bedrijf, van vóór de wissel) zou het na het
@@ -1123,137 +1146,9 @@ function openBedrijfModal(){
   openModal('modal-bedrijf');
 }
 
-// ===== CENTRAAL OPDRACHTGEVER-REGISTER =====
+// ===== OPDRACHTGEVER-REGISTER (⚙ Opdrachtgevers-modal) =====
 let _cpOpdrachtgevers = [];
 
-function renderCentraalOpdrachtgevers(){
-  _cpOpdrachtgevers = JSON.parse(JSON.stringify(DB.profiel?.opdrachtgevers || [])).map(o=>{
-    if(!Array.isArray(o.tarieven)){
-      const t = parseFloat(o.tarief);
-      o.tarieven = t > 0 ? [{naam:'Standaard', bedrag:t}] : [{naam:'', bedrag:null}];
-    }
-    return o;
-  });
-  _tekenCentraalOpdrachtgevers();
-}
-
-function _tekenCentraalOpdrachtgevers(){
-  const el = document.getElementById('bp-opdrachtgevers-lijst');
-  if(!el) return;
-  if(!_cpOpdrachtgevers.length){
-    el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:8px 0;">Nog geen opdrachtgevers toegevoegd.</div>';
-    return;
-  }
-  el.innerHTML = _cpOpdrachtgevers.map((o,i)=>`
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;">
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-        <input type="text" value="${esc(o.naam||'')}" placeholder="Naam opdrachtgever"
-          oninput="_cpOpdrachtgevers[${i}].naam=this.value"
-          style="flex:1;font-size:13px;font-weight:600;padding:7px 9px;">
-        <button type="button" onclick="verwijderCentraalOpdrachtgever(${i})" title="Verwijderen"
-          style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;">🗑</button>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:6px;">
-        <input type="text" value="${esc(o.straat||'')}" placeholder="Straatnaam + huisnummer"
-          oninput="_cpOpdrachtgevers[${i}].straat=this.value"
-          style="font-size:12px;padding:6px 8px;">
-        <div style="display:flex;gap:6px;">
-          <input type="text" value="${esc(o.postcode||'')}" placeholder="Postcode"
-            oninput="_cpOpdrachtgevers[${i}].postcode=this.value"
-            style="width:110px;font-size:12px;padding:6px 8px;">
-          <input type="text" value="${esc(o.stad||'')}" placeholder="Stad / Gemeente"
-            oninput="_cpOpdrachtgevers[${i}].stad=this.value"
-            style="flex:1;font-size:12px;padding:6px 8px;">
-        </div>
-        <div style="display:flex;gap:6px;">
-          <input type="text" value="${esc(o.btwNummer||'')}" placeholder="BTW-nummer (optioneel)"
-            oninput="_cpOpdrachtgevers[${i}].btwNummer=this.value"
-            style="flex:1;font-size:12px;padding:6px 8px;">
-          <input type="email" value="${esc(o.email||'')}" placeholder="E-mailadres"
-            oninput="_cpOpdrachtgevers[${i}].email=this.value"
-            style="flex:1;font-size:12px;padding:6px 8px;">
-        </div>
-        <div style="display:flex;gap:6px;align-items:center;">
-          <span style="font-size:11px;color:var(--text-dim);">Factureren per</span>
-          <select onchange="_cpOpdrachtgevers[${i}].eenheid=this.value;_tekenCentraalOpdrachtgevers()"
-            style="font-size:12px;padding:5px 7px;">
-            <option value="uur" ${o.eenheid!=='dag'?'selected':''}>uur</option>
-            <option value="dag" ${o.eenheid==='dag'?'selected':''}>dag</option>
-          </select>
-        </div>
-        <label style="display:flex;gap:6px;align-items:center;font-size:11px;color:var(--text-dim);cursor:pointer;">
-          <input type="checkbox" ${o.flexibelTarief?'checked':''}
-            onchange="_cpOpdrachtgevers[${i}].flexibelTarief=this.checked">
-          Flexibel tarief — kassier mag zelf het tarief invullen
-        </label>
-        <label style="display:flex;gap:6px;align-items:center;font-size:11px;color:var(--text-dim);cursor:pointer;">
-          <input type="checkbox" ${o.regelPerDienst?'checked':''}
-            onchange="_cpOpdrachtgevers[${i}].regelPerDienst=this.checked">
-          Aparte factuurregel per dienst — notitie van de kassier komt op de factuur
-        </label>
-        <div style="margin-top:6px;">
-          <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">Tarieven</div>
-          ${(o.tarieven||[]).map((t,ti)=>`
-            <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
-              <input type="text" value="${esc(t.naam||'')}" placeholder="Omschrijving (bijv. Dag)"
-                oninput="_cpOpdrachtgevers[${i}].tarieven[${ti}].naam=this.value"
-                style="flex:1;font-size:12px;padding:5px 7px;">
-              <input type="text" inputmode="decimal" value="${t.bedrag!=null?String(t.bedrag).replace('.',','):''}" placeholder="${eenheidInfo(o.eenheid).perInput}"
-                oninput="_cpOpdrachtgevers[${i}].tarieven[${ti}].bedrag=parseDecimaalInvoer(this.value)||null"
-                style="width:80px;font-size:12px;padding:5px 7px;">
-              <button type="button" onclick="_cpVerwijderTarief(${i},${ti})"
-                style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px;padding:0 4px;">✕</button>
-            </div>`).join('')}
-          <button type="button" onclick="_cpVoegTariefToe(${i})"
-            style="font-size:11px;color:var(--accent);background:none;border:none;cursor:pointer;padding:2px 0;">+ Tarief toevoegen</button>
-        </div>
-      </div>
-    </div>`).join('');
-}
-
-function _cpVoegTariefToe(i){
-  if(!Array.isArray(_cpOpdrachtgevers[i].tarieven)) _cpOpdrachtgevers[i].tarieven=[];
-  _cpOpdrachtgevers[i].tarieven.push({naam:'',bedrag:null});
-  _tekenCentraalOpdrachtgevers();
-}
-function _cpVerwijderTarief(i,ti){
-  _cpOpdrachtgevers[i].tarieven.splice(ti,1);
-  _tekenCentraalOpdrachtgevers();
-}
-
-function voegCentraalOpdrachtgeverToe(){
-  _cpOpdrachtgevers.push({ naam:'', straat:'', postcode:'', stad:'', btwNummer:'', email:'', eenheid:'uur', flexibelTarief:false, regelPerDienst:false, tarieven:[{naam:'', bedrag:null}] });
-  _tekenCentraalOpdrachtgevers();
-}
-
-function verwijderCentraalOpdrachtgever(i){
-  _cpOpdrachtgevers.splice(i,1);
-  _tekenCentraalOpdrachtgevers();
-}
-
-function slaCentraalOpdrachtgeversOp(){
-  const schoon = _cpOpdrachtgevers
-    .map(o=>({
-      naam: (o.naam||'').trim(),
-      straat: (o.straat||'').trim(),
-      postcode: (o.postcode||'').trim(),
-      stad: (o.stad||'').trim(),
-      btwNummer: (o.btwNummer||'').trim(),
-      email: (o.email||'').trim(),
-      eenheid: o.eenheid === 'dag' ? 'dag' : 'uur',
-      flexibelTarief: !!o.flexibelTarief,
-      regelPerDienst: !!o.regelPerDienst,
-      tarieven: (o.tarieven||[]).map(t=>({naam:(t.naam||'').trim(), bedrag:parseFloat(t.bedrag)||0})).filter(t=>t.bedrag>0||t.naam),
-    }))
-    .filter(o=>o.naam);
-  if(!DB.profiel) DB.profiel={};
-  DB.profiel.opdrachtgevers = schoon;
-  if(!save()) return;
-  closeModal('modal-bedrijf');
-  toast('Opdrachtgevers opgeslagen.');
-}
-
-// ===== OPDRACHTGEVERS MODAL (standalone) =====
 function openOpdrachtgeversModal(){
   _cpOpdrachtgevers = JSON.parse(JSON.stringify(DB.profiel?.opdrachtgevers || [])).map(o=>{
     if(!Array.isArray(o.tarieven)){
